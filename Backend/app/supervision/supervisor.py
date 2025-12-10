@@ -726,11 +726,35 @@ Corrections: {correction_text}
     quality = last_review.get("quality_score", 5) if last_review else 5
     save_snapshot(project_id, project_path, step_name, agent_name, quality, False)
     
-    # FIX: If critical failure, return NO output to prevent persisting garbage
+    # PHASE 1 CHANGE: Critical steps fail hard
+    # We don't want to proceed with broken router or integration code
+    CRITICAL_STEPS = {"backend_implementation", "system_integration", "frontend_integration", "architecture"}
+    normalized_step = step_name.lower().replace(" ", "_").strip()
+    
+    # Check if this is a critical step
+    is_critical = any(crit in normalized_step for crit in CRITICAL_STEPS)
+    
+    # Strict Quality Gate for Critical Steps
+    MIN_QUALITY = 5
+    if is_critical and quality < MIN_QUALITY:
+         log("SUPERVISION", f"❌ {step_name} failed quality gate (q={quality}), discarding output", project_id=project_id)
+         # Return empty files to signal failure to orchestrator (which will trigger healing)
+         return {
+             "output": {"files": [], "message": f"Quality gate failed ({quality}/10)"}, 
+             "approved": False, 
+             "attempt": max_retries, 
+             "quality": quality,
+             "error": "quality_gate_failed"
+         }
+    
+    # For non-critical steps (or if quality >= 5), return best effort
+    # But still filter out syntactically broken files
     final_output = last_output
     if last_review and not last_review.get("approved"):
+        # Even for best effort, don't persist SyntaxErrors
         if any(issue for issue in last_review.get("issues", []) if "syntax error" in issue.lower() or "truncated" in issue.lower()):
-             log("SUPERVISION", f"❌ Max retries reached with CRITICAL issues. Dropping output.", project_id=project_id)
-             final_output = {} # Drop output to prevent persistence
+             log("SUPERVISION", f"⚠️ Dropping broken files from best-effort output", project_id=project_id)
+             # Try to filter files if possible, or drop all if unsure
+             final_output = {**last_output, "files": []} 
     
     return {"output": final_output, "approved": False, "attempt": max_retries, "quality": quality}

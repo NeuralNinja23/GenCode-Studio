@@ -8,45 +8,49 @@ class WorkflowStep:
     """
     GenCode Studio workflow steps (Frontend-First pattern).
     
-    Order (12 steps total):
+    Order (11 steps total - Atomic Backend):
     1. ANALYSIS - Understand and clarify requirements
     2. ARCHITECTURE - Design system architecture
-    3. FRONTEND_MOCK - Create frontend with mock data (aha moment!)
+    3. FRONTEND_MOCK - Create frontend with mock data
     4. SCREENSHOT_VERIFY - Visual QA of the frontend
     5. CONTRACTS - Define API contracts based on frontend mock
-    6. BACKEND_MODELS - Create database models
-    7. BACKEND_ROUTERS - Create API endpoints
-    8. BACKEND_MAIN - Wire up the main app
-    9. TESTING_BACKEND - Test backend with pytest
-    10. FRONTEND_INTEGRATION - Replace mock with real API calls
-    11. TESTING_FRONTEND - E2E tests with Playwright
-    12. PREVIEW_FINAL - Show the running application
+    6. BACKEND_IMPLEMENTATION - Atomic creation of Models+Routers+Manifest
+    7. SYSTEM_INTEGRATION - Wiring steps (Main.py + Requirements)
+    8. TESTING_BACKEND - Test backend with pytest
+    9. FRONTEND_INTEGRATION - Replace mock with real API calls
+    10. TESTING_FRONTEND - E2E tests with Playwright
+    11. PREVIEW_FINAL - Show the running application
     """
     # Step 1
     ANALYSIS = "analysis"
     # Step 2
     ARCHITECTURE = "architecture"
-    # Step 3: Frontend-first with mock data (GenCode Studio pattern)
+    # Step 3: Frontend-first with mock data
     FRONTEND_MOCK = "frontend_mock"
     # Step 4: Visual QA
     SCREENSHOT_VERIFY = "screenshot_verify"
     # Step 5: API contracts derived from mock data
     CONTRACTS = "contracts"
-    # Step 6
-    BACKEND_MODELS = "backend_models"
-    # Step 7
-    BACKEND_ROUTERS = "backend_routers"
+    
+    # Step 6: Atomic Implementation (Models + Routers)
+    BACKEND_IMPLEMENTATION = "backend_implementation"
+    # Step 7: System Integration (Script wiring)
+    SYSTEM_INTEGRATION = "system_integration"
+    
+    # DEPRECATED STEPS (Do not use in new workflows)
+    # BACKEND_MODELS = "backend_models"
+    # BACKEND_ROUTERS = "backend_routers"
+    # BACKEND_MAIN = "backend_main"
+    
     # Step 8
-    BACKEND_MAIN = "backend_main"
-    # Step 9
     TESTING_BACKEND = "testing_backend"
-    # Step 10: Replace mock with API calls
+    # Step 9: Replace mock with API calls
     FRONTEND_INTEGRATION = "frontend_integration"
-    # Step 11
+    # Step 10
     TESTING_FRONTEND = "testing_frontend"
-    # Step 12
+    # Step 11
     PREVIEW_FINAL = "preview_final"
-    # Post-workflow refinement (user sends follow-up messages)
+    # Post-workflow refinement
     REFINE = "refine"
     # Workflow completion marker
     COMPLETE = "complete"

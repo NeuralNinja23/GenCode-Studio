@@ -103,14 +103,12 @@ def default_contracts() -> ArtifactContractsRegistry:
     """
     registry = ArtifactContractsRegistry()
     
-    # Backend router contract - FLEXIBLE patterns (not tied to specific entity)
+    # Backend Vertical (Models + Routers)
     registry.register(ArtifactContract(
-        name="backend_router",
-        required_paths=[],  # Will be populated dynamically
+        name="backend_vertical",
+        required_paths=["backend/app/models.py"], # Default path
         required_patterns={
-            # Flexible patterns that match any CRUD router
-            "crud_endpoint": r"@router\.(get|post|put|patch|delete)\s*\(",
-            "async_handler": r"async\s+def\s+\w+",
+            "document_class": r"class\s+\w+\(Document\)",
         },
         is_critical=True
     ))
@@ -135,16 +133,6 @@ def default_contracts() -> ArtifactContractsRegistry:
             "create": r"export\s+(async\s+)?function\s+create",
             "update": r"export\s+(async\s+)?function\s+update",
             "delete": r"export\s+(async\s+)?function\s+delete",
-        },
-        is_critical=True
-    ))
-
-    # Backend models contract
-    registry.register(ArtifactContract(
-        name="backend_models",
-        required_paths=["backend/app/models.py"],
-        required_patterns={
-            "document_class": r"class\s+\w+\(Document\)",
         },
         is_critical=True
     ))
@@ -190,25 +178,26 @@ def dynamic_contracts(project_path) -> ArtifactContractsRegistry:
             if f.stem != "__init__":
                 router_files.append(f"backend/app/routers/{f.name}")
     
-    # Backend router contract - uses discovered files
+    # Backend Vertical (Models + Routers)
     if router_files:
         registry.register(ArtifactContract(
-            name="backend_router",
-            required_paths=router_files,  # DYNAMIC!
+            name="backend_vertical",
+            required_paths=["backend/app/models.py"] + router_files,  # DYNAMIC!
             required_patterns={
-                # Flexible patterns that match any CRUD router
+                "document_class": r"class\s+\w+\(Document\)",
                 "crud_endpoint": r"@router\.(get|post|put|patch|delete)\s*\(",
-                "async_handler": r"async\s+def\s+\w+",
             },
             is_critical=True
         ))
     else:
-        # No routers found yet - use placeholder
+        # Fallback if scanners fail
         registry.register(ArtifactContract(
-            name="backend_router",
-            required_paths=[],
-            required_patterns={},
-            is_critical=False  # Can't enforce if no routers exist
+            name="backend_vertical",
+            required_paths=["backend/app/models.py"],
+            required_patterns={
+                  "document_class": r"class\s+\w+\(Document\)",
+            },
+            is_critical=True
         ))
 
     # Backend main app contract
@@ -229,16 +218,6 @@ def dynamic_contracts(project_path) -> ArtifactContractsRegistry:
         required_patterns={
             "fetch_usage": r"(fetch|axios|api)",
             "export_function": r"export\s+(async\s+)?function",
-        },
-        is_critical=True
-    ))
-
-    # Backend models contract
-    registry.register(ArtifactContract(
-        name="backend_models",
-        required_paths=["backend/app/models.py"],
-        required_patterns={
-            "document_class": r"class\s+\w+\(Document\)",
         },
         is_critical=True
     ))

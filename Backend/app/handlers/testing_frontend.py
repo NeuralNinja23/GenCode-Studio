@@ -1,9 +1,8 @@
 # app/handlers/testing_frontend.py
 """
-Step 11: Luna tests frontend with Playwright and Self-Healing.
+Step 10: Luna runs E2E tests on the integrated frontend.
 
-Workflow order: ... → Testing Backend (9) → Frontend Integration (10) → 
-Testing Frontend (11) → Preview Final (12)
+Workflow order: ... → Frontend Integration (9) → Testing Frontend (10) → Preview (11)
 """
 import re
 from pathlib import Path
@@ -213,7 +212,7 @@ async def step_testing_frontend(
         
         if not has_routers:
             log("TESTING", f"❌ CRITICAL: No router files found in {routers_dir}", project_id)
-            log("TESTING", "   Only __init__.py exists - backend_routers step likely failed", project_id)
+            log("TESTING", "   Only __init__.py exists - Backend Implementation step likely failed", project_id)
     else:
         log("TESTING", f"❌ CRITICAL: Routers directory missing: {routers_dir}", project_id)
     
@@ -238,7 +237,7 @@ async def step_testing_frontend(
         log("TESTING", "❌ CRITICAL FILES MISSING - Docker build will fail", project_id)
         for f in missing_critical:
             log("TESTING", f"   Missing: {f}", project_id)
-        log("TESTING", "   Skipping frontend tests - please fix backend_routers step first", project_id)
+        log("TESTING", "   Skipping frontend tests - please fix Backend Implementation step first", project_id)
         
         return StepResult(
             nextstep=WorkflowStep.PREVIEW_FINAL,  # Continue to preview anyway
@@ -247,8 +246,8 @@ async def step_testing_frontend(
             error=f"Missing {len(missing_critical)} critical backend files - Docker build would fail",
             data={
                 "missing_files": missing_critical,
-                "reason": "backend_routers_failed",
-                "suggestion": "Check if Derek produced valid router files in the backend_routers step",
+                "reason": "backend_implementation_failed",
+                "suggestion": "Check if Derek produced valid router files in the Backend Implementation step",
             }
         )
 

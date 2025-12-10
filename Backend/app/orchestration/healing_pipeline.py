@@ -96,7 +96,7 @@ class HealingPipeline:
         """Use step-specific fallback agent with DYNAMIC entity names."""
         step_lower = step.lower()
         
-        if "router" in step_lower:
+        if "router" in step_lower or "implementation" in step_lower or "backend_vertical" in step_lower:
             # DYNAMIC: Discover primary entity
             entity_name, model_name = self._discover_primary_entity()
             entity_plural = entity_name + "s" if not entity_name.endswith("s") else entity_name

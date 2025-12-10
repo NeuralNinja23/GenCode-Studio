@@ -175,17 +175,12 @@ STEP_CONTEXT_RULES = {
         "include_contracts": False,
         "include_architecture": True,
     },
-    "backend_models": {
-        "files": ["backend/app/models.py", "backend/app/database.py"],
+    "backend_implementation": {
+        "files": ["backend/app/models.py", "backend/app/routers/*.py", "backend/app/database.py"],
         "include_contracts": True,
         "include_architecture": True,
     },
-    "backend_routers": {
-        "files": ["backend/app/routers/*.py", "backend/app/models.py"],
-        "include_contracts": True,
-        "include_architecture": False,
-    },
-    "backend_main": {
+    "system_integration": {
         "files": ["backend/app/main.py", "backend/app/routers/*.py"],
         "include_contracts": False,
         "include_architecture": False,

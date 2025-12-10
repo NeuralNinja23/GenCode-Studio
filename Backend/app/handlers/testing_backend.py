@@ -3,7 +3,7 @@
 Step 9: Derek tests backend using sandbox with Self-Healing.
 
 Workflow order: Analysis → Architecture → Frontend Mock → Screenshot Verify →
-Contracts → Backend Models → Backend Routers → Backend Main → Testing Backend (9)
+Contracts → Backend Implementation (Atomic) → System Integration → Testing Backend (8)
 
 Marcus-as-Critic Pattern:
 - When backend tests fail, Marcus first analyzes the failure

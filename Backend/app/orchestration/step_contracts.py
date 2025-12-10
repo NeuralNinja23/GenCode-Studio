@@ -36,22 +36,18 @@ class StepContracts:
                 "frontend/src/data/"
             ]
         },
-        "backend_models": {
-            "must_contain": ["Document", "class"],
+        "backend_implementation": {
+            "must_contain": ["Document", "class", "router", "async def"],
             "files_required": [
                 "backend/app/models.py",
-                "backend/app/database.py"
+                "backend/app/routers/"
             ]
         },
         "contracts": {
             "must_contain": ["endpoint", "API"],
             "files_required": ["contracts.md"]
         },
-        "backend_routers": {
-            "must_contain": ["router", "async def"],
-            "files_required": ["backend/app/routers/"]
-        },
-        "backend_main": {
+        "system_integration": {
             "must_contain": ["FastAPI", "include_router"],
             "files_required": ["backend/app/main.py"]
         },

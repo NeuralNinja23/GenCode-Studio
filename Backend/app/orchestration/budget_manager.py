@@ -85,17 +85,23 @@ class BudgetConfig:
             est_input_tokens=6000,
             est_output_tokens=3000,
         ),
-        "backend_routers": StepPolicy(
+        "backend_implementation": StepPolicy(
             skippable=False,
             max_attempts=3,
-            est_input_tokens=6000,
-            est_output_tokens=3500,
+            est_input_tokens=10000,
+            est_output_tokens=20000,
+        ),
+        "system_integration": StepPolicy(
+            skippable=False,
+            max_attempts=1,
+            est_input_tokens=0,
+            est_output_tokens=0,
         ),
         "frontend_integration": StepPolicy(
             skippable=False,
             max_attempts=3,
-            est_input_tokens=6000,
-            est_output_tokens=3500,
+            est_input_tokens=10000,
+            est_output_tokens=20000, # Critical step: increased to 20k
         ),
         
         # Medium complexity, less sensitive
@@ -110,18 +116,6 @@ class BudgetConfig:
             max_attempts=2,
             est_input_tokens=3500,
             est_output_tokens=2000,
-        ),
-        "backend_models": StepPolicy(
-            skippable=False,
-            max_attempts=2,
-            est_input_tokens=4000,
-            est_output_tokens=2000,
-        ),
-        "backend_main": StepPolicy(
-            skippable=False,
-            max_attempts=2,
-            est_input_tokens=3000,
-            est_output_tokens=1500,
         ),
         
         # Nice-to-have / QA steps that can be skipped if needed

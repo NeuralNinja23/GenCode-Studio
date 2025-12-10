@@ -360,7 +360,7 @@ Generate the CUSTOMIZED frontend for "{app_title}" now!
         parsed = result.get("output", {})
         if "files" in parsed and parsed["files"]:
             validated = validate_file_output(
-                parsed, WorkflowStep.FRONTEND_MOCK, max_files=7
+                parsed, WorkflowStep.FRONTEND_MOCK, max_files=6
             )
             files_written = await persist_agent_output(
                 manager,
@@ -377,6 +377,52 @@ Generate the CUSTOMIZED frontend for "{app_title}" now!
             )
         
         chat_history.append({"role": "assistant", "content": str(parsed)})
+
+        # =========================================================================
+        # 🔗 FRONTEND INTEGRATOR (Deterministic Wiring)
+        # =========================================================================
+        log("FRONTEND", "🔗 Running Frontend Integrator to wire pages...")
+        
+        app_jsx_path = project_path / "frontend/src/App.jsx"
+        pages_dir = project_path / "frontend/src/pages"
+        
+        if app_jsx_path.exists() and pages_dir.exists():
+            content = app_jsx_path.read_text(encoding="utf-8")
+            
+            # Find all page components
+            page_files = [f for f in pages_dir.glob("*.jsx")]
+            import_lines = []
+            route_lines = []
+            
+            for page in page_files:
+                component_name = page.stem # e.g. "HomePage"
+                # Import
+                import_lines.append(f"import {component_name} from './pages/{component_name}';")
+                
+                # Route
+                if "Home" in component_name:
+                     route_lines.append(f'<Route path="/dashboard" element={{<{component_name} />}} />')
+                else:
+                    # Generic route generation strategy
+                    # e.g. ProjectsPage -> /projects
+                    route_slug = component_name.lower().replace("page", "")
+                    route_lines.append(f'<Route path="/{route_slug}" element={{<{component_name} />}} />')
+
+            # Inject
+            imports_block = "\n".join(import_lines)
+            routes_block = "\n            ".join(route_lines) # Indentation for JSX
+            
+            if "// @ROUTE_IMPORTS" in content:
+                content = content.replace("// @ROUTE_IMPORTS", f"// @ROUTE_IMPORTS\n{imports_block}")
+            
+            if "{/* @ROUTE_REGISTER" in content:
+                 content = content.replace(
+                     "{/* @ROUTE_REGISTER - Integrator injects new routes here */}", 
+                     f"{{/* @ROUTE_REGISTER */}}\n            {routes_block}"
+                 )
+            
+            app_jsx_path.write_text(content, encoding="utf-8")
+            log("FRONTEND", f"✅ Integrator wired {len(page_files)} pages into App.jsx")
         
     except RateLimitError:
         log("FRONTEND_MOCK", "Rate limit exhausted - stopping workflow", project_id=project_id)

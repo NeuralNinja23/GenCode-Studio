@@ -16,6 +16,13 @@ export default defineConfig({
         strictPort: true,
         watch: {
             usePolling: true
+        },
+        proxy: {
+            "/api": {
+                target: "http://localhost:8001",
+                changeOrigin: true,
+                secure: false
+            }
         }
     }
 })

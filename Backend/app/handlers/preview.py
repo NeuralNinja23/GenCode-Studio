@@ -1,8 +1,8 @@
 # app/handlers/preview.py
 """
-Step 12: Launch preview with dynamic port allocation.
+Step 11: Launch preview with dynamic port allocation.
 
-Workflow order: ... → Testing Frontend (11) → Preview Final (12) → COMPLETE
+Workflow order: ... → Testing Frontend (10) → Preview Final (11) → COMPLETE
 """
 import asyncio
 import re
@@ -30,7 +30,7 @@ async def step_preview_final(
     max_turns: int,
 ) -> StepResult:
     """
-    Step 12: Refresh preview on RANDOM free ports for both frontend and backend.
+    Step 11: Refresh preview on RANDOM free ports for both frontend and backend.
     """
     await broadcast_status(
         manager,

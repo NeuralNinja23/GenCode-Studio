@@ -38,10 +38,9 @@ STEP_NAME_MAP = {
     "analysis": WorkflowStep.ANALYSIS,
     "architecture": WorkflowStep.ARCHITECTURE,
     "frontend_mock": WorkflowStep.FRONTEND_MOCK,
-    "backend_models": WorkflowStep.BACKEND_MODELS,
     "contracts": WorkflowStep.CONTRACTS,
-    "backend_routers": WorkflowStep.BACKEND_ROUTERS,
-    "backend_main": WorkflowStep.BACKEND_MAIN,
+    "backend_implementation": WorkflowStep.BACKEND_IMPLEMENTATION,
+    "system_integration": WorkflowStep.SYSTEM_INTEGRATION,
     "frontend_integration": WorkflowStep.FRONTEND_INTEGRATION,
     "screenshot_verify": WorkflowStep.SCREENSHOT_VERIFY,
     "testing_backend": WorkflowStep.TESTING_BACKEND,
@@ -63,7 +62,7 @@ class FASTOrchestratorV2:
     """
     
     # Critical steps that need extra validation and healing
-    CRITICAL_STEPS = {"backend_routers", "backend_main", "frontend_integration"}
+    CRITICAL_STEPS = {"backend_implementation", "frontend_integration"}
 
     def __init__(
         self,
@@ -135,9 +134,8 @@ class FASTOrchestratorV2:
             step_frontend_mock,
             step_screenshot_verify,
             step_contracts,
-            step_backend_models,
-            step_backend_routers,
-            step_backend_main,
+            step_backend_implementation,
+            step_system_integration,
             step_testing_backend,
             step_frontend_integration,
             step_testing_frontend,
@@ -151,9 +149,8 @@ class FASTOrchestratorV2:
             "frontend_mock": step_frontend_mock,
             "screenshot_verify": step_screenshot_verify,
             "contracts": step_contracts,
-            "backend_models": step_backend_models,
-            "backend_routers": step_backend_routers,
-            "backend_main": step_backend_main,
+            "backend_implementation": step_backend_implementation,
+            "system_integration": step_system_integration,
             "frontend_integration": step_frontend_integration,
             "testing_backend": step_testing_backend,
             "testing_frontend": step_testing_frontend,
@@ -264,16 +261,27 @@ class FASTOrchestratorV2:
                     # ════════════════════════════════════════════════════════
                     # V2 FEATURE #4: POST-STEP VALIDATION FOR CRITICAL STEPS  
                     # ════════════════════════════════════════════════════════
+                    # PHASE 3: Check if step returned files, try healing, stop on critical failure
                     if step in self.CRITICAL_STEPS:
-                        if not self._validate_step_output(step):
-                            log("FAST-V2", f"⚠️ {step} output validation failed, trying healing...")
+                        # Check 1: File existence in output
+                        files_exist = False
+                        if hasattr(result, "output") and isinstance(result.output, dict):
+                             files_exist = bool(result.output.get("files"))
+                        
+                        # Check 2: Structural validation (if files exist)
+                        validation_passed = files_exist and self._validate_step_output(step)
+                        
+                        if not validation_passed:
+                            reason = "no files returned" if not files_exist else "structural validation failed"
+                            log("FAST-V2", f"⚠️ {step} issue detected: {reason}. Triggering healing...")
+                            
                             if self._attempt_healing(step):
                                 log("FAST-V2", f"✅ {step} healed successfully")
                             else:
-                                log("FAST-V2", f"❌ {step} healing failed")
+                                log("FAST-V2", f"❌ {step} healing failed (Unrecoverable)")
                                 self.failed_steps.append(step)
-                                self.step_results[step] = {"status": "failed", "reason": "validation_failed"}
-                                log("FAST-V2", f"🛑 Stopping - validation failed for {step}")
+                                self.step_results[step] = {"status": "failed", "reason": reason}
+                                log("FAST-V2", f"🛑 Stopping - critical failure in {step}")
                                 break
 
                     # ════════════════════════════════════════════════════════
@@ -440,10 +448,14 @@ class FASTOrchestratorV2:
         from app.orchestration.utils import pluralize
         primary_plural = pluralize(primary_entity)
 
-        if step == "backend_routers":
-            # Dynamic router path based on primary entity
+        if step == "backend_implementation":
+            # Check models.py AND router
+            models_path = self.project_path / "backend" / "app" / "models.py"
             router_path = self.project_path / "backend" / "app" / "routers" / f"{primary_plural}.py"
             
+            if not models_path.exists():
+                return False
+                
             # Fallback: check ALL routers if specific one missing
             if not router_path.exists():
                 routers_dir = self.project_path / "backend" / "app" / "routers"
@@ -464,13 +476,6 @@ class FASTOrchestratorV2:
             entities = self.cross_ctx._ctx.get("entities", [])
             primary_entity = entities[0] if entities else "Note"
             return self.compiler.api_is_complete(content, entity_name=primary_entity)
-        
-        if step == "backend_main":
-            main_path = self.project_path / "backend" / "app" / "main.py"
-            if not main_path.exists():
-                return False
-            content = main_path.read_text(encoding="utf-8")
-            return "include_router" in content
         
         return True
 
@@ -504,9 +509,12 @@ class FASTOrchestratorV2:
             # Collect relevant files for this step
             files = {}
             step_files = {
-                "backend_models": ["backend/app/models.py", "backend/app/database.py"],
-                "backend_routers": [f"backend/app/routers/{primary_plural}.py"],
-                "backend_main": ["backend/app/main.py"],
+                "backend_implementation": [
+                    "backend/app/models.py", 
+                    f"backend/app/routers/{primary_plural}.py",
+                    "backend/requirements.txt"
+                ],
+                "system_integration": ["backend/app/main.py"],
                 "frontend_integration": ["frontend/src/lib/api.js"],
             }
             
@@ -544,21 +552,18 @@ class FASTOrchestratorV2:
                     self.cross_ctx.set_architecture(arch_content)
                     summary = {"architecture": "MongoDB + Beanie ODM"}
             
-            elif step == "backend_models":
+            elif step == "backend_implementation":
                 # Record model info
                 models_path = self.project_path / "backend" / "app" / "models.py"
                 if models_path.exists():
                     entities = self.cross_ctx._ctx.get("entities", [])
                     primary = entities[0] if entities else "Item"
-                    summary = {"models": f"{primary.capitalize()} model with CRUD support"}
-            
-            elif step == "backend_routers":
-                # Record router endpoints
-                entities = self.cross_ctx._ctx.get("entities", [])
-                primary = entities[0] if entities else "item"
-                from app.orchestration.utils import pluralize
-                plural = pluralize(primary)
-                summary = {"endpoints": f"GET/POST/PUT/DELETE /api/{plural}"}
+                    from app.orchestration.utils import pluralize
+                    plural = pluralize(primary)
+                    summary = {
+                        "models": f"{primary.capitalize()} model with CRUD support",
+                        "endpoints": f"GET/POST/PUT/DELETE /api/{plural}"
+                    }
             
             elif step == "contracts":
                 # Record contract summary

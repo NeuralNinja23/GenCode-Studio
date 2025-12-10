@@ -44,6 +44,29 @@ STOP_SEQUENCES = {
         "\n\n\n",            # Triple newline (natural break)
     ],
 }
+# USER REQUEST UPDATE: Ensure strict stops on file ends
+STOP_SEQUENCES["python"].extend(["```", "```json", "<<END>>"])
+STOP_SEQUENCES["javascript"].extend(["```", "```json", "<<END>>"])
+STOP_SEQUENCES["jsx"].extend(["```", "```json", "<<END>>"])
+    "javascript": [
+        "\n\nexport ",       # New export statement
+        "\n\n// ═══",        # Section separator
+        "\n\nimport ",       # New import block (shouldn't appear mid-file)
+        "\n\nfunction ",     # New function declaration
+        "\n\nconst ",        # New const at module level
+    ],
+    "jsx": [
+        "\n\nexport ",       # Export statement
+        "\n\n// ═══",        # Section separator
+        "\n\nfunction ",     # Component function
+        "\n\nconst ",        # New const
+    ],
+    "generic": [
+        "\n\n```",           # End of code block
+        "\n\n---",           # Markdown separator
+        "\n\n\n",            # Triple newline (natural break)
+    ],
+}
 
 
 def get_stop_sequences(file_type: str = "default") -> List[str]:

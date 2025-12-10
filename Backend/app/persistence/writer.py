@@ -53,6 +53,24 @@ async def persist_agent_output(
             log("PERSIST", f"⚠️ Skipping protected file: {path}", project_id=project_id)
             continue
         
+        # Persistence-Level Hard Stop
+        # Enforce AST validation before any file hits disk
+        try:
+             from app.validation.syntax_validator import validate_file
+             validation_result = validate_file(normalized, content)
+             
+             if not validation_result.valid:
+                  # CRITICAL: Do not write broken files. 
+                  # This ensures Orchestrator sees empty output if all files are bad.
+                  log("PERSIST", f"❌ Skipping invalid file (blocked by validator): {normalized} - {validation_result.errors[0]}", project_id=project_id)
+                  continue
+             
+        except Exception as val_err:
+             # If validator itself crashes (rare), play it safe and warn but maybe allow?
+             # Better to be strict: log and skip
+             log("PERSIST", f"⚠️ Validator crashed on {normalized}: {val_err}. Skipping for safety.", project_id=project_id)
+             continue
+
         try:
             target = project_path / normalized
             target.parent.mkdir(parents=True, exist_ok=True)

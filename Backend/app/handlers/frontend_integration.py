@@ -2,7 +2,7 @@
 """
 Step 10: Derek replaces mock data with real API calls.
 
-Workflow order: ... → Testing Backend (9) → Frontend Integration (10) → Testing Frontend (11)
+Workflow order: ... → Testing Backend (8) → Frontend Integration (9) → Testing Frontend (10)
 
 This is the integration step in the GenCode Studio pattern:
 - Frontend already works with mock data
@@ -121,7 +121,7 @@ async def step_frontend_integration(
     max_turns: int,
 ) -> StepResult:
     """
-    Step 10: Derek replaces mock data with real API calls.
+    Step 9: Derek replaces mock data with real API calls.
     
     The frontend already works with mock data. Now we:
     1. Update lib/api.js to make real fetch calls

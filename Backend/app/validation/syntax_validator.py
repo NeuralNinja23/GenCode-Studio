@@ -46,6 +46,35 @@ class ValidationResult:
         }
 
 
+class IncompleteCodeError(Exception):
+    pass
+
+
+def assert_no_empty_defs(path: str, content: str) -> None:
+    """Check for empty function/class definitions (only pass/docstring)."""
+    try:
+        tree = ast.parse(content, filename=path)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                # Check if body has any substantive code
+                has_code = False
+                for stmt in node.body:
+                    if isinstance(stmt, ast.Pass):
+                        continue
+                    if isinstance(stmt, ast.Expr) and isinstance(stmt.value, (ast.Str, ast.Constant, ast.Ellipsis)):
+                        continue
+                    has_code = True
+                    break
+                
+                if not has_code:
+                     raise IncompleteCodeError(
+                        f"Incomplete {type(node).__name__} '{node.name}' in {path} (empty body)"
+                     )
+
+    except SyntaxError:
+        # Let SyntaxError propagate or be handled by caller
+        raise
+
 def validate_python_syntax(code: str, filename: str = "unknown.py") -> ValidationResult:
     """
     Validate Python code using AST parsing.
@@ -56,6 +85,7 @@ def validate_python_syntax(code: str, filename: str = "unknown.py") -> Validatio
     Catches:
     - Syntax errors
     - Incomplete statements
+    - Empty class/function bodies (TRUNCATION)
     """
     errors = []
     warnings = []
@@ -73,46 +103,29 @@ def validate_python_syntax(code: str, filename: str = "unknown.py") -> Validatio
         )
         return ValidationResult(False, errors)
     
-    # AUTO-FIX: Malformed imports (multiple imports without newlines)
-    # Pattern: "import X import Y" or "from X import Y from Z import W" or semicolon separated
-    # Note: We include [\w\.] to handle "app.models" type paths
-    # We use [ \t;]+ for the separator to catch spaces OR semicolons, but NOT newlines (valid code)
+    # AUTO-FIX: Malformed imports
     malformed_import_pattern = r'(\bimport\s+[\w\.]+)([ \t;]+import\s+)|(\bfrom\s+[\w\.]+\s+import\s+[\w\.\*]+)([ \t;]+from\s+)'
     if re.search(malformed_import_pattern, code):
-        # Fix: Replace space between imports with newline
-        # We use a loop to handle multiple occurrences
         fixed_code = code
-        
-        # Split concatenated imports: "import A import B" -> "import A\nimport B"
         fixed_code = re.sub(r'(\bimport\s+[\w\.]+)[ \t;]+(import\s+)', r'\1\n\2', fixed_code)
-        
-        # Split concatenated from-imports: "from A import B from C import D" -> "from A import B\nfrom C import D"
         fixed_code = re.sub(r'(\bfrom\s+[\w\.]+\s+import\s+[\w\.\*]+)[ \t;]+(from\s+)', r'\1\n\2', fixed_code)
-        
-        # Also clean up mixed cases like "import A from B import C"
-        fixed_code = re.sub(r'(\bimport\s+[\w\.]+)[ \t;]+(from\s+)', r'\1\n\2', fixed_code)
-        fixed_code = re.sub(r'(\bfrom\s+[\w\.]+\s+import\s+[\w\.\*]+)[ \t;]+(import\s+)', r'\1\n\2', fixed_code)
         
         if fixed_code != code:
             code = fixed_code
             fixed_content = fixed_code
-            warnings.append("Auto-fixed malformed import statements (concatenated imports -> newlines)")
+            warnings.append("Auto-fixed malformed import statements")
             log("VALIDATION", f"🔧 Auto-fixed imports in {filename}")
 
-    # Try to parse the AST
+    # Try to parse the AST + check for empty defs
     try:
-        ast.parse(code)
+        assert_no_empty_defs(filename, code)
     except SyntaxError as e:
         errors.append(f"Python SyntaxError at line {e.lineno}: {e.msg}")
-        
-        # Provide helpful context
         if e.lineno and e.lineno <= len(lines):
-            problem_line = lines[e.lineno - 1] if e.lineno > 0 else ""
-            if len(problem_line) > 100:
-                errors.append(f"  → Line {e.lineno} is very long ({len(problem_line)} chars) - possible newline stripping issue")
-            else:
-                errors.append(f"  → Line {e.lineno}: {problem_line[:80]}...")
-        
+             errors.append(f"  → Line {e.lineno}: {lines[e.lineno - 1][:80]}...")
+        return ValidationResult(False, errors)
+    except IncompleteCodeError as e:
+        errors.append(str(e))
         return ValidationResult(False, errors)
     except Exception as e:
         errors.append(f"Failed to parse Python code: {str(e)}")

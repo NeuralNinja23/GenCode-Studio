@@ -277,6 +277,6 @@ Return ONLY JSON:
     
     # Proceed to backend development
     return StepResult(
-        nextstep=WorkflowStep.BACKEND_MODELS,
+        nextstep=WorkflowStep.BACKEND_IMPLEMENTATION,
         turn=current_turn + 1,
     )

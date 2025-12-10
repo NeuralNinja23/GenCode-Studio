@@ -15,23 +15,21 @@ class ErrorRouter:
     """
     
     # Map steps to artifact names for repair
+    # Map steps to artifact names for repair
     STEP_TO_ARTIFACT = {
-        "backend_routers": "backend_router",
-        "BACKEND_ROUTERS": "backend_router",
+        "backend_implementation": "backend_vertical",
+        "BACKEND_IMPLEMENTATION": "backend_vertical",
+        "system_integration": "backend_main",
+        "SYSTEM_INTEGRATION": "backend_main",
         "frontend_integration": "frontend_api",
         "FRONTEND_INTEGRATION": "frontend_api",
-        "backend_main": "backend_main",
-        "BACKEND_MAIN": "backend_main",
-        "backend_models": "backend_models",
-        "BACKEND_MODELS": "backend_models",
     }
     
     # Priority order for repair (lower = higher priority)
     REPAIR_PRIORITY = {
-        "backend_models": 1,
-        "backend_router": 2,
-        "backend_main": 3,
-        "frontend_api": 4,
+        "backend_vertical": 1,
+        "backend_main": 2,
+        "frontend_api": 3,
     }
 
     def route(self, step: str) -> str:

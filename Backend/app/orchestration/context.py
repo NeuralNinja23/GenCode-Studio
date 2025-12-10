@@ -11,6 +11,7 @@ from app.core.logging import log
 
 
 # Define which files are relevant for each step
+# Define which files are relevant for each step
 STEP_CONTEXT_RULES = {
     "ARCHITECTURE": {
         "include": [],  # Only architecture.md (which doesn't exist yet)
@@ -31,20 +32,12 @@ STEP_CONTEXT_RULES = {
         ],
         "max_files": 5,
     },
-    "BACKEND_MODELS": {
-        "include": ["contracts.md", "architecture.md"],
-        "max_files": 2,
+    "BACKEND_IMPLEMENTATION": {
+        "include": ["contracts.md", "architecture.md", "backend/app/models.py", "backend/app/routers/*.py"],
+        "max_files": 5,
     },
-    "BACKEND_ROUTERS": {
-        "include": [
-            "contracts.md",
-            "backend/app/models.py",
-            "backend/app/database.py",
-        ],
-        "max_files": 3,
-    },
-    "BACKEND_MAIN": {
-        "include": ["backend/app/routers/*.py"],
+    "SYSTEM_INTEGRATION": {
+        "include": ["backend/app/main.py", "backend/app/routers/*.py"],
         "max_files": 3,
     },
     "TESTING_BACKEND": {
@@ -52,6 +45,7 @@ STEP_CONTEXT_RULES = {
             "contracts.md",
             "backend/app/routers/*.py",
             "backend/app/models.py",
+            "backend/app/main.py",
             "backend/tests/*.py",
         ],
         "max_files": 5,
@@ -281,7 +275,7 @@ class CrossStepContext:
             lines.append(f"ENTITIES: {', '.join(self._ctx['entities'])}")
         
         # Include architecture summary for backend steps
-        if current_step in ["backend_models", "backend_routers", "backend_main"]:
+        if current_step in ["backend_implementation", "system_integration"]:
             if self._ctx["architecture"]:
                 lines.append(f"ARCHITECTURE: {self._ctx['architecture'][:200]}...")
         
@@ -289,19 +283,9 @@ class CrossStepContext:
         summaries = self._ctx["step_summaries"]
         
         # Step-specific context
-        if current_step == "backend_routers":
-            if "backend_models" in summaries:
-                model_info = summaries["backend_models"]
-                lines.append(f"MODELS: {model_info}")
-        
-        if current_step == "backend_main":
-            if "backend_routers" in summaries:
-                router_info = summaries["backend_routers"]
-                lines.append(f"ROUTERS: {router_info}")
-        
         if current_step == "frontend_integration":
-            if "backend_routers" in summaries:
-                lines.append(f"API ENDPOINTS: {summaries['backend_routers']}")
+            if "backend_implementation" in summaries:
+                lines.append(f"BACKEND VERTICAL: {summaries['backend_implementation']}")
             if "contracts" in summaries:
                 lines.append(f"CONTRACTS: {summaries['contracts']}")
         

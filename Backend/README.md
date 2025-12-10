@@ -36,7 +36,7 @@ bug tracker"  /generate    Orchestrator   Derek/    OpenAI   Check     Code
 **In 30 seconds:**
 1. Frontend sends `POST /api/workspace/{id}/generate/backend` with a description
 2. This triggers `run_workflow()` in `engine.py`
-3. `FASTOrchestratorV2` executes 12 steps in order
+3. `FASTOrchestratorV2` executes 11 steps in order (Atomic Workflow)
 4. Each step calls an **Agent** (Marcus, Derek, Victoria, Luna)
 5. Agents call the **LLM** (Gemini/OpenAI) to generate code
 6. **Marcus** reviews all generated code for quality
@@ -72,9 +72,10 @@ bug tracker"  /generate    Orchestrator   Derek/    OpenAI   Check     Code
 │  │  │                   app/orchestration/fast_orchestrator.py        │  │  │
 │  │  │                                                                  │  │  │
 │  │  │   ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ │  │  │
-│  │  │   │Analysis │→│  Arch   │→│Frontend │→│Backend  │→│ Testing │ │  │  │
-│  │  │   │ (1)     │ │  (2)    │ │  (3-4)  │ │  (5-8)  │ │ (9-11)  │ │  │  │
-│  │  │   └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ │  │  │
+│  │  │   │Analysis │→│  Arch   │→│Frontend │→│Atomic   │→│ Testing │ │  │  │
+│  │  │   │ (1)     │ │  (2)    │ │  (3-5)  │ │Backend  │→│ & Integ │ │  │  │
+│  │  │   └─────────┘ └─────────┘ └─────────┘ │  (6-7)  │ └ (8-11)  ┘ │  │  │
+│  │  │                                       └─────────┘             │  │  │
 │  │  └────────────────────────────────────────────────────────────────┘  │  │
 │  │                              │                                        │  │
 │  │                              ▼                                        │  │
@@ -191,47 +192,27 @@ async def run_workflow(project_id, description, workspaces_path, manager, ...):
 The orchestrator executes 12 steps in order with safety features:
 
 ```python
+```python
 class FASTOrchestratorV2:
-    CRITICAL_STEPS = {"backend_routers", "backend_main", "frontend_integration"}
+    CRITICAL_STEPS = {"backend_implementation", "frontend_integration"}
     
     async def run(self):
         for step in self.graph.get_steps():
-            # FEATURE 1: Dependency Barrier
-            if not self.graph.is_ready(step, self.completed_steps):
-                continue  # Wait for dependencies
-            
-            # FEATURE 2: Budget Check
-            if self.budget.allowed_attempts_for_step(step) == 0:
-                continue  # Skip if budget exhausted
-            
-            # FEATURE 3: Pre-step Validation
-            if step in ["testing_backend", "testing_frontend"]:
-                if not self._validate_critical_files(step):
-                    self._attempt_healing(step)  # Try to fix
+            # ... (Dependency Barrier, Budget Check, Pre-step Validation) ...
             
             # EXECUTE STEP
             handler = HANDLERS[step]
-            result = await handler(
-                project_id=self.project_id,
-                user_request=self.user_request,
-                manager=self.manager,
-                project_path=self.project_path,
-                ...
-            )
+            result = await handler(...)
             
             # FEATURE 4: Post-step Validation
             if step in self.CRITICAL_STEPS:
                 if not self._validate_step_output(step):
                     self._attempt_healing(step)
             
-            # FEATURE 5: Checkpoint
-            self._save_checkpoint(step)
-            
-            # FEATURE 6: Budget Tracking
-            self.budget.register_usage(input_tokens, output_tokens)
+            # ... (Checkpoint, Budget Tracking) ...
 ```
 
-### The 12 Steps
+### The 11 Steps (Atomic Backend Upgrade)
 
 | # | Step | Handler File | Agent | What It Does |
 |---|------|--------------|-------|--------------|
@@ -240,13 +221,12 @@ class FASTOrchestratorV2:
 | 3 | `frontend_mock` | `handlers/frontend_mock.py` | Derek | Generate React components with mock data |
 | 4 | `screenshot_verify` | `handlers/screenshot_verify.py` | Marcus | Visual QA review of UI |
 | 5 | `contracts` | `handlers/contracts.py` | Marcus | Create `contracts.md` with API specifications |
-| 6 | `backend_models` | `handlers/backend.py` | Derek | Generate Beanie/MongoDB models |
-| 7 | `backend_routers` | `handlers/backend.py` | Derek | Generate FastAPI routers |
-| 8 | `backend_main` | `handlers/backend.py` | Derek | Generate `main.py` entry point |
+| 6 | `backend_implementation` | `handlers/backend.py` | Derek | **Atomic Vertical**: Models + Routers + Deps (One Shot) |
+| 7 | `system_integration` | `handlers/backend.py` | **Script** | **Deterministic Wiring**: Wires `main.py` + `requirements.txt` |
+| 8 | `testing_backend` | `handlers/testing_backend.py` | Derek | Run pytest in Docker |
 | 9 | `frontend_integration` | `handlers/frontend_integration.py` | Derek | Replace mock data with real API calls |
-| 10 | `testing_backend` | `handlers/testing_backend.py` | Derek | Run pytest in Docker |
-| 11 | `testing_frontend` | `handlers/testing_frontend.py` | Luna | Run Playwright E2E tests |
-| 12 | `preview_final` | `handlers/preview.py` | Marcus | Final review and deployment |
+| 10 | `testing_frontend` | `handlers/testing_frontend.py` | Luna | Run Playwright E2E tests |
+| 11 | `preview_final` | `handlers/preview.py` | Marcus | Final review and dynamic preview deployment |
 
 ---
 
@@ -535,13 +515,9 @@ Context is filtered per step to reduce token usage:
 
 ```python
 STEP_CONTEXT_RULES = {
-    "backend_models": {
+    "backend_implementation": {
         "include": ["contracts.md", "architecture.md"],
         "exclude": ["frontend/", "tests/"],
-    },
-    "backend_routers": {
-        "include": ["contracts.md", "backend/app/models.py"],
-        "exclude": ["frontend/"],
     },
     "frontend_integration": {
         "include": ["contracts.md", "frontend/src/"],
@@ -673,9 +649,9 @@ Backend/
 │   │   ├── architecture.py        # Step 2: Victoria designs system
 │   │   ├── frontend_mock.py       # Step 3: Derek creates UI
 │   │   ├── contracts.py           # Step 5: Marcus creates contracts
-│   │   ├── backend.py             # Steps 6-8: Derek creates backend
-│   │   ├── testing_backend.py     # Step 10: Derek runs pytest
-│   │   ├── testing_frontend.py    # Step 11: Luna runs Playwright
+│   │   ├── backend.py             # Steps 6-7: Derek creates backend implementation
+│   │   ├── testing_backend.py     # Step 8: Derek runs pytest
+│   │   ├── testing_frontend.py    # Step 10: Luna runs Playwright
 │   │   └── ...
 │   │
 │   ├── supervision/               # Quality Control
@@ -742,7 +718,7 @@ Backend/
 ### Orchestration
 | File | Class/Function | Purpose |
 |------|----------------|---------|
-| `app/orchestration/fast_orchestrator.py` | `FASTOrchestratorV2` | Executes 12 steps |
+| `app/orchestration/fast_orchestrator.py` | `FASTOrchestratorV2` | Executes 11 steps |
 | `app/orchestration/budget_manager.py` | `BudgetManager` | Track token costs |
 | `app/orchestration/task_graph.py` | `TaskGraph` | Step dependencies |
 | `app/orchestration/state.py` | `WorkflowStateManager` | Manage workflow state |

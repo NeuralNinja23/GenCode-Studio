@@ -48,9 +48,12 @@ async def call(
     contents.append({"role": "user", "parts": [{"text": prompt}]})
     
     # Build generation config
+    # PHASE 3 FIX: Token Expansion Enforcement
+    # Gemini 2.0 Flash allows 8k output by default, but we can request more if model supports it
+    # We trust max_tokens passed from adapter/budget_manager (up to 20k for routers)
     generation_config = {
-        "temperature": temperature,
-        "maxOutputTokens": max_tokens,
+        "temperature": 0.2, # Reduced from 0.7 for more deterministic code
+        "maxOutputTokens": max_tokens, 
         # 🚨 CRITICAL: Force JSON response to prevent parsing failures
         "responseMimeType": "application/json",
     }
