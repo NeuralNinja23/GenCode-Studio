@@ -1,0 +1,52 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "types": [
+      "vite/client"
+    ],
+    "module": "ESNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    /* Type Safety - Issue #16 (Updated)
+     * Strict mode options enabled incrementally:
+     * - noImplicitAny: Catches missing type annotations
+     * - strictNullChecks: Catches potential null/undefined errors
+     * - noFallthroughCasesInSwitch: Prevents unintended switch fallthrough
+     * 
+     * To enable full strict mode later:
+     * 1. Set "strict": true
+     * 2. Fix any remaining issues (strictFunctionTypes, strictBindCallApply, etc.)
+     */
+    "strict": false,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
+}

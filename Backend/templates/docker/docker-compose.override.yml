@@ -1,0 +1,14 @@
+# docker-compose.override.yml (optional, for local dev)
+
+services:
+  backend:
+    ports:
+      - "8001:8001"
+
+  frontend:
+    ports:
+      - "5174:5174"
+
+  mongo:
+    ports:
+      - "27017:27017"

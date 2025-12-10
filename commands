@@ -1,0 +1,39 @@
+python -m venv .venv
+.\.venv\Scripts\activatecd
+uvicorn app.main:app --reload
+sudo .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+
+🚀 Quick Start (Standard Apps)
+
+Modern Notes App
+"Create a notes manager where users can create, edit, delete, and search notes by title. Use a grid layout with cards for the notes and a dark mode UI."
+
+Minimalist Todo List
+"Build a clean, modern todo app. Features should include adding tasks, marking them as completed, deleting tasks, and filtering by status (All, Active, Completed)."
+
+Bug Tracker Dashboard
+"Build a bug tracking system with features to create reports, update status (Open, In Progress, Resolved), assign priority, and add comments. Include a dashboard overview page."
+
+Personal Finance Dashboard
+"Create a personal finance tracker where users can add expenses, assign categories, and view monthly totals. Include a dashboard with simple charts visualizing spending by category."
+
+Ticketing System
+Build a customer support ticketing tool with: dashboard stats, ticket list, filters by status/priority, and a detailed ticket view page.
+
+Advanced (Showcase "Refine Mode")
+Self-Healing CI/CD Monitor
+"Build a dashboard that connects to GitHub Actions logs. When a build fails, I want an agent to analyze the error log and propose a code fix automatically."
+(Refinement Idea: "Now make it send the fix as a Pull Request.")
+
+Conversational SQL Admin
+"Create a tool where I can chat with my database in plain English. For example, 'Show me the top 5 users by spend'. The system should generate and run the SQL."
+(Refinement Idea: "Now group the results by city.")
+
+API from JSON (Mock-to-Real)
+"I will upload a JSON file with sample data. Build a fully functional FastAPI backend that serves this data with proper CRUD endpoints."
+(Refinement Idea: "Add JWT authentication to the POST endpoints.")
+
+AI Ghost Blogger
+"Build a blog platform where the 'Admin' is an AI. If I upload a text file with bullet points, the system should automatically write a full article and publish it."
+(Refinement Idea: "Change the writing tone to be more sarcastic.")
