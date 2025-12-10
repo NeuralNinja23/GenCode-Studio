@@ -50,7 +50,7 @@ async def test_fast_orchestrator_initialization():
     """
     Smoke test: FAST V2 Orchestrator can be initialized.
     """
-    from app.workflow.engine_v2.fast_orchestrator import FASTOrchestratorV2
+    from app.orchestration.fast_orchestrator import FASTOrchestratorV2
     from app.lib.websocket import ConnectionManager
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -205,7 +205,7 @@ def test_attention_router_embeddings_fallback():
     
     Should fall back to hash-based embeddings if no API keys.
     """
-    from app.workflow.attention_router import _get_fallback_embedding
+    from app.orchestration.attention_router import _get_fallback_embedding
     
     # Test fallback embedding
     embedding = _get_fallback_embedding("test query", dim=768)
@@ -254,7 +254,7 @@ async def test_exception_handling_improvement():
     Ensures our fix to bare exceptions is working.
     """
     import json
-    from app.workflow.supervision.supervisor import marcus_supervise
+    from app.supervision.supervisor import marcus_supervise
     
     # This test just verifies the function is importable
     # and has the expected signature (not a full integration test)

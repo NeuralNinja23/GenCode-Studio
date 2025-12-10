@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from app.core.constants import PROTECTED_FILES
-from app.workflow.utils import log
+from app.core.logging import log
 
 
 async def persist_agent_output(
@@ -64,7 +64,7 @@ async def persist_agent_output(
     
     if written > 0:
         # Notify frontend of workspace update
-        from app.workflow.utils import broadcast_to_project
+        from app.orchestration.utils import broadcast_to_project
         await broadcast_to_project(
             manager,
             project_id,

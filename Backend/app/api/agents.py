@@ -5,7 +5,7 @@ Agent status routes.
 from fastapi import APIRouter
 
 from app.core.constants import AgentName
-from app.workflow.state import WorkflowStateManager
+from app.orchestration.state import WorkflowStateManager
 
 router = APIRouter(prefix="/api/agents", tags=["Agents"])
 
@@ -42,7 +42,7 @@ async def get_agents_status():
 @router.get("/active")
 async def get_active_workflows():
     """Get list of active workflows."""
-    from app.workflow.state import _running_workflows
+    from app.orchestration.state import _running_workflows
     
     return {
         "active": [

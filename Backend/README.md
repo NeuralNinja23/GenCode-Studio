@@ -69,7 +69,7 @@ bug tracker"  /generate    Orchestrator   Derek/    OpenAI   Check     Code
 │  │                              ▼                                        │  │
 │  │  ┌────────────────────────────────────────────────────────────────┐  │  │
 │  │  │                   FAST V2 ORCHESTRATOR                          │  │  │
-│  │  │                   app/workflow/engine_v2/fast_orchestrator.py   │  │  │
+│  │  │                   app/orchestration/fast_orchestrator.py        │  │  │
 │  │  │                                                                  │  │  │
 │  │  │   ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ │  │  │
 │  │  │   │Analysis │→│  Arch   │→│Frontend │→│Backend  │→│ Testing │ │  │  │
@@ -80,7 +80,7 @@ bug tracker"  /generate    Orchestrator   Derek/    OpenAI   Check     Code
 │  │                              ▼                                        │  │
 │  │  ┌────────────────────────────────────────────────────────────────┐  │  │
 │  │  │                      STEP HANDLERS                              │  │  │
-│  │  │                      app/workflow/handlers/                     │  │  │
+│  │  │                      app/handlers/                              │  │  │
 │  │  │                                                                  │  │  │
 │  │  │   analysis.py │ architecture.py │ backend.py │ testing_*.py    │  │  │
 │  │  └────────────────────────────────────────────────────────────────┘  │  │
@@ -88,7 +88,7 @@ bug tracker"  /generate    Orchestrator   Derek/    OpenAI   Check     Code
 │  │                              ▼                                        │  │
 │  │  ┌────────────────────────────────────────────────────────────────┐  │  │
 │  │  │                    SUPERVISION LAYER                            │  │  │
-│  │  │                    app/workflow/supervision/                    │  │  │
+│  │  │                    app/supervision/                             │  │  │
 │  │  │                                                                  │  │  │
 │  │  │   supervisor.py      │     quality_gate.py                      │  │  │
 │  │  │   (Marcus reviews)   │     (Score thresholds)                   │  │  │
@@ -186,7 +186,7 @@ async def run_workflow(project_id, description, workspaces_path, manager, ...):
 
 ## The FAST V2 Orchestrator
 
-**File:** `app/workflow/engine_v2/fast_orchestrator.py`
+**File:** `app/orchestration/fast_orchestrator.py`
 
 The orchestrator executes 12 steps in order with safety features:
 
@@ -263,7 +263,7 @@ class FASTOrchestratorV2:
 
 ### How Agents Are Called
 
-**File:** `app/workflow/agents/sub_agents.py` → `marcus_call_sub_agent()`
+**File:** `app/agents/sub_agents.py` → `marcus_call_sub_agent()`
 
 ```python
 async def marcus_call_sub_agent(
@@ -326,7 +326,7 @@ Always respond with valid JSON:
 
 ### The Supervision Flow
 
-**File:** `app/workflow/supervision/supervisor.py`
+**File:** `app/supervision/supervisor.py`
 
 Every agent output goes through Marcus's review:
 
@@ -401,7 +401,7 @@ async def marcus_supervise(agent_name, agent_output, contracts, ...):
 
 ### Quality Gate
 
-**File:** `app/workflow/supervision/quality_gate.py`
+**File:** `app/supervision/quality_gate.py`
 
 ```python
 async def check_quality_gate(project_id, step_name, quality, approved, attempt, max_attempts):
@@ -590,7 +590,7 @@ class SandboxManager:
 
 ### Backend Testing Flow
 
-**File:** `app/workflow/handlers/testing_backend.py`
+**File:** `app/handlers/testing_backend.py`
 
 ```python
 async def step_testing_backend(project_id, project_path, manager, ...):
@@ -650,35 +650,41 @@ Backend/
 │   │   ├── logging.py             # Centralized logging
 │   │   └── types.py               # Pydantic models (StepResult, etc.)
 │   │
-│   ├── workflow/                  # 🌟 THE HEART OF THE SYSTEM
-│   │   ├── engine.py              # run_workflow() entry point
-│   │   │
-│   │   ├── engine_v2/             # FAST V2 Orchestrator
-│   │   │   ├── fast_orchestrator.py  # Main orchestration loop
-│   │   │   ├── budget_manager.py     # Token/cost tracking
-│   │   │   ├── task_graph.py         # Step dependencies
-│   │   │   ├── llm_output_integrity.py  # Truncation detection
-│   │   │   └── ...
-│   │   │
-│   │   ├── handlers/              # Step Implementations
-│   │   │   ├── analysis.py        # Step 1: Marcus analyzes request
-│   │   │   ├── architecture.py    # Step 2: Victoria designs system
-│   │   │   ├── frontend_mock.py   # Step 3: Derek creates UI
-│   │   │   ├── backend.py         # Steps 6-8: Derek creates backend
-│   │   │   ├── testing_backend.py # Step 10: Derek runs pytest
-│   │   │   ├── testing_frontend.py# Step 11: Luna runs Playwright
-│   │   │   └── ...
-│   │   │
-│   │   ├── supervision/           # Quality Control
-│   │   │   ├── supervisor.py      # Marcus reviews all output
-│   │   │   └── quality_gate.py    # Score thresholds
-│   │   │
-│   │   ├── agents/                # Agent Wrappers
-│   │   │   └── sub_agents.py      # marcus_call_sub_agent()
-│   │   │
-│   │   ├── healing_pipeline.py    # Self-healing on failures
+│   ├── workflow/                  # Workflow Entry Point
+│   │   ├── __init__.py            # Lazy imports for WorkflowEngine
+│   │   └── engine.py              # run_workflow() entry point
+│   │
+│   ├── orchestration/             # 🌟 FAST V2 ORCHESTRATOR
+│   │   ├── fast_orchestrator.py   # Main orchestration loop
+│   │   ├── budget_manager.py      # Token/cost tracking
+│   │   ├── task_graph.py          # Step dependencies
+│   │   ├── llm_output_integrity.py# Truncation detection
+│   │   ├── state.py               # Workflow state management
+│   │   ├── utils.py               # Shared utilities (broadcast, pluralize)
 │   │   ├── attention_router.py    # Archetype classification
-│   │   └── state.py               # Workflow state management
+│   │   ├── healing_pipeline.py    # Self-healing on failures
+│   │   ├── self_healing_manager.py# Dynamic self-repair
+│   │   ├── context.py             # Cross-step context
+│   │   └── ...
+│   │
+│   ├── handlers/                  # Step Implementations
+│   │   ├── base.py                # Shared handler utilities
+│   │   ├── analysis.py            # Step 1: Marcus analyzes request
+│   │   ├── architecture.py        # Step 2: Victoria designs system
+│   │   ├── frontend_mock.py       # Step 3: Derek creates UI
+│   │   ├── contracts.py           # Step 5: Marcus creates contracts
+│   │   ├── backend.py             # Steps 6-8: Derek creates backend
+│   │   ├── testing_backend.py     # Step 10: Derek runs pytest
+│   │   ├── testing_frontend.py    # Step 11: Luna runs Playwright
+│   │   └── ...
+│   │
+│   ├── supervision/               # Quality Control
+│   │   ├── supervisor.py          # Marcus reviews all output
+│   │   ├── quality_gate.py        # Score thresholds
+│   │   └── tiered_review.py       # Smart review levels
+│   │
+│   ├── agents/                    # Agent Wrappers
+│   │   └── sub_agents.py          # marcus_call_sub_agent()
 │   │
 │   ├── llm/                       # LLM Integration
 │   │   ├── adapter.py             # call_llm() - Gemini/OpenAI
@@ -736,16 +742,17 @@ Backend/
 ### Orchestration
 | File | Class/Function | Purpose |
 |------|----------------|---------|
-| `app/workflow/engine_v2/fast_orchestrator.py` | `FASTOrchestratorV2` | Executes 12 steps |
-| `app/workflow/engine_v2/budget_manager.py` | `BudgetManager` | Track token costs |
-| `app/workflow/engine_v2/task_graph.py` | `TaskGraph` | Step dependencies |
+| `app/orchestration/fast_orchestrator.py` | `FASTOrchestratorV2` | Executes 12 steps |
+| `app/orchestration/budget_manager.py` | `BudgetManager` | Track token costs |
+| `app/orchestration/task_graph.py` | `TaskGraph` | Step dependencies |
+| `app/orchestration/state.py` | `WorkflowStateManager` | Manage workflow state |
 
 ### Agent System
 | File | Function | Purpose |
 |------|----------|---------|
-| `app/workflow/agents/sub_agents.py` | `marcus_call_sub_agent()` | Call Derek/Luna/Victoria |
-| `app/workflow/supervision/supervisor.py` | `marcus_supervise()` | Quality review |
-| `app/workflow/supervision/supervisor.py` | `supervised_agent_call()` | Agent + review loop |
+| `app/agents/sub_agents.py` | `marcus_call_sub_agent()` | Call Derek/Luna/Victoria |
+| `app/supervision/supervisor.py` | `marcus_supervise()` | Quality review |
+| `app/supervision/supervisor.py` | `supervised_agent_call()` | Agent + review loop |
 
 ### LLM Layer
 | File | Function | Purpose |
@@ -765,14 +772,14 @@ Backend/
 | File | Function | Purpose |
 |------|----------|---------|
 | `app/persistence/__init__.py` | `persist_agent_output()` | Write files to disk |
-| `app/workflow/utils.py` | `broadcast_to_project()` | WebSocket updates |
+| `app/orchestration/utils.py` | `broadcast_to_project()` | WebSocket updates |
 
 ---
 
 ## Quick Debugging Guide
 
 ### "Workflow stuck at step X"
-1. Check `app/workflow/handlers/<step>.py` for the step logic
+1. Check `app/handlers/<step>.py` for the step logic
 2. Look for `log("STEP_NAME", ...)` messages in console
 3. Check if `supervised_agent_call()` is returning `approved: False`
 

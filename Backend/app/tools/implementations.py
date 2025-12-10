@@ -116,7 +116,7 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
     output into a {"files": [...]} shape whenever possible.
     """
     try:
-        from app.workflow.agents import marcus_call_sub_agent
+        from app.agents import marcus_call_sub_agent
         from app.utils.parser import normalize_llm_output
 
         sub_agent = args.get("sub_agent")

@@ -25,10 +25,10 @@ from typing import Any, Dict, List, Optional
 from app.core.constants import WorkflowStep, WSMessageType
 from app.core.types import ChatMessage, StepResult
 from app.core.config import settings
-from app.workflow.state import WorkflowStateManager, CURRENT_MANAGERS
+from app.orchestration.state import WorkflowStateManager, CURRENT_MANAGERS
 from app.core.logging import log
-from app.workflow.utils import broadcast_to_project
-from app.workflow.handlers import (
+from app.orchestration.utils import broadcast_to_project
+from app.handlers import (
     step_analysis,
     step_architecture,
     step_frontend_mock,  # Frontend-first with mock
@@ -138,7 +138,7 @@ class WorkflowEngine:
                 # CHECKPOINT: Save progress after each step completes
                 # ═══════════════════════════════════════════════════════
                 try:
-                    from app.workflow.checkpoint import save_checkpoint
+                    from app.orchestration.checkpoint import save_checkpoint
                     await save_checkpoint(
                         project_id=self.project_id,
                         step_name=self.current_step,
@@ -455,7 +455,7 @@ VITE_API_URL=http://localhost:8001/api
     # V2: Uses existing handlers + dependency barriers + self-healing
     # ============================================================
     
-    from app.workflow.engine_v2.fast_orchestrator import FASTOrchestratorV2
+    from app.orchestration.fast_orchestrator import FASTOrchestratorV2
     
     log("WORKFLOW", f"🚀 Using FAST V2 ENGINE for {project_id}")
     engine = FASTOrchestratorV2(

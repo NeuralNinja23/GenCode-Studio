@@ -181,7 +181,7 @@ async def save_file_content(project_id: str, data: FileContent):
 async def generate_backend(request: Request, project_id: str, data: GenerateRequest):
     """Start backend generation workflow."""
     from app.workflow import run_workflow
-    from app.workflow.state import WorkflowStateManager
+    from app.orchestration.state import WorkflowStateManager
     
     # FIX #13: Validate project_id
     if not validate_project_id(project_id):
@@ -229,10 +229,10 @@ async def resume_workflow_endpoint(request: Request, data: ResumeRequest):
     - If workflow is paused: Resume from saved state
     - If project exists but not paused: Start refine workflow
     """
-    from app.workflow.state import WorkflowStateManager
+    from app.orchestration.state import WorkflowStateManager
     from app.workflow import resume_workflow as engine_resume_workflow
     from app.core.constants import WorkflowStep, WSMessageType
-    from app.workflow.utils import broadcast_to_project
+    from app.orchestration.utils import broadcast_to_project
     
     project_path = settings.paths.workspaces_dir / data.project_id
     
