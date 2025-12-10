@@ -2,7 +2,7 @@
 """
 Workflow step handlers - one function per workflow step.
 
-Emergent E1-style Frontend-First workflow:
+GenCode Studio Frontend-First workflow:
 1. Analysis → 2. Architecture → 3. Frontend (Mock) → 4. Screenshot Verify → 
 5. Contracts → 6. Backend Models → 7. Backend Routers → 8. Backend Main → 
 9. Testing Backend → 10. Frontend Integration → 11. Testing Frontend → 12. Preview

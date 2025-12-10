@@ -5,7 +5,7 @@ Step 5: Marcus creates API contracts AFTER seeing the frontend mock.
 Workflow order: Analysis (1) → Architecture (2) → Frontend Mock (3) → 
 Screenshot Verify (4) → Contracts (5) → Backend Models (6) → ...
 
-Emergent E1-style:
+GenCode Studio pattern:
 - Frontend with mock data is already built
 - Now we define API contracts based on what the frontend needs
 - This ensures the backend is built to serve the exact data the frontend expects
@@ -44,7 +44,7 @@ async def step_contracts(
     """
     Step 5: Marcus creates API contracts AFTER the frontend mock is built.
     
-    Emergent pattern: We've already seen the frontend with mock data!
+    GenCode Studio pattern: We've already seen the frontend with mock data!
     Now we define contracts that match exactly what the frontend needs.
     
     This reads:
@@ -73,7 +73,7 @@ async def step_contracts(
     features = intent.get("coreFeatures", [])
     
     # ═══════════════════════════════════════════════════════════════════
-    # EMERGENT PATTERN: Read the existing frontend mock data
+    # GENCODE STUDIO PATTERN: Read the existing frontend mock data
     # ═══════════════════════════════════════════════════════════════════
     
     # 1. Read mock.js to understand data shapes
@@ -118,7 +118,7 @@ async def step_contracts(
 You are Marcus, the technical architect.
 
 ═══════════════════════════════════════════════════════
-EMERGENT PATTERN: FRONTEND-FIRST CONTRACTS
+GENCODE STUDIO PATTERN: FRONTEND-FIRST CONTRACTS
 ═══════════════════════════════════════════════════════
 
 The frontend with mock data has ALREADY been built!

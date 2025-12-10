@@ -3,10 +3,10 @@
 Application constants - all magic numbers and strings in one place.
 """
 
-# Workflow Steps - Emergent E1-style workflow (Frontend-First)
+# Workflow Steps - GenCode Studio workflow (Frontend-First)
 class WorkflowStep:
     """
-    E1-style workflow steps (Frontend-First pattern from Emergent).
+    GenCode Studio workflow steps (Frontend-First pattern).
     
     Order (12 steps total):
     1. ANALYSIS - Understand and clarify requirements
@@ -26,7 +26,7 @@ class WorkflowStep:
     ANALYSIS = "analysis"
     # Step 2
     ARCHITECTURE = "architecture"
-    # Step 3: Frontend-first with mock data (Emergent pattern)
+    # Step 3: Frontend-first with mock data (GenCode Studio pattern)
     FRONTEND_MOCK = "frontend_mock"
     # Step 4: Visual QA
     SCREENSHOT_VERIFY = "screenshot_verify"

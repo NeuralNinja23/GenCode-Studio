@@ -75,7 +75,7 @@ You are part of an advanced AI system with multiple intelligence layers:
    - If running low on tokens, summarize rather than truncate
    - Complete sections are better than incomplete detailed sections
 
-**7. WORKFLOW CONTEXT (12-Step E1 Frontend-First Pattern):**
+**7. WORKFLOW CONTEXT (12-Step GenCode Studio Frontend-First Pattern):**
    - Step 1: Analysis (Marcus clarifies requirements)
    - Step 2: Architecture (YOU create architecture.md) ← YOU ARE HERE
    - Step 3: Frontend Mock (Derek creates UI with mock data)

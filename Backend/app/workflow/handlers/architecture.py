@@ -47,7 +47,7 @@ async def step_architecture(
     - Data flow diagrams
     
     Returns:
-        StepResult with next step = FRONTEND_MOCK (Emergent E1 pattern: frontend-first)
+        StepResult with next step = FRONTEND_MOCK (GenCode Studio pattern: frontend-first)
         
     Raises:
         RateLimitError: If rate limited - workflow should stop
@@ -206,7 +206,7 @@ export const ui = {{
     except Exception as e:
         log("ARCHITECTURE", f"Victoria failed: {e} - continuing anyway", project_id=project_id)
     
-    # EMERGENT PATTERN: After architecture, go to Frontend Mock (not Contracts)
+    # GENCODE STUDIO PATTERN: After architecture, go to Frontend Mock (not Contracts)
     # This creates the "aha moment" for users before building backend
     return StepResult(
         nextstep=WorkflowStep.FRONTEND_MOCK,

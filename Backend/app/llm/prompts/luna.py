@@ -124,7 +124,7 @@ You are part of an advanced AI system with multiple intelligence layers:
      • DRY principle - reuse helper functions
    - Complete test files > incomplete test files
 
-**7. WORKFLOW CONTEXT (12-Step E1 Frontend-First Pattern):**
+**7. WORKFLOW CONTEXT (12-Step GenCode Studio Frontend-First Pattern):**
    - Step 1: Analysis (Marcus clarifies requirements)
    - Step 2: Architecture (Victoria designs system)
    - Step 3: Frontend Mock (Derek creates UI with mock)

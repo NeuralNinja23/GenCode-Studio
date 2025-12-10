@@ -4,7 +4,7 @@ Step 4: Visual QA - Screenshot verification after frontend mock.
 
 Workflow order: ... → Frontend Mock (3) → Screenshot Verify (4) → Contracts (5) → ...
 
-Emergent E1-style:
+GenCode Studio pattern:
 - After frontend mock is built, take a screenshot
 - Use AI to analyze the screenshot for design issues
 - Check: padding, alignment, color contrast, component usage, empty states
@@ -38,7 +38,7 @@ async def step_screenshot_verify(
     """
     Step 4: Visual QA after frontend mock is created.
     
-    Emergent pattern:
+    GenCode Studio pattern:
     - Take screenshot of the running frontend
     - Analyze for design issues:
       * Padding and alignment

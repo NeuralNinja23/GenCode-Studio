@@ -631,7 +631,7 @@ You MUST follow Marcus's instructions above. He has analyzed the failure against
                 },
             )
             return StepResult(
-                nextstep=WorkflowStep.FRONTEND_INTEGRATION,  # Emergent: Replace mock with API
+                nextstep=WorkflowStep.FRONTEND_INTEGRATION,  # GenCode Studio: Replace mock with API
                 turn=current_turn + 1,
                 status="ok",
                 data={

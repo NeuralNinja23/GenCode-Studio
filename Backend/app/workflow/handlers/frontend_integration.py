@@ -4,7 +4,7 @@ Step 10: Derek replaces mock data with real API calls.
 
 Workflow order: ... → Testing Backend (9) → Frontend Integration (10) → Testing Frontend (11)
 
-This is the integration step in the Emergent E1 pattern:
+This is the integration step in the GenCode Studio pattern:
 - Frontend already works with mock data
 - Backend is now ready with real endpoints
 - Replace mock imports with API calls using the centralized api.js client

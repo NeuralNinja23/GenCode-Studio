@@ -2,7 +2,7 @@
 """
 Workflow Engine - The main orchestration loop.
 
-This implements the Emergent E1-style FRONTEND-FIRST workflow:
+This implements the GenCode Studio FRONTEND-FIRST workflow:
 1. Analysis (Marcus) - Understand requirements
 2. Architecture (Victoria) - Design system
 3. Frontend Mock (Derek) - Create frontend with mock data (aha moment!)
@@ -46,7 +46,7 @@ from app.workflow.handlers import (
 # NOTE: Cost tracking now handled by BudgetManager in engine_v2/budget_manager.py
 
 
-# Step handler registry - EMERGENT FRONTEND-FIRST ORDER
+# Step handler registry - GENCODE STUDIO FRONTEND-FIRST ORDER
 STEP_HANDLERS = {
     WorkflowStep.ANALYSIS: step_analysis,
     WorkflowStep.ARCHITECTURE: step_architecture,
@@ -68,7 +68,7 @@ class WorkflowEngine:
     """
     The main workflow engine.
     
-    Executes the Emergent E1-style FRONTEND-FIRST workflow:
+    Executes the GenCode Studio FRONTEND-FIRST workflow:
     
     1. Analysis (Marcus) - Understand and clarify requirements
     2. Architecture (Victoria) - Design system architecture  
@@ -259,7 +259,7 @@ async def run_workflow(
     Start a new workflow for a project.
     
     This is the main entry point for starting workflows.
-    Uses Emergent E1-style FRONTEND-FIRST pattern.
+    Uses GenCode Studio FRONTEND-FIRST pattern.
     """
     # ===== GUARD: Atomically check and mark as running (FIX #1) =====
     # This prevents race conditions where two requests both pass is_running check
