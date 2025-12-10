@@ -58,7 +58,6 @@ STEP_HANDLERS = {
     WorkflowStep.BACKEND_MAIN: step_backend_main,  # Step 8
     WorkflowStep.TESTING_BACKEND: step_testing_backend,  # Step 9
     WorkflowStep.FRONTEND_INTEGRATION: step_frontend_integration,  # Step 10: Replace mock with API
-    # ⚠️ DEPRECATED/REMOVED: WorkflowStep.FRONTEND legacy handler removed
     WorkflowStep.TESTING_FRONTEND: step_testing_frontend,  # Step 11
     WorkflowStep.PREVIEW_FINAL: step_preview_final,  # Step 12
     WorkflowStep.REFINE: step_refine,  # Post-workflow refinement
