@@ -147,7 +147,6 @@ MONGO_URL=mongodb://localhost:27017/gencode_studio
 # Optional
 LLM_PROVIDER=gemini          # or openai, anthropic
 LLM_MODEL=gemini-2.0-flash   # default model
-BUDGET_MAX_INR=30            # max budget per run
 ```
 
 ---
