@@ -30,6 +30,7 @@
 - **Marcus** - Senior architect & code reviewer
 - **Derek** - Full-stack developer (frontend + backend)
 - **Victoria** - System architect & planner
+- **Luna** - QA & DevOps engineer (Playwright testing)
 
 </td>
 <td width="50%">
@@ -72,12 +73,12 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        GenCode Studio                           │
 ├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
-│  │   Marcus    │  │   Derek     │  │  Victoria   │   Agents    │
-│  │  Supervisor │  │  Developer  │  │  Architect  │              │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘              │
-│         │                │                │                      │
-│         └────────────────┼────────────────┘                      │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐             │
+│  │ Marcus  │  │  Derek  │  │Victoria │  │  Luna   │   Agents   │
+│  │Supervisor│  │Developer│  │Architect│  │   QA    │             │
+│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘             │
+│       │            │            │            │                   │
+│       └────────────┴────────────┴────────────┘                   │
 │                          ▼                                       │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │                  FAST V2 Orchestrator                      │  │
@@ -167,7 +168,7 @@ BUDGET_MAX_INR=30            # max budget per run
 | 8. **Frontend Integration** | Derek | Replace mock data with real API calls |
 | 9. **Screenshot Verify** | Marcus | Visual QA review |
 | 10. **Testing Backend** | Derek | Run pytest in Docker sandbox |
-| 11. **Testing Frontend** | Derek | Run Playwright E2E tests |
+| 11. **Testing Frontend** | Luna | Run Playwright E2E tests |
 | 12. **Preview Final** | Marcus | Final review and deployment |
 
 ### Attention-Based Routing
