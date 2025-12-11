@@ -51,6 +51,8 @@ htmlcov/
 workspaces/
 *.fast_checkpoints/
 containers.json
+.agent
+.gemini
 
 # Logs
 *.log
