@@ -20,7 +20,7 @@ from app.supervision import marcus_supervise
 
 
 # Constants from legacy
-MAX_FILES_PER_STEP = 5
+MAX_FILES_PER_STEP = 10
 MAX_FILE_LINES = 400
 
 
@@ -113,6 +113,203 @@ def ensure_str(val) -> str:
     if isinstance(val, bytes):
         return val.decode("utf-8", errors="replace")
     return str(val)
+
+
+async def _generate_frontend_tests_from_template(
+    manager: Any,
+    project_id: str,
+    project_path: Path,
+    user_request: str,
+    primary_entity: str,
+) -> bool:
+    """
+    Generate frontend E2E tests from template at the START of testing step.
+    
+    Flow:
+    1. Read the test template (from Golden Seed)
+    2. Call Luna to generate project-specific tests based on template
+    3. Write the test file
+    4. Return True if tests were generated successfully
+    
+    Luna ALWAYS generates tests from template - this ensures tests are
+    project-specific and match the implemented frontend components.
+    """
+    from app.handlers.base import broadcast_agent_log
+    
+    tests_dir = project_path / "frontend" / "tests"
+    test_file = tests_dir / "e2e.spec.js"
+    template_file = tests_dir / "e2e.spec.js.template"
+    
+    # ALWAYS generate tests from template - Luna creates project-specific tests
+    log("TESTING", f"📝 Luna generating frontend E2E tests from template for entity: {primary_entity}")
+    
+    entity_plural = primary_entity + "s" if not primary_entity.endswith("s") else primary_entity
+
+    
+    # Read the template if it exists
+    template_content = ""
+    if template_file.exists():
+        template_content = template_file.read_text(encoding="utf-8")
+        # Replace placeholders with actual entity names
+        template_content = template_content.replace("{{ENTITY}}", primary_entity)
+        template_content = template_content.replace("{{ENTITY_PLURAL}}", entity_plural)
+        log("TESTING", f"📋 Using frontend test template with entity: {primary_entity}")
+    
+    # Build Luna's test generation instructions
+    test_generation_prompt = f"""Generate the frontend E2E test file for this project.
+
+═══════════════════════════════════════════════════════
+PROJECT CONTEXT
+═══════════════════════════════════════════════════════
+
+User Request: {user_request[:300]}
+Primary Entity: {primary_entity.capitalize()}
+Entity Plural: {entity_plural}
+
+═══════════════════════════════════════════════════════
+TEST TEMPLATE (CUSTOMIZE THIS FOR THE PROJECT)
+═══════════════════════════════════════════════════════
+
+Below is a template. Use it as a STARTING POINT but CUSTOMIZE it:
+- Replace placeholder tests with tests specific to {primary_entity.capitalize()}
+- Add tests for the actual UI components from the frontend
+- Make tests project-specific, not generic
+
+TEMPLATE:
+{template_content if template_content else "No template found - generate standard E2E tests."}
+
+═══════════════════════════════════════════════════════
+REQUIREMENTS
+═══════════════════════════════════════════════════════
+
+1. Create frontend/tests/e2e.spec.js with working Playwright tests
+2. MUST include:
+   - Smoke test: page loads without crashing
+   - State test: shows loading, error, or content
+   - Heading test: main heading is visible
+   
+3. Use import {{ test, expect }} from '@playwright/test';
+4. Use full URL: page.goto('http://localhost:5174/')
+5. Use data-testid selectors when available
+6. Handle loading/error states gracefully
+
+═══════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════
+
+{{
+  "thinking": "Explain how you're customizing the tests for {primary_entity.capitalize()}...",
+  "files": [
+    {{
+      "path": "frontend/tests/e2e.spec.js",
+      "content": "import {{ test, expect }} from '@playwright/test';\\n\\ntest('page loads', async ({{ page }}) => {{\\n  await page.goto('http://localhost:5174/');\\n  ..."
+    }}
+  ]
+}}
+
+Generate COMPLETE, WORKING test file now!
+"""
+
+    try:
+        from app.supervision import supervised_agent_call
+        
+        await broadcast_agent_log(
+            manager,
+            project_id,
+            "AGENT:Luna",
+            f"📝 Generating E2E tests for {primary_entity.capitalize()}..."
+        )
+        
+        result = await supervised_agent_call(
+            project_id=project_id,
+            manager=manager,
+            agent_name="Luna",
+            step_name="E2E Test Generation",
+            base_instructions=test_generation_prompt,
+            project_path=project_path,
+            user_request=user_request,
+            contracts="",
+            max_retries=1,
+        )
+        
+        parsed = result.get("output", {})
+        files = parsed.get("files", [])
+        
+        if files:
+            written = await safe_write_llm_files_for_testing(
+                manager=manager,
+                project_id=project_id,
+                project_path=project_path,
+                files=files,
+                step_name="E2E Test Generation",
+            )
+            
+            if written > 0:
+                log("TESTING", f"✅ Luna generated {written} test file(s)")
+                return True
+        
+        log("TESTING", "⚠️ Luna did not generate test files")
+        
+    except Exception as e:
+        log("TESTING", f"⚠️ Frontend test generation failed: {e}")
+    
+    # Fallback: Write basic test file directly
+    log("TESTING", "📋 Using fallback frontend test generation...")
+    return await _fallback_generate_frontend_tests(project_path, primary_entity, entity_plural)
+
+
+async def _fallback_generate_frontend_tests(
+    project_path: Path,
+    entity: str,
+    entity_plural: str,
+) -> bool:
+    """
+    Fallback test generation when Luna fails.
+    Writes a minimal but functional E2E test file.
+    """
+    tests_dir = project_path / "frontend" / "tests"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    
+    test_content = f'''// frontend/tests/e2e.spec.js
+/**
+ * E2E Tests - Auto-generated fallback
+ * Generated when Luna failed to create tests.
+ */
+
+import {{ test, expect }} from '@playwright/test';
+
+test('page loads without crashing', async ({{ page }}) => {{
+  await page.goto('http://localhost:5174/');
+  await expect(page).toHaveTitle(/.*/);
+}});
+
+test('shows loading, error, or content state', async ({{ page }}) => {{
+  await page.goto('http://localhost:5174/');
+  await expect(
+    page.locator('[data-testid="loading-indicator"]')
+      .or(page.locator('[data-testid="error-message"]'))
+      .or(page.locator('[data-testid="page-root"]'))
+      .or(page.locator('h1, h2').first())
+  ).toBeVisible({{ timeout: 15000 }});
+}});
+
+test('main heading is visible', async ({{ page }}) => {{
+  await page.goto('http://localhost:5174/');
+  await page.waitForLoadState('networkidle');
+  
+  const heading = page.locator('h1, h2').first();
+  await expect(heading).toBeVisible({{ timeout: 10000 }});
+}});
+'''
+
+    test_file = tests_dir / "e2e.spec.js"
+    try:
+        test_file.write_text(test_content, encoding="utf-8")
+        log("TESTING", f"📋 Fallback frontend test file written: {test_file.name} ({len(test_content)} chars)")
+        return True
+    except Exception as e:
+        log("TESTING", f"❌ Failed to write fallback frontend test file: {e}")
+        return False
 
 
 async def step_testing_frontend(
@@ -252,6 +449,39 @@ async def step_testing_frontend(
         )
 
 
+    # ═══════════════════════════════════════════════════════
+    # PRE-FLIGHT: Ensure E2E test file exists BEFORE running Playwright
+    # This prevents "no tests found" or similar failures
+    # ═══════════════════════════════════════════════════════
+    
+    # Get primary entity from workflow state
+    from app.orchestration.state import WorkflowStateManager
+    from app.utils.entity_discovery import discover_primary_entity
+    
+    intent = await WorkflowStateManager.get_intent(project_id) or {}
+    entities = intent.get("entities", [])
+    
+    if entities:
+        primary_entity = entities[0]
+    else:
+        entity_name, _ = discover_primary_entity(project_path)
+        primary_entity = entity_name or "entity"
+    
+    # ═══════════════════════════════════════════════════════
+    # STEP 1: Luna generates E2E tests from template FIRST
+    # Luna ALWAYS creates project-specific tests using the template
+    # ═══════════════════════════════════════════════════════
+    tests_generated = await _generate_frontend_tests_from_template(
+        manager=manager,
+        project_id=project_id,
+        project_path=project_path,
+        user_request=user_request,
+        primary_entity=primary_entity,
+    )
+    
+    if not tests_generated:
+        log("TESTING", "⚠️ Luna could not generate tests from template - using fallback")
+
     for attempt in range(1, max_attempts + 1):
         log(
             "TESTING",
@@ -269,22 +499,28 @@ async def step_testing_frontend(
         try:
             # Primary files to check (in priority order)
             primary_files = [
-                project_path / "frontend/src/pages/Home.jsx",
                 project_path / "frontend/src/App.jsx",
+                # Include ALL pages
+                *(project_path / "frontend/src/pages").glob("*.jsx"),
+                # Include relevant API files
+                *(project_path / "frontend/src/api").glob("*.js"),
             ]
             
             for pf in primary_files:
                 if pf.exists():
-                    content = pf.read_text(encoding="utf-8")
-                    context_parts.append(f"--- {pf.name} ---\n{content[:1500]}")
+                    try:
+                        content = pf.read_text(encoding="utf-8")
+                        context_parts.append(f"--- {pf.relative_to(project_path.parent)} ---\n{content[:2000]}")
+                    except Exception: pass
             
             # Also check components directory for key components
             components_dir = project_path / "frontend/src/components"
             if components_dir.exists():
-                for comp_file in list(components_dir.glob("*.jsx"))[:3]:  # Max 3 components
+                # Increased limit from 3 to 10 to cover more context
+                for comp_file in list(components_dir.glob("*.jsx"))[:10]:
                     try:
                         content = comp_file.read_text(encoding="utf-8")
-                        context_parts.append(f"--- components/{comp_file.name} ---\n{content[:800]}")
+                        context_parts.append(f"--- components/{comp_file.name} ---\n{content[:1500]}")
                     except Exception as e:
                         log("TESTING", f"Warning: Could not read component {comp_file.name}: {e}")
             
@@ -521,6 +757,7 @@ async def step_testing_frontend(
                 )
         except Exception as e:
             log("TESTING", f"sandboxexec for frontend deps threw exception: {e}")
+            raise # Propagate up to handler default filtering
 
         # 🚨 BUILD CHECK FIRST - Fail fast if code doesn't compile
         log("TESTING", "🏗 Running build check BEFORE tests (fail fast)...")
@@ -567,7 +804,7 @@ async def step_testing_frontend(
                 continue
         except Exception as e:
             log("TESTING", f"Build check threw exception: {e}")
-            # Continue to try tests anyway
+            raise # Propagate up to handler default filtering
 
         log(
             "TESTING",
@@ -587,7 +824,7 @@ async def step_testing_frontend(
             )
         except Exception as e:
             log("TESTING", f"sandboxexec for frontend tests threw exception: {e}")
-            test_result = {"success": False, "stdout": "", "stderr": str(e)}
+            raise # Propagate up to handler default filtering
 
         test_stdout = ensure_str(test_result.get("stdout", ""))
         test_stderr = ensure_str(test_result.get("stderr", ""))

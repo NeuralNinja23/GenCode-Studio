@@ -19,7 +19,7 @@ from app.utils.parser import normalize_llm_output
 
 
 # Constants from legacy
-MAX_FILES_PER_STEP = 5
+MAX_FILES_PER_STEP = 10
 MAX_FILE_LINES = 400
 
 
@@ -72,6 +72,33 @@ DOMAIN: {intent.get('domain', 'general')}
 PROJECT ARCHETYPE (attention-based routing): {archetype}
 UI VIBE (attention-based routing): {ui_vibe}
 
+═══════════════════════════════════════════════════════
+🚨 CRITICAL: UI TOKENS JSON IS REQUIRED
+═══════════════════════════════════════════════════════
+
+Your architecture.md MUST include this UI Tokens JSON block (Derek needs it!):
+
+## UI Tokens (machine readable)
+
+```json
+{{
+  "vibe": "{ui_vibe}",
+  "classes": {{
+    "pageBg": "<tailwind classes for page background>",
+    "card": "<tailwind classes for cards>",
+    "primaryButton": "<tailwind classes for primary buttons>",
+    "secondaryButton": "<tailwind classes for secondary buttons>",
+    "mutedText": "<tailwind classes for muted text>"
+  }}
+}}
+```
+
+WITHOUT this JSON block, Derek cannot implement the correct design!
+
+═══════════════════════════════════════════════════════
+ARCHITECTURE REQUIREMENTS
+═══════════════════════════════════════════════════════
+
 INCLUDE:
 1. Tech Stack (React + FastAPI + MongoDB)
 2. Frontend Component Hierarchy
@@ -79,14 +106,16 @@ INCLUDE:
 4. Database Schema Overview
 5. API Endpoints Summary
 6. Folder Structure
-7. UI Design System (CRITICAL - see your system prompt for details!)
-   - The UI vibe has been classified as '{ui_vibe}' - your design system MUST align with this aesthetic
-   - The project archetype is '{archetype}' - design layouts and patterns appropriate for this type
-   
+7. UI Design System (CRITICAL!)
+   - The UI vibe is '{ui_vibe}' - design system MUST align with this aesthetic
+   - The project archetype is '{archetype}' - use appropriate layouts
+   - MUST include UI Tokens JSON block (see above)
+
 CRITICAL OUTPUT RULES:
 - You MUST follow your system prompt (Victoria) which requires {{ "thinking": "...", "files": [{{ "path": "architecture.md", "content": "full markdown architecture plan here" }}] }}
 - Do NOT return "architecturePlan": "..." format.
-- ONLY return {{ "thinking": "...", "files": [...] }} with architecture.md."""
+- ONLY return {{ "thinking": "...", "files": [...] }} with architecture.md.
+- INCLUDE the UI Tokens JSON block in your architecture.md!"""
 
     try:
         # Use supervised call with auto-retry
@@ -196,9 +225,106 @@ export const ui = {{
                             
                             # NOTE: Context storage now handled via CrossStepContext in orchestrator
                         else:
-                            log("ARCHITECTURE", "UI Tokens JSON found but missing 'classes' key")
-                    else:
-                        log("ARCHITECTURE", "No UI Tokens JSON block found in architecture.md")
+                            log("ARCHITECTURE", "UI Tokens JSON found but missing 'classes' key - generating fallback")
+                            # Fall through to fallback generation
+                            json_match = None
+                    
+                    # Fallback: Generate default UI tokens based on detected vibe
+                    if not json_match:
+                        log("ARCHITECTURE", f"⚠️ No UI Tokens found - generating fallback tokens for vibe: {ui_vibe}")
+                        
+                        # Default tokens per vibe
+                        vibe_tokens = {
+                            "dark_hacker": {
+                                "vibe": "dark_hacker",
+                                "classes": {
+                                    "pageBg": "min-h-screen bg-slate-950 text-slate-100",
+                                    "card": "bg-slate-900/60 border border-slate-800 rounded-2xl shadow-lg p-6",
+                                    "primaryButton": "bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all hover:scale-105",
+                                    "secondaryButton": "border border-slate-700 hover:bg-slate-800 text-slate-100 px-4 py-2 rounded-lg transition-all",
+                                    "mutedText": "text-slate-400 text-sm"
+                                }
+                            },
+                            "minimal_light": {
+                                "vibe": "minimal_light",
+                                "classes": {
+                                    "pageBg": "min-h-screen bg-white text-slate-900",
+                                    "card": "bg-gray-50 border border-gray-200 rounded-xl shadow-sm p-6",
+                                    "primaryButton": "bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-lg transition-all hover:scale-105",
+                                    "secondaryButton": "border border-gray-300 hover:bg-gray-100 text-slate-700 px-4 py-2 rounded-lg transition-all",
+                                    "mutedText": "text-gray-500 text-sm"
+                                }
+                            },
+                            "modern_gradient": {
+                                "vibe": "modern_gradient",
+                                "classes": {
+                                    "pageBg": "min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white",
+                                    "card": "bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl shadow-xl p-6",
+                                    "primaryButton": "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white font-semibold px-4 py-2 rounded-lg transition-all hover:scale-105",
+                                    "secondaryButton": "border border-white/30 hover:bg-white/10 text-white px-4 py-2 rounded-lg transition-all",
+                                    "mutedText": "text-slate-300 text-sm"
+                                }
+                            },
+                            "enterprise_neutral": {
+                                "vibe": "enterprise_neutral",
+                                "classes": {
+                                    "pageBg": "min-h-screen bg-gray-100 text-gray-900",
+                                    "card": "bg-white border border-gray-200 rounded-lg shadow p-6",
+                                    "primaryButton": "bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2 rounded-md transition-all",
+                                    "secondaryButton": "border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-md transition-all",
+                                    "mutedText": "text-gray-500 text-sm"
+                                }
+                            },
+                            "playful_colorful": {
+                                "vibe": "playful_colorful",
+                                "classes": {
+                                    "pageBg": "min-h-screen bg-gradient-to-br from-yellow-50 via-pink-50 to-cyan-50 text-slate-800",
+                                    "card": "bg-white border-2 border-pink-200 rounded-3xl shadow-lg p-6",
+                                    "primaryButton": "bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-400 hover:to-orange-400 text-white font-bold px-6 py-3 rounded-full transition-all hover:scale-110",
+                                    "secondaryButton": "border-2 border-purple-300 hover:bg-purple-50 text-purple-600 px-4 py-2 rounded-full transition-all",
+                                    "mutedText": "text-slate-500 text-sm"
+                                }
+                            }
+                        }
+                        
+                        # Get tokens for detected vibe, default to dark_hacker
+                        tokens_obj = vibe_tokens.get(ui_vibe, vibe_tokens["dark_hacker"])
+                        
+                        # Write the fallback tokens
+                        design_dir = project_path / "frontend" / "src" / "design"
+                        design_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        tokens_path = design_dir / "tokens.json"
+                        tokens_path.write_text(json.dumps(tokens_obj, indent=2), encoding="utf-8")
+                        log("ARCHITECTURE", f"✅ Wrote FALLBACK design tokens to {tokens_path}")
+                        
+                        # Write theme.ts
+                        theme_ts = f"""// Auto-generated FALLBACK UI Tokens (Victoria didn't generate them)
+import tokensJson from "./tokens.json";
+
+export const tokens = tokensJson as {{
+  vibe: string;
+  classes: {{
+    pageBg: string;
+    card: string;
+    primaryButton: string;
+    secondaryButton?: string;
+    mutedText?: string;
+    [key: string]: string | undefined;
+  }};
+}};
+
+export const ui = {{
+  pageRoot: tokens.classes.pageBg,
+  card: tokens.classes.card,
+  primaryButton: tokens.classes.primaryButton,
+  secondaryButton: tokens.classes.secondaryButton ?? tokens.classes.primaryButton,
+  mutedText: tokens.classes.mutedText ?? "",
+}};
+"""
+                        theme_path = design_dir / "theme.ts"
+                        theme_path.write_text(theme_ts, encoding="utf-8")
+                        log("ARCHITECTURE", f"✅ Wrote FALLBACK design theme to {theme_path}")
             except Exception as e:
                 log("ARCHITECTURE", f"Failed to generate design tokens: {e}")
         
@@ -211,8 +337,9 @@ export const ui = {{
         raise
         
     except Exception as e:
-        log("ARCHITECTURE", f"Victoria failed: {e} - continuing anyway", project_id=project_id)
-    
+        log("ARCHITECTURE", f"Victoria failed: {e}", project_id=project_id)
+        raise e  # 🛑 Stop the workflow if architecture fails
+
     # GENCODE STUDIO PATTERN: After architecture, go to Frontend Mock (not Contracts)
     # This creates the "aha moment" for users before building backend
     return StepResult(

@@ -5,14 +5,11 @@ GenCode Studio Backend - Clean Architecture
 import os
 import sys
 import uvicorn
-import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime, timezone
 
-# Windows Event Loop Policy Fix for Subprocesses (Docker)
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles

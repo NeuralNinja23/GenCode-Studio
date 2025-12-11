@@ -150,7 +150,7 @@ services:
             if preview_url:
                 log("PREVIEW", f"Waiting for {preview_url}...")
                 is_reachable = False
-                for i in range(30):
+                for i in range(60):
                     try:
                         async with session.get(preview_url, timeout=aiohttp.ClientTimeout(total=1)) as check_resp:
                             if check_resp.status == 200:

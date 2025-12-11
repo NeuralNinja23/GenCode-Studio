@@ -20,7 +20,7 @@ from app.orchestration.attention_router import compute_ui_vibe_routing
 
 
 # Constants from legacy
-MAX_FILES_PER_STEP = 10
+MAX_FILES_PER_STEP = 20
 
 
 from app.persistence.validator import validate_file_output

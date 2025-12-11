@@ -23,7 +23,7 @@ from app.persistence import persist_agent_output
 
 
 
-MAX_FILES_PER_STEP = 10
+MAX_FILES_PER_STEP = 15
 MAX_FILE_LINES = 400
 
 
@@ -414,6 +414,7 @@ Generate the updated frontend files with real API calls now!
         
     except Exception as e:
         log("FRONTEND_INTEGRATION", f"Derek integration failed: {e}")
+        raise
 
     # CLEANUP: Remove unused Shadcn components
     try:

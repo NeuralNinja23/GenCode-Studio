@@ -183,12 +183,19 @@ async def generate_backend(request: Request, project_id: str, data: GenerateRequ
     from app.workflow import run_workflow
     from app.orchestration.state import WorkflowStateManager
     
+    print(f"[GENERATE] Starting generation for {project_id}")
+    
     # FIX #13: Validate project_id
     if not validate_project_id(project_id):
+        print(f"[GENERATE] Invalid project_id: {project_id}")
         raise HTTPException(status_code=400, detail="Invalid project ID format")
     
     # Guard: Check if workflow is already running
-    if await WorkflowStateManager.is_running(project_id):
+    is_running = await WorkflowStateManager.is_running(project_id)
+    print(f"[GENERATE] is_running check: {is_running}")
+    
+    if is_running:
+        print(f"[GENERATE] ⚠️ Workflow already running for {project_id}, blocking new request")
         return {
             "success": True,
             "message": "Workflow already in progress",
@@ -202,17 +209,23 @@ async def generate_backend(request: Request, project_id: str, data: GenerateRequ
     # Get connection manager
     manager = request.app.state.manager
     
-    # Start workflow in background
-    asyncio.create_task(
-        run_workflow(
-            project_id=project_id,
-            description=data.description,
-            workspaces_path=settings.paths.workspaces_dir,
-            manager=manager,
-            provider=data.provider,
-            model=data.model,
-        )
-    )
+    # Start workflow in background with exception logging
+    async def _run_workflow_with_logging():
+        try:
+            await run_workflow(
+                project_id=project_id,
+                description=data.description,
+                workspaces_path=settings.paths.workspaces_dir,
+                manager=manager,
+                provider=data.provider,
+                model=data.model,
+            )
+        except Exception as e:
+            import traceback
+            print(f"[WORKFLOW ERROR] {project_id}: {e}")
+            print(traceback.format_exc())
+    
+    asyncio.create_task(_run_workflow_with_logging())
     
     return {
         "success": True,
@@ -332,4 +345,22 @@ async def apply_instruction(project_id: str, data: ApplyInstructionRequest):
         "applied": 0,
         "changedFiles": [],
         "rationale": f"Instruction received: {data.instruction}",
+    }
+
+
+@router.post("/{project_id}/force-reset")
+async def force_reset_workflow(project_id: str):
+    """
+    Force reset workflow state for a project.
+    Use this if a workflow crashed and left stale state.
+    """
+    from app.orchestration.state import WorkflowStateManager
+    
+    print(f"[FORCE-RESET] Resetting workflow state for {project_id}")
+    await WorkflowStateManager.cleanup(project_id)
+    
+    return {
+        "success": True,
+        "message": f"Workflow state reset for {project_id}",
+        "project_id": project_id,
     }

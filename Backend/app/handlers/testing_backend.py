@@ -27,7 +27,7 @@ from app.utils.parser import normalize_llm_output
 
 
 # Constants from legacy
-MAX_FILES_PER_STEP = 5
+MAX_FILES_PER_STEP = 10
 MAX_FILE_LINES = 400
 
 
@@ -159,6 +159,227 @@ async def safe_write_llm_files_for_testing(
     return len(written)
 
 
+async def _generate_tests_from_template(
+    manager: Any,
+    project_id: str,
+    project_path: Path,
+    user_request: str,
+    primary_entity: str,
+    archetype: str,
+    provider: str,
+    model: str,
+) -> bool:
+    """
+    Generate backend tests from template at the START of testing step.
+    
+    Flow:
+    1. Read the test template (from Golden Seed)
+    2. Call Derek to generate project-specific tests based on template
+    3. Write the test file
+    4. Return True if tests were generated successfully
+    
+    Derek ALWAYS generates tests from template - this ensures tests are
+    project-specific and match the implemented models/routers.
+    """
+    from app.supervision import supervised_agent_call
+    from app.orchestration.utils import pluralize
+    from app.handlers.base import broadcast_agent_log
+    
+    tests_dir = project_path / "backend" / "tests"
+    test_file = tests_dir / "test_api.py"
+    template_file = tests_dir / "test_api.py.template"
+    
+    # ALWAYS generate tests from template - Derek creates project-specific tests
+    log("TESTING", f"📝 Derek generating backend tests from template for entity: {primary_entity}")
+    
+    primary_entity_plural = pluralize(primary_entity)
+    primary_entity_capitalized = primary_entity.capitalize()
+    
+    # Read the template if it exists
+    template_content = ""
+    if template_file.exists():
+        template_content = template_file.read_text(encoding="utf-8")
+        # Replace placeholders with actual entity names
+        template_content = template_content.replace("{{ENTITY}}", primary_entity)
+        template_content = template_content.replace("{{ENTITY_PLURAL}}", primary_entity_plural)
+        template_content = template_content.replace("{{MODEL_NAME}}", primary_entity_capitalized)
+        log("TESTING", f"📋 Using test template with entity: {primary_entity}")
+    
+    # Build Derek's test generation instructions
+    test_generation_prompt = f"""Generate the backend test file for this project.
+
+═══════════════════════════════════════════════════════
+PROJECT CONTEXT
+═══════════════════════════════════════════════════════
+
+User Request: {user_request[:300]}
+Primary Entity: {primary_entity_capitalized}
+Entity Plural: {primary_entity_plural}
+Archetype: {archetype}
+
+═══════════════════════════════════════════════════════
+TEST TEMPLATE (CUSTOMIZE THIS FOR THE PROJECT)
+═══════════════════════════════════════════════════════
+
+Below is a template. Use it as a STARTING POINT but CUSTOMIZE it:
+- Replace placeholder tests with tests specific to {primary_entity_capitalized}
+- Add tests for the actual endpoints from contracts.md
+- Make tests project-specific, not generic
+
+TEMPLATE:
+{template_content if template_content else "No template found - generate standard CRUD tests."}
+
+═══════════════════════════════════════════════════════
+REQUIREMENTS
+═══════════════════════════════════════════════════════
+
+1. Create backend/tests/test_api.py with working pytest tests
+2. MUST include:
+   - test_health_check: GET /api/health returns 200 + {{"status": "healthy"}}
+   - test_list_{primary_entity_plural}: GET /api/{primary_entity_plural} returns 200
+   - test_create_{primary_entity}: POST /api/{primary_entity_plural} returns 200/201
+   - test_get_{primary_entity}_not_found: GET /api/{primary_entity_plural}/<fake_id> returns 404
+
+3. Use the `client` fixture from conftest.py (already provided)
+4. Use @pytest.mark.anyio decorator for async tests
+5. Use Faker for test data when appropriate
+6. ALL tests must be async (async def test_...)
+
+═══════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════
+
+{{
+  "thinking": "Explain how you're customizing the tests for {primary_entity_capitalized}...",
+  "files": [
+    {{
+      "path": "backend/tests/test_api.py",
+      "content": "import pytest\\nfrom faker import Faker\\n\\nfake = Faker()\\n\\n@pytest.mark.anyio\\nasync def test_health_check(client):\\n    ..."
+    }}
+  ]
+}}
+
+Generate COMPLETE, WORKING test file now!
+"""
+
+    try:
+        await broadcast_agent_log(
+            manager,
+            project_id,
+            "AGENT:Derek",
+            f"📝 Generating test file for {primary_entity_capitalized}..."
+        )
+        
+        result = await supervised_agent_call(
+            project_id=project_id,
+            manager=manager,
+            agent_name="Derek",
+            step_name="Test File Generation",
+            base_instructions=test_generation_prompt,
+            project_path=project_path,
+            user_request=user_request,
+            contracts="",
+            max_retries=1,  # One retry allowed
+        )
+        
+        parsed = result.get("output", {})
+        files = parsed.get("files", [])
+        
+        if files:
+            # Write the test file
+            written = await safe_write_llm_files_for_testing(
+                manager=manager,
+                project_id=project_id,
+                project_path=project_path,
+                files=files,
+                step_name="Test File Generation",
+            )
+            
+            if written > 0:
+                log("TESTING", f"✅ Derek generated {written} test file(s)")
+                return True
+        
+        log("TESTING", "⚠️ Derek did not generate test files")
+        
+    except Exception as e:
+        log("TESTING", f"⚠️ Test generation failed: {e}")
+    
+    # Fallback: Write basic test file directly
+    log("TESTING", "📋 Using fallback test generation...")
+    return await _fallback_generate_tests(project_path, primary_entity, primary_entity_plural)
+
+
+async def _fallback_generate_tests(
+    project_path: Path,
+    entity: str,
+    entity_plural: str,
+) -> bool:
+    """
+    Fallback test generation when Derek fails (Option B supplement).
+    Writes a minimal but functional test file.
+    """
+    tests_dir = project_path / "backend" / "tests"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    
+    test_content = f'''# backend/tests/test_api.py
+"""
+API Tests - Auto-generated fallback
+Generated when Derek failed to create tests.
+"""
+import pytest
+from faker import Faker
+
+fake = Faker()
+
+
+@pytest.mark.anyio
+async def test_health_check(client):
+    """Test the health check endpoint."""
+    response = await client.get("/api/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("status") == "healthy"
+
+
+@pytest.mark.anyio
+async def test_list_{entity_plural}(client):
+    """Test listing {entity_plural}."""
+    response = await client.get("/api/{entity_plural}")
+    assert response.status_code == 200
+    data = response.json()
+    # Response should be a list or have a data array
+    assert isinstance(data, (list, dict))
+
+
+@pytest.mark.anyio
+async def test_create_{entity}(client):
+    """Test creating a {entity}."""
+    {entity}_data = {{
+        "title": fake.sentence(),
+        "content": fake.paragraph(),
+    }}
+    response = await client.post("/api/{entity_plural}", json={entity}_data)
+    assert response.status_code in [200, 201]
+
+
+@pytest.mark.anyio
+async def test_get_{entity}_not_found(client):
+    """Test getting a non-existent {entity} returns 404."""
+    fake_id = "507f1f77bcf86cd799439011"
+    response = await client.get(f"/api/{entity_plural}/{{fake_id}}")
+    assert response.status_code == 404
+'''
+
+    test_file = tests_dir / "test_api.py"
+    try:
+        test_file.write_text(test_content, encoding="utf-8")
+        log("TESTING", f"📋 Fallback test file written: {test_file.name} ({len(test_content)} chars)")
+        return True
+    except Exception as e:
+        log("TESTING", f"❌ Failed to write fallback test file: {e}")
+        return False
+
+
 async def step_testing_backend(
     project_id: str,
     user_request: str,
@@ -192,22 +413,6 @@ async def step_testing_backend(
         "STATUS",
         f"[{WorkflowStep.TESTING_BACKEND}] Starting backend sandbox tests for {project_id}",
     )
-
-    # ═══════════════════════════════════════════════════════
-    # PRE-FLIGHT: Ensure db.py exists (required for conftest.py)
-    # ═══════════════════════════════════════════════════════
-    db_file = project_path / "backend" / "app" / "db.py"
-    if not db_file.exists():
-        log("TESTING", "⚠️ backend/app/db.py missing - creating via self-healing...")
-        try:
-            from app.orchestration.self_healing_manager import SelfHealingManager
-            healer = SelfHealingManager(project_path)
-            if healer.repair("backend_db"):
-                log("TESTING", "✅ Created db.py (connect_db/disconnect_db wrapper)")
-            else:
-                log("TESTING", "❌ Failed to create db.py - tests may fail")
-        except Exception as e:
-            log("TESTING", f"❌ Self-healing failed: {e}")
 
     # Ensure tests directory exists so Docker doesn't create it as root
     (project_path / "backend/tests").mkdir(parents=True, exist_ok=True)
@@ -243,6 +448,24 @@ async def step_testing_backend(
     
     # Get archetype for test guidance
     archetype = (intent.get("archetypeRouting") or {}).get("top") or "general"
+    
+    # ═══════════════════════════════════════════════════════
+    # STEP 1: Derek generates tests from template FIRST
+    # Derek ALWAYS creates project-specific tests using the template
+    # ═══════════════════════════════════════════════════════
+    tests_generated = await _generate_tests_from_template(
+        manager=manager,
+        project_id=project_id,
+        project_path=project_path,
+        user_request=user_request,
+        primary_entity=primary_entity,
+        archetype=archetype,
+        provider=provider,
+        model=model,
+    )
+    
+    if not tests_generated:
+        log("TESTING", "⚠️ Derek could not generate tests from template - using fallback")
     
     # Read existing test file to show Derek what's expected
     test_file_path = project_path / "backend/tests/test_api.py"
@@ -348,6 +571,7 @@ Focus on fixing the {primary_entity} router and related models.
                         "command": "pytest -q",
                         "start_services": ["backend"],
                         "timeout": 300,
+                        "force_rebuild": True,  # Ensure Docker rebuilds to pick up newly wired routers
                     },
                 )
                 last_stdout = sandbox_result.get("stdout", "") or ""
@@ -391,6 +615,34 @@ Focus on fixing the {primary_entity} router and related models.
         except Exception:
             pass
 
+        # ------------------------------------------------------------
+        # 👁️ VISIBILITY UPGRADE: Gather Source Code for Marcus
+        # ------------------------------------------------------------
+        source_context = ""
+        
+        # 1. Main.py (Router Wiring)
+        try:
+            main_py = (project_path / "backend/app/main.py").read_text(encoding="utf-8")
+            source_context += f"📄 backend/app/main.py (System Wiring):\n```python\n{main_py}\n```\n\n"
+        except Exception: pass
+            
+        # 2. Models.py
+        try:
+            models_py = (project_path / "backend/app/models.py").read_text(encoding="utf-8")
+            source_context += f"📄 backend/app/models.py:\n```python\n{models_py}\n```\n\n"
+        except Exception: pass
+
+        # 3. Routers (API Implementation)
+        try:
+            routers_dir = project_path / "backend/app/routers"
+            if routers_dir.exists():
+                for r_file in routers_dir.glob("*.py"):
+                    if r_file.name != "__init__.py":
+                        r_content = r_file.read_text(encoding="utf-8")
+                        source_context += f"📄 backend/app/routers/{r_file.name}:\n```python\n{r_content}\n```\n\n"
+        except Exception: pass
+
+
         # Marcus as Backend Critic - analyze failure and provide structured instructions
         # NOTE: Using string concatenation to avoid "Invalid format specifier" when content contains { }
         marcus_critic_prompt = (
@@ -415,6 +667,10 @@ Focus on fixing the {primary_entity} router and related models.
             "🧪 EXISTING TEST FILE (backend/tests/test_api.py)\n"
             "═══════════════════════════════════════════════════════\n\n"
             + existing_test_content + "\n\n"
+            "═══════════════════════════════════════════════════════\n"
+            "🔍 CURRENT IMPLEMENTATION CODE (Critical for Debugging)\n"
+            "═══════════════════════════════════════════════════════\n\n"
+            + source_context + "\n\n"
             "═══════════════════════════════════════════════════════\n"
             "YOUR TASK AS BACKEND CRITIC\n"
             "═══════════════════════════════════════════════════════\n\n"
@@ -663,9 +919,7 @@ You MUST follow Marcus's instructions above. He has analyzed the failure against
             )
         except Exception as e:
             log("TESTING", f"sandboxexec for backend threw exception: {e}")
-            last_stdout = ""
-            last_stderr = str(e)
-            sandbox_result = {"success": False, "stdout": "", "stderr": str(e)}
+            raise # Propagate up to handler default filtering
 
         last_stdout = sandbox_result.get("stdout", "") or ""
         last_stderr = sandbox_result.get("stderr", "") or ""

@@ -315,40 +315,43 @@ class SandboxManager:
         full_cmd = f'{base} -f "{compose_file}" {command}'
 
         try:
-            # FIX ASYNC-001: Use asyncio.create_subprocess_shell instead of blocking subprocess.run
-            proc = await asyncio.create_subprocess_shell(
-                full_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=str(project_path),
-            )
-            
-            try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    proc.communicate(),
+            # DEBUG: Diagnose Windows Event Loop Issue
+            loop_type = str(type(asyncio.get_running_loop()))
+            print(f"[SANDBOX DEBUG] Event Loop: {loop_type}")
+            print(f"[SANDBOX DEBUG] Executing: {full_cmd}")
+
+            # FIX ASYNC-001: Bypass asyncio subprocess limitations on Windows by using threads
+            # This works regardless of Selector vs Proactor event loop
+            def run_sync_cmd():
+                return subprocess.run(
+                    full_cmd,
+                    shell=True,
+                    capture_output=True, # Capture stdout/stderr
+                    text=True,           # Decode as string
+                    cwd=str(project_path),
                     timeout=timeout
                 )
-                stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
-                stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return {
-                    "returncode": -1,
-                    "stdout": "",
-                    "stderr": "[Sandbox] docker compose command timed out.",
-                }
+
+            # Offload blocking IO to a thread
+            proc = await asyncio.to_thread(run_sync_cmd)
             
             return {
                 "returncode": proc.returncode,
-                "stdout": stdout,
-                "stderr": stderr,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+            }
+        except subprocess.TimeoutExpired:
+             return {
+                "returncode": -1,
+                "stdout": "",
+                "stderr": "[Sandbox] docker compose command timed out.",
             }
         except Exception as e:
+            print(f"[SANDBOX CRITICAL] Exception in docker compose: {e!r}")
             return {
                 "returncode": -1,
                 "stdout": "",
-                "stderr": f"Error executing docker compose: {e}",
+                "stderr": f"Error executing docker compose: {e!r}",
             }
 
     async def _get_compose_logs(self, project_path: Path) -> str:
@@ -418,22 +421,17 @@ class SandboxManager:
         """Async version of _get_project_containers."""
         containers: Dict[str, Dict[str, Any]] = {}
         try:
-            # FIX ASYNC-001: Use asyncio subprocess for container lookup
-            proc = await asyncio.create_subprocess_exec(
-                "docker", "ps",
-                "--filter", f"name={project_id}",
-                "--format", "{{json .}}",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            # FIX ASYNC-001: Use asyncio.to_thread for Windows compatibility
+            def run_docker_ps():
+                return subprocess.run(
+                    ["docker", "ps", "--filter", f"name={project_id}", "--format", "{{json .}}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
             
-            try:
-                stdout_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
-                stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return containers
+            proc = await asyncio.to_thread(run_docker_ps)
+            stdout = proc.stdout or ""
             
             for line in stdout.splitlines():
                 try:
@@ -532,36 +530,26 @@ class SandboxManager:
             # Use -w /app to ensure commands run from the correct working directory
             full_cmd = f"docker exec -w /app {container_id} {command}"
 
-            # FIX ASYNC-001: Use async subprocess instead of blocking subprocess.run
-            proc = await asyncio.create_subprocess_shell(
-                full_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            
-            try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    proc.communicate(),
+            # FIX ASYNC-001: Bypass asyncio subprocess limitations on Windows by using threads
+            # This works regardless of Selector vs Proactor event loop
+            def run_sync_cmd():
+                return subprocess.run(
+                    full_cmd,
+                    shell=True,
+                    capture_output=True,  # Capture stdout/stderr
+                    text=True,            # Decode as string
                     timeout=timeout
                 )
-                stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
-                stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                return {
-                    "success": False,
-                    "stdout": "",
-                    "stderr": "",
-                    "error": f"Command timed out after {timeout}s",
-                    "returncode": -1,
-                }
 
+            # Offload blocking IO to a thread
+            proc = await asyncio.to_thread(run_sync_cmd)
+
+            # Map subprocess.run result to the expected dictionary format
             return {
-                "success": proc.returncode == 0,
-                "stdout": stdout,
-                "stderr": stderr,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
                 "returncode": proc.returncode,
+                "success": proc.returncode == 0
             }
 
         except Exception as e:

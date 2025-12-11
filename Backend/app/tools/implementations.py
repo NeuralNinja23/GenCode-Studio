@@ -50,6 +50,7 @@ from app.core.logging import log
 
 # =====================================================================
 # FIX ASYNC-001: Async subprocess helper to avoid blocking event loop
+# Uses asyncio.to_thread for Windows compatibility (SelectorEventLoop)
 # =====================================================================
 async def _async_run_command(
     cmd: Union[str, List[str]],
@@ -58,48 +59,36 @@ async def _async_run_command(
     shell: bool = True,
 ) -> Dict[str, Any]:
     """
-    Run a command asynchronously using asyncio.create_subprocess_shell/exec.
+    Run a command asynchronously using asyncio.to_thread + subprocess.run.
+    This is Windows-compatible (works with SelectorEventLoop).
     Returns dict with success, stdout, stderr, returncode.
     """
     try:
-        if shell:
-            proc = await asyncio.create_subprocess_shell(
-                cmd if isinstance(cmd, str) else " ".join(cmd),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+        def run_sync():
+            return subprocess.run(
+                cmd if isinstance(cmd, str) else " ".join(cmd) if shell else cmd,
+                shell=shell,
+                capture_output=True,
+                text=True,
                 cwd=cwd,
-            )
-        else:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd if isinstance(cmd, list) else cmd.split(),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
-        
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(),
                 timeout=timeout
             )
-            stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
-            stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return {
-                "success": False,
-                "stdout": "",
-                "stderr": "",
-                "returncode": -1,
-                "error": f"Command timed out after {timeout}s",
-            }
+        
+        proc = await asyncio.to_thread(run_sync)
         
         return {
             "success": proc.returncode == 0,
-            "stdout": stdout,
-            "stderr": stderr,
+            "stdout": proc.stdout or "",
+            "stderr": proc.stderr or "",
             "returncode": proc.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": "",
+            "returncode": -1,
+            "error": f"Command timed out after {timeout}s",
         }
     except Exception as e:
         return {
@@ -584,6 +573,7 @@ async def tool_sandbox_exec(args: Dict[str, Any]) -> Dict[str, Any]:
     - project_path: str (optional override; otherwise deduced from WORKSPACES_DIR / project_id)
     - wait_healthy: bool (optional, default: True)
     - max_health_retries: int (optional, default: 30)
+    - force_rebuild: bool (optional, default: False) - if True, stop and restart sandbox to pick up code changes
     """
     
     try:
@@ -592,6 +582,7 @@ async def tool_sandbox_exec(args: Dict[str, Any]) -> Dict[str, Any]:
         command = args.get("command")
         # We accept wait_healthy but start_sandbox handles the actual waiting
         wait_healthy = bool(args.get("wait_healthy", True))
+        force_rebuild = bool(args.get("force_rebuild", False))
         
         if not project_id:
             return {"success": False, "error": "Missing project_id"}
@@ -624,6 +615,17 @@ async def tool_sandbox_exec(args: Dict[str, Any]) -> Dict[str, Any]:
         status = await SANDBOX.get_status(project_id)
         status_ok = bool(status.get("success"))
         current_state = (status.get("status") or "").lower() if status_ok else "unknown"
+        
+        # -----------------------------------------------------------
+        # Force Rebuild: Stop and restart sandbox to pick up code changes
+        # This is critical when routers are wired AFTER initial build
+        # -----------------------------------------------------------
+        if force_rebuild and status_ok and current_state == "running":
+            log("SANDBOX_EXEC", f"🔄 Force rebuild requested for {project_id}, stopping sandbox...")
+            await SANDBOX.stop_sandbox(project_id)
+            # Mark as not running so we go through the full create+start flow
+            current_state = "stopped"
+            status_ok = True  # Sandbox still exists in metadata
         
         if not status_ok:
             # No sandbox tracked -> create + start

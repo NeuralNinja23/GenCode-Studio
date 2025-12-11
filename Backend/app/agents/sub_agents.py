@@ -171,21 +171,19 @@ async def _run_pytest(project_path: str, test_paths: Optional[List[str]] = None,
     if test_paths:
         cmd.extend(test_paths)
     try:
-        # FIX ASYNC-001: Use async subprocess instead of blocking subprocess.run
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=project_path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
-            stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return {"passed": False, "failures": [{"description": "pytest timeout"}], "output": "", "returncode": None}
+        # FIX ASYNC-001: Use asyncio.to_thread for Windows compatibility
+        def run_pytest_sync():
+            return subprocess.run(
+                cmd,
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+        
+        proc = await asyncio.to_thread(run_pytest_sync)
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
         
         output = stdout + ("\nSTDERR:\n" + stderr if stderr else "")
         passed = proc.returncode == 0
@@ -199,6 +197,8 @@ async def _run_pytest(project_path: str, test_paths: Optional[List[str]] = None,
                 if "FAILED" in line or "ERROR" in line:
                     failures.append({"line": i + 1, "text": line})
         return {"passed": passed, "failures": failures, "output": output, "returncode": proc.returncode}
+    except subprocess.TimeoutExpired:
+        return {"passed": False, "failures": [{"description": "pytest timeout"}], "output": "", "returncode": None}
     except FileNotFoundError:
         return {"passed": False, "failures": [{"description": "pytest not installed"}], "output": "pytest not found on PATH", "returncode": None}
     except Exception as e:
@@ -214,21 +214,19 @@ async def _run_playwright(project_path: str, test_paths: Optional[List[str]] = N
     if test_paths:
         cmd.extend(test_paths)
     try:
-        # FIX ASYNC-001: Use async subprocess instead of blocking subprocess.run
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=project_path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-            stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
-            stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return {"passed": False, "failures": [{"description": "playwright timeout"}], "output": "", "returncode": None}
+        # FIX ASYNC-001: Use asyncio.to_thread for Windows compatibility
+        def run_playwright_sync():
+            return subprocess.run(
+                cmd,
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+        
+        proc = await asyncio.to_thread(run_playwright_sync)
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
         
         output = stdout + ("\nSTDERR:\n" + stderr if stderr else "")
         passed = proc.returncode == 0
@@ -239,6 +237,8 @@ async def _run_playwright(project_path: str, test_paths: Optional[List[str]] = N
                 if "FAILED" in line or "✖" in line:
                     failures.append({"line": i + 1, "text": line})
         return {"passed": passed, "failures": failures, "output": output, "returncode": proc.returncode}
+    except subprocess.TimeoutExpired:
+        return {"passed": False, "failures": [{"description": "playwright timeout"}], "output": "", "returncode": None}
     except FileNotFoundError:
         return {"passed": False, "failures": [{"description": "playwright not installed"}], "output": "playwright not found on PATH", "returncode": None}
     except Exception as e:

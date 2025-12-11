@@ -160,11 +160,15 @@ FILES TO GENERATE:
    - Class {primary_entity_capitalized}
    - Fields matching Contracts
    - Include all CRUD operations
+   - 🚨 CRITICAL: Do NOT define `id` or `_id` fields (Beanie handles this automatically).
    
-2. **backend/app/routers/{primary_entity}s.py** (FastAPI Router)
+   2. **backend/app/routers/{primary_entity}s.py** (FastAPI Router)
    - CRUD Endpoints using the Model you just wrote
    - Import `from app.models import {primary_entity_capitalized}`
    - Include proper error handling
+   - 🚨 CRITICAL: Do NOT use `prefix` or `tags` in APIRouter(). Just `router = APIRouter()`.
+     (The system integrator handles routing prefixes globally)
+   - 🚨 CRITICAL: Define endpoints at root ('/') (e.g., `@router.get("/")` NOT `@router.get("/users")`).
 
 ═══════════════════════════════════════════════════════════
 🚫 FORBIDDEN FILES (DO NOT TOUCH)
@@ -241,6 +245,42 @@ Generate the complete backend vertical for {primary_entity_capitalized} now!
 
         # 2. Process Files
         if "files" in parsed and parsed["files"]:
+            # 🛡️ SYSTEM HARDENING: Sanitize Agent Output
+            # We enforce correctness here deterministically to prevent common crashes
+            import re
+            
+            for file_obj in parsed["files"]:
+                path = file_obj.get("path", "")
+                content = file_obj.get("content", "")
+                
+                # SANITIZER 1: Beanie Models - Remove explicit 'id' fields
+                # Agent often adds 'id: str' or '_id: PydanticObjectId' which crashes Beanie
+                if "models.py" in path:
+                    content = re.sub(
+                        r'(^\s*)(_?id)\s*:', 
+                        r'\1# \2: # 🛡️ AUTO-FIXED: Beanie handles IDs', 
+                        content, 
+                        flags=re.MULTILINE
+                    )
+                
+                # SANITIZER 2: Routers - Remove 'prefix' and 'tags' from APIRouter
+                # Agent often adds prefix (e.g., prefix="/users") which clashes with Integrator (result: /api/users/users)
+                if "routers" in path:
+                    # Remove prefix="..." 
+                    content = re.sub(
+                        r'prefix\s*=\s*[\'"][^\'"]+[\'"],?', 
+                        '', 
+                        content
+                    )
+                    # Remove tags=["..."]
+                    content = re.sub(
+                        r'tags\s*=\s*\[[^\]]+\],?', 
+                        '', 
+                        content
+                    )
+                    
+                file_obj["content"] = content
+
             validated = validate_file_output(parsed, WorkflowStep.BACKEND_IMPLEMENTATION, max_files=5)
             files_written = await persist_agent_output(manager, project_id, project_path, validated, WorkflowStep.BACKEND_IMPLEMENTATION)
 

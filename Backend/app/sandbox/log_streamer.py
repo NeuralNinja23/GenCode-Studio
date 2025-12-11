@@ -28,34 +28,39 @@ class LogStreamer:
         """
         Internal helper: run `docker logs -f` on the container and forward
         each line to `websocket_send(line)`.
+        
+        NOTE: On Windows, asyncio.create_subprocess_exec doesn't work with SelectorEventLoop.
+        We use a hybrid approach: run blocking in thread, then stream.
         """
+        import subprocess
         print(f"[LOG_STREAM] Starting docker logs for container {container_id} (stream_id={stream_id})")
 
-        # Start `docker logs -f` as a subprocess
-        process = await asyncio.create_subprocess_exec(
-            "docker",
-            "logs",
-            "-f",
-            container_id,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-
-        self.stream_processes[stream_id] = process
-
         try:
-            assert process.stdout is not None
+            # Use Popen for streaming (can't use subprocess.run for continuous output)
+            # Run in a way that's compatible with Windows
+            def start_process():
+                return subprocess.Popen(
+                    ["docker", "logs", "-f", container_id],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,  # Line buffered
+                )
+            
+            process = await asyncio.to_thread(start_process)
+            self.stream_processes[stream_id] = process  # Store for stop_streaming
+
             while True:
-                line = await process.stdout.readline()
+                # Read line in thread to avoid blocking
+                line = await asyncio.to_thread(process.stdout.readline)
                 if not line:
                     break  # process exited
 
-                text = line.decode("utf-8", errors="ignore").rstrip("\n")
+                text = line.rstrip("\n")
                 if not text:
                     continue
 
-                # We send the raw text line to the callback;
-                # SandboxManager.start_log_stream wraps this into a JSON payload.
+                # We send the raw text line to the callback
                 await websocket_send(text)
         except asyncio.CancelledError:
             print(f"[LOG_STREAM] Log streaming cancelled for {stream_id}")
@@ -63,6 +68,8 @@ class LogStreamer:
             print(f"[LOG_STREAM] Error while streaming logs for {stream_id}: {e}")
         finally:
             self.stream_processes.pop(stream_id, None)
+            if 'process' in dir() and process and process.poll() is None:
+                process.terminate()
             print(f"[LOG_STREAM] Log streaming ended for {stream_id}")
 
     async def start_streaming(

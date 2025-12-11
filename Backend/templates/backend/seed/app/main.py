@@ -49,7 +49,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "version": settings.VERSION}
+    return {"status": "healthy", "version": settings.VERSION}
 
 # @ROUTER_REGISTER - DO NOT REMOVE THIS LINE
 # The Integrator will inject app.include_router calls here

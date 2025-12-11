@@ -115,6 +115,29 @@ You are part of an advanced AI system with multiple intelligence layers:
    - Focus on: entities, features, folder structure, UI Design System, Backend Patterns
    - If running low on tokens, summarize briefly rather than truncate
 
+🚨 #1 PRIORITY: UI TOKENS JSON BLOCK 🚨
+
+Your architecture.md MUST include this JSON block or Derek cannot style the app:
+
+```markdown
+## UI Tokens (machine readable)
+
+```json
+{
+  "vibe": "<detected_vibe>",
+  "classes": {
+    "pageBg": "<tailwind classes>",
+    "card": "<tailwind classes>",
+    "primaryButton": "<tailwind classes>",
+    "secondaryButton": "<tailwind classes>",
+    "mutedText": "<tailwind classes>"
+  }
+}
+```
+```
+
+THIS IS MANDATORY. Do not skip or abbreviate this section!
+
 
 
 ═══════════════════════════════════════════════════════

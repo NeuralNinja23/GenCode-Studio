@@ -27,7 +27,7 @@ from app.utils.entity_discovery import discover_primary_entity
 
 
 # Constants
-MAX_FILES_PER_STEP = 7  # Increased to 7 for package.json + output configs
+MAX_FILES_PER_STEP = 12  # Increased to 12 for components + config
 MAX_FILE_LINES = 400
 
 

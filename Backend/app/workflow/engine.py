@@ -311,6 +311,22 @@ async def run_workflow(
         if not (backend_dest / "app" / "routers" / "__init__.py").exists():
             (backend_dest / "app" / "routers" / "__init__.py").write_text("# Routers package\n", encoding="utf-8")
         
+        # --- Seed Test Template (Option C) ---
+        # Copy test_api.py.template for Derek to use as reference
+        tests_dest = backend_dest / "tests"
+        tests_dest.mkdir(parents=True, exist_ok=True)
+        
+        # Ensure tests/__init__.py exists
+        if not (tests_dest / "__init__.py").exists():
+            (tests_dest / "__init__.py").write_text("# Tests package\n", encoding="utf-8")
+        
+        # Copy the template file for Derek to reference
+        test_template_src = backend_seed / "tests" / "test_api.py.template"
+        if test_template_src.exists():
+            test_template_dest = tests_dest / "test_api.py.template"
+            shutil.copy2(test_template_src, test_template_dest)
+            log("WORKFLOW", "✅ Seeded Test Template (backend/tests/test_api.py.template)")
+        
         # --- Frontend Seed ---
         frontend_dest = project_path / "frontend"
         frontend_dest.mkdir(parents=True, exist_ok=True)
@@ -333,6 +349,18 @@ async def run_workflow(
                 shutil.copytree(item, frontend_dest / "src", dirs_exist_ok=True)
             elif item.is_dir() and item.name == "public":
                  shutil.copytree(item, frontend_dest / "public", dirs_exist_ok=True)
+
+        # --- Seed Frontend Test Template (Option C for Frontend) ---
+        # Copy e2e.spec.js.template for Luna to use as reference
+        frontend_tests_dest = frontend_dest / "tests"
+        frontend_tests_dest.mkdir(parents=True, exist_ok=True)
+        
+        # Copy the test template file for Luna to reference
+        frontend_test_template_src = frontend_seed / "tests" / "e2e.spec.js.template"
+        if frontend_test_template_src.exists():
+            frontend_test_template_dest = frontend_tests_dest / "e2e.spec.js.template"
+            shutil.copy2(frontend_test_template_src, frontend_test_template_dest)
+            log("WORKFLOW", "✅ Seeded Frontend Test Template (frontend/tests/e2e.spec.js.template)")
 
         # --- Docker Infrastructure ---
         # FIX: Align with new template structure (backend/Dockerfile, frontend/Dockerfile)

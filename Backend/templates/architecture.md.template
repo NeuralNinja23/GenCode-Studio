@@ -1,0 +1,233 @@
+# Architecture Plan
+
+## Overview
+{{PROJECT_DESCRIPTION}}
+
+**Project Type:** {{ARCHETYPE}}
+**UI Vibe:** {{UI_VIBE}}
+
+---
+
+## Tech Stack
+
+### Frontend
+- React 18 + Vite
+- Tailwind CSS for styling
+- shadcn/ui component library
+- React Router for navigation
+- lucide-react for icons
+
+### Backend
+- FastAPI (Python 3.11+)
+- MongoDB + Beanie ODM
+- Pydantic v2 for validation
+
+### Testing
+- Backend: pytest + pytest-asyncio + Faker
+- Frontend: Playwright
+
+---
+
+## UI Design System
+
+### Vibe & Theme
+{{VIBE_DESCRIPTION}}
+
+### UI Tokens (machine readable)
+
+```json
+{
+  "vibe": "{{UI_VIBE}}",
+  "classes": {
+    "pageBg": "{{PAGE_BG_CLASSES}}",
+    "card": "{{CARD_CLASSES}}",
+    "primaryButton": "{{PRIMARY_BUTTON_CLASSES}}",
+    "secondaryButton": "{{SECONDARY_BUTTON_CLASSES}}",
+    "mutedText": "{{MUTED_TEXT_CLASSES}}"
+  }
+}
+```
+
+### Color Palette
+**Backgrounds:**
+- Page: {{PAGE_BG_COLOR}}
+- Card/Surface: {{CARD_BG_COLOR}}
+- Border: {{BORDER_COLOR}}
+
+**Interactive:**
+- Primary Accent: {{PRIMARY_ACCENT}}
+- Secondary Accent: {{SECONDARY_ACCENT}}
+- Success: green-500
+- Error: red-500
+
+**Text:**
+- Heading: {{HEADING_TEXT_COLOR}}
+- Body: {{BODY_TEXT_COLOR}}
+- Muted: {{MUTED_TEXT_COLOR}}
+
+### Typography
+- h1: text-4xl font-bold
+- h2: text-2xl font-semibold
+- h3: text-xl font-semibold
+- Body: text-base leading-relaxed
+
+### Spacing
+- Container: max-w-7xl mx-auto
+- Page Padding: px-6 py-8
+- Card Padding: p-6
+- Section Gap: space-y-8
+
+### Components
+
+**Buttons:**
+- Primary: {{PRIMARY_BUTTON_CLASSES}}
+- Secondary: {{SECONDARY_BUTTON_CLASSES}}
+
+**Cards:**
+- {{CARD_CLASSES}}
+
+**Forms:**
+- Input: bg-transparent border rounded-lg px-4 py-2 focus:ring-2 focus:ring-{{PRIMARY_ACCENT}}
+- Label: text-sm font-medium mb-1
+
+### Interactions
+- Button Hover: scale-105 transition-all duration-200
+- Card Hover: shadow-lg transition-shadow
+- All interactive elements have hover states
+
+---
+
+## Frontend Structure
+
+### Pages
+```
+frontend/src/pages/
+├── Home.jsx          # Dashboard with stats and recent items
+├── {{ENTITY_PLURAL}}/
+│   ├── List.jsx      # List all {{ENTITY_PLURAL}}
+│   ├── Detail.jsx    # View single {{ENTITY}}
+│   └── Create.jsx    # Create new {{ENTITY}}
+└── NotFound.jsx
+```
+
+### Home.jsx (Dashboard) Requirements
+Must include:
+- Summary stats cards (Total {{ENTITY_PLURAL}}, By status counts)
+- Recent {{ENTITY_PLURAL}} list (last 5 items)
+- Quick action buttons (Create New)
+- data-testid="page-root" on main container
+- data-testid="page-title" on h1
+
+### Components
+```
+frontend/src/components/
+├── {{ENTITY}}Card.jsx
+├── {{ENTITY}}Form.jsx
+├── Layout.jsx
+├── NavBar.jsx
+└── LoadingSpinner.jsx
+```
+
+### Required data-testid Attributes
+- page-root: Main page container
+- page-title: Primary h1 heading
+- create-{{ENTITY}}-button: Create action
+- {{ENTITY}}-list: List container
+- loading-indicator: Loading state
+- error-message: Error state
+
+---
+
+## Backend Structure
+
+### Models
+```
+backend/app/models.py
+```
+
+**{{MODEL_NAME}}** (Document):
+- title: str (required)
+- content: str (optional, default="")
+- status: str (default="Draft") - Draft, Active, Completed
+- created_at: datetime
+- updated_at: datetime (optional)
+
+### Routers
+```
+backend/app/routers/{{ENTITY_PLURAL}}.py
+```
+
+### API Endpoints
+| Method | Endpoint | Description | Status |
+|--------|----------|-------------|--------|
+| GET | /api/health | Health check | 200 |
+| GET | /api/{{ENTITY_PLURAL}} | List all | 200 |
+| POST | /api/{{ENTITY_PLURAL}} | Create new | 201 |
+| GET | /api/{{ENTITY_PLURAL}}/{id} | Get by ID | 200/404 |
+| PUT | /api/{{ENTITY_PLURAL}}/{id} | Update | 200/404 |
+| DELETE | /api/{{ENTITY_PLURAL}}/{id} | Delete | 200/404 |
+
+---
+
+## Backend Design Patterns
+
+### Core Conventions
+- Database: MongoDB + Beanie
+- Use `Field(default_factory=list)` for list defaults, NEVER `= []`
+- Use `model.model_dump()` not `.dict()` (Pydantic v2)
+- Proper HTTP status codes: 201 for create, 404 for not found
+
+### Response Shapes
+**Single item:**
+```json
+{ "data": { ... } }
+```
+
+**List (with pagination):**
+```json
+{ "data": [...], "total": 100, "page": 1, "limit": 20 }
+```
+
+**Error:**
+```json
+{ "error": { "code": "NOT_FOUND", "message": "{{MODEL_NAME}} not found" } }
+```
+
+### Routing Conventions
+- Health: GET /api/health
+- Entity CRUD: /api/{{ENTITY_PLURAL}}
+- Query params: ?page=1&limit=20&status=Active
+
+---
+
+## Code Patterns (Derek MUST follow these)
+
+### Backend Patterns
+- Use `Field(default_factory=list)` for list defaults, NEVER `= []`
+- Use `model.model_dump()` not `.dict()` (Pydantic v2)
+- Initialize Beanie at startup with explicit database name
+- Use proper HTTP status codes (201 for create, 404 for not found)
+
+### Frontend Patterns
+- Create centralized API client in `src/lib/api.js`
+- Add data-testid attributes to all interactive elements
+- Dashboard must show real stats, not just "Welcome"
+- Use shadcn/ui components, NOT raw HTML elements
+- Use lucide-react for icons, NEVER emojis
+- Every interactive element needs hover animations
+- Use 2-3x more whitespace than feels comfortable
+
+---
+
+## Testing Infrastructure
+
+### Backend Tests
+- Framework: pytest + pytest-asyncio
+- Marker: `@pytest.mark.anyio`
+- Test data: Faker library
+- Required deps: pytest-asyncio>=0.24.0, Faker>=25.0.0, httpx>=0.27.0
+
+### Frontend Tests
+- Framework: Playwright
+- Use data-testid selectors
+- Handle loading/error states gracefully
