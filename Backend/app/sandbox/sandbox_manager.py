@@ -407,6 +407,7 @@ class SandboxManager:
                 check=True,
                 timeout=5,
             )
+            # FORCE docker compose for Windows/Newer Docker Desktop
             self._compose_cmd = "docker compose"
         except Exception:
             self._compose_cmd = "docker-compose"

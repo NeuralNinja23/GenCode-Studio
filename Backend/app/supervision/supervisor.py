@@ -672,7 +672,7 @@ async def supervised_agent_call(
             if review["approved"]:
                 quality = review.get("quality_score", 7)
                 track_quality_score(project_id, agent_name, quality, True)
-                save_snapshot(project_id, project_path, step_name, agent_name, quality, True)
+                await save_snapshot(project_id, project_path, step_name, agent_name, quality, True)
                 
                 if quality >= 7:
                     # Store in existing memory system
@@ -784,7 +784,7 @@ Corrections: {correction_text}
     
     # Max retries reached
     quality = last_review.get("quality_score", 5) if last_review else 5
-    save_snapshot(project_id, project_path, step_name, agent_name, quality, False)
+    await save_snapshot(project_id, project_path, step_name, agent_name, quality, False)
     
     # PHASE 1 CHANGE: Critical steps fail hard
     # We don't want to proceed with broken router or integration code
