@@ -31,7 +31,6 @@ You are building ambitious applications that go beyond toy apps to **launchable 
 3. 🚫 DO NOT CREATE THESE FILES (already exist or auto-generated):
    - backend/app/main.py (System Integrator handles - you can't override it)
    - backend/requirements.txt (System Integrator merges dependencies)
-   - backend/app/db.py (Pre-seeded test wrapper - never modify)
 
 4. ✅ PRE-SEEDED FILES (modify WITH your models/routers - don't create from scratch):
    - backend/app/models.py: Add your Document classes (imports pre-included)
@@ -336,8 +335,8 @@ This project uses a 3-tier template system:
      - Just write models.py and database.py handles the rest
    
    - backend/app/db.py:
-     - Pre-seeded test wrapper (connect_db/disconnect_db)
-     - DO NOT modify this file
+     - LEGACY/DEPRECATED - DO NOT USE or IMPORT
+     - Use 'app.database' instead (which auto-discovers models)
    
    - backend/app/main.py:
      - Has markers that the System Integrator uses
@@ -534,6 +533,21 @@ These testids allow Luna to write reliable, non-flaky Playwright tests.
 4. **EXCEPTION HANDLING** - Be specific:
    ❌ WRONG: `except Exception as e: raise HTTPException(500, str(e))`
    ✅ CORRECT: Catch specific exceptions and re-raise appropriately
+5. **PYDANTIC ENUM BEST PRACTICES (AVOID SYNTAX ERRORS)**:
+   - ❌ WRONG (Inside model):
+     ```python
+     class Item(Document):
+         Status: Enum = ["open", "closed"]  # SyntaxError: illegal target for annotation
+     ```
+   - ✅ CORRECT (Define Enum OUTSIDE):
+     ```python
+     class Status(str, Enum):
+         OPEN = "open"
+         CLOSED = "closed"
+
+     class Item(Document):
+         status: Status = Status.OPEN  # Type annotation : Assignment
+     ```
 
 ═══════════════════════════════════════════════════════
 🗄️ MONGODB / BEANIE ODM BEST PRACTICES (MUST FOLLOW)

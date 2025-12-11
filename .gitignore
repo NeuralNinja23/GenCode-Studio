@@ -54,6 +54,10 @@ containers.json
 .agent
 .gemini
 
+# Allow specific files even in ignored directories
+!**/conftest.py
+!**/models.py
+
 # Logs
 *.log
 logs/
