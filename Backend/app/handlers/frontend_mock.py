@@ -22,6 +22,9 @@ from app.persistence import persist_agent_output
 from app.utils.parser import normalize_llm_output
 from app.orchestration.utils import pluralize
 
+# Centralized entity discovery for dynamic fallback
+from app.utils.entity_discovery import discover_primary_entity
+
 
 # Constants
 MAX_FILES_PER_STEP = 7  # Increased to 7 for package.json + output configs
@@ -77,9 +80,16 @@ async def step_frontend_mock(
     except Exception:
         pass
 
-    intent = WorkflowStateManager.get_intent(project_id) or {}
-    entities_list = intent.get("entities", ["item"])
-    primary_entity = entities_list[0] if entities_list else "item"
+    intent = await WorkflowStateManager.get_intent(project_id) or {}
+    entities_list = intent.get("entities", [])
+    
+    # Use centralized discovery as fallback instead of hardcoded "item"
+    if entities_list:
+        primary_entity = entities_list[0]
+    else:
+        entity_name, _ = discover_primary_entity(project_path)
+        primary_entity = entity_name if entity_name else "item"  # Last resort only
+    
     primary_entity_capitalized = primary_entity.capitalize()
     primary_entity_plural = pluralize(primary_entity)
     domain = intent.get("domain", "general")
@@ -360,7 +370,7 @@ Generate the CUSTOMIZED frontend for "{app_title}" now!
         parsed = result.get("output", {})
         if "files" in parsed and parsed["files"]:
             validated = validate_file_output(
-                parsed, WorkflowStep.FRONTEND_MOCK, max_files=6
+                parsed, WorkflowStep.FRONTEND_MOCK, max_files=10
             )
             files_written = await persist_agent_output(
                 manager,

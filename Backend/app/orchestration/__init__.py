@@ -39,6 +39,11 @@ from .budget_manager import (
     get_budget_manager,
     reset_budget_manager,
 )
+from .token_policy import (
+    get_tokens_for_step,
+    get_step_description,
+    STEP_TOKEN_POLICIES,
+)
 
 __all__ = [
     "FASTOrchestratorV2",
@@ -55,5 +60,9 @@ __all__ = [
     "StepPolicy",
     "get_budget_manager",
     "reset_budget_manager",
+    # Token policy (step-specific token allocation)
+    "get_tokens_for_step",
+    "get_step_description",
+    "STEP_TOKEN_POLICIES",
 ]
 

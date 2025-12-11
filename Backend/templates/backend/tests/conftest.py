@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
-from app.db import connect_db, disconnect_db
+from app.database import init_db, close_db
 
 @pytest.fixture(scope="session")
 def anyio_backend():
@@ -22,7 +22,6 @@ async def client(async_client):
 
 @pytest.fixture(scope="module", autouse=True)
 async def db_connection():
-    await connect_db()
+    await init_db()
     yield
-    await disconnect_db()
-
+    await close_db()

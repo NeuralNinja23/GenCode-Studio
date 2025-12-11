@@ -26,6 +26,14 @@ from app.orchestration.llm_output_integrity import LLMOutputIntegrity
 from app.orchestration.fallback_router_agent import FallbackRouterAgent
 from app.orchestration.fallback_api_agent import FallbackAPIAgent
 
+# CENTRALIZED ENTITY DISCOVERY (replaces duplicated methods)
+from app.utils.entity_discovery import (
+    discover_primary_entity,
+    discover_db_function,
+    discover_routers,
+    get_entity_plural,
+)
+
 
 class SelfHealingManager:
     """
@@ -58,113 +66,24 @@ class SelfHealingManager:
         self.fallback_api = FallbackAPIAgent()
 
     # ----------------------------------------------------------------
-    # DYNAMIC DISCOVERY METHODS
+    # DYNAMIC DISCOVERY METHODS (now using centralized utility)
     # ----------------------------------------------------------------
-    def _discover_primary_model(self) -> Tuple[str, str]:
-        """
-        Discover the primary model class from models.py.
-        
-        Returns:
-            Tuple of (model_name, entity_name) e.g. ("Task", "task")
-            Falls back to ("Item", "item") if nothing found.
-        """
-        models_path = self.project_path / "backend" / "app" / "models.py"
-        
-        if not models_path.exists():
-            log("HEAL", "⚠️ models.py not found, using default 'Item'")
-            return ("Item", "item")
-        
-        try:
-            content = models_path.read_text(encoding="utf-8")
-            
-            # Find all classes that inherit from Document (Beanie)
-            matches = re.findall(r"class\s+(\w+)\s*\(\s*Document\s*\)", content)
-            
-            if matches:
-                model_name = matches[0]  # First Document class is primary
-                entity_name = model_name.lower()
-                log("HEAL", f"🔍 Discovered primary model: {model_name}")
-                return (model_name, entity_name)
-            
-            # Fallback: any class definition
-            matches = re.findall(r"class\s+(\w+)\s*\(", content)
-            if matches:
-                model_name = matches[0]
-                entity_name = model_name.lower()
-                log("HEAL", f"🔍 Discovered model (non-Document): {model_name}")
-                return (model_name, entity_name)
-                
-        except Exception as e:
-            log("HEAL", f"⚠️ Error reading models.py: {e}")
-        
-        return ("Item", "item")
+    # NOTE: Removed duplicated _discover_primary_model, _discover_db_init_function,
+    # and _discover_routers methods. Now using app.utils.entity_discovery instead.
+    # This ensures consistent discovery logic across the entire codebase.
     
-    def _discover_db_init_function(self) -> str:
+    def _get_entity(self) -> Tuple[Optional[str], Optional[str]]:
         """
-        Discover the database initialization function name from database.py.
+        Get the primary entity using centralized discovery.
         
         Returns:
-            Function name (e.g., "init_db", "initiate_database", "init_beanie")
-            Falls back to "init_db" if nothing found.
+            Tuple of (entity_name, model_name) e.g. ("product", "Product")
+            Returns (None, None) if no entity found.
         """
-        db_path = self.project_path / "backend" / "app" / "database.py"
-        
-        if not db_path.exists():
-            log("HEAL", "⚠️ database.py not found, using default 'init_db'")
-            return "init_db"
-        
-        try:
-            content = db_path.read_text(encoding="utf-8")
-            
-            # Find async def functions that look like init functions
-            patterns = [
-                r"async\s+def\s+(init_\w+)\s*\(",         # init_db, init_database, init_beanie
-                r"async\s+def\s+(initiate_\w+)\s*\(",    # initiate_database
-                r"async\s+def\s+(setup_\w+)\s*\(",       # setup_database
-                r"async\s+def\s+(connect_\w+)\s*\(",     # connect_db
-            ]
-            
-            for pattern in patterns:
-                match = re.search(pattern, content)
-                if match:
-                    func_name = match.group(1)
-                    log("HEAL", f"🔍 Discovered db init function: {func_name}")
-                    return func_name
-            
-            # Fallback: any async def in the file
-            match = re.search(r"async\s+def\s+(\w+)\s*\(", content)
-            if match:
-                func_name = match.group(1)
-                log("HEAL", f"🔍 Discovered async function: {func_name}")
-                return func_name
-                
-        except Exception as e:
-            log("HEAL", f"⚠️ Error reading database.py: {e}")
-        
-        return "init_db"
-    
-    def _discover_routers(self) -> List[Tuple[str, str]]:
-        """
-        Discover all router files in the routers directory.
-        
-        Returns:
-            List of (filename_stem, module_name) e.g. [("tasks", "tasks"), ("users", "users")]
-        """
-        routers_dir = self.project_path / "backend" / "app" / "routers"
-        
-        if not routers_dir.exists():
-            log("HEAL", "⚠️ routers directory not found")
-            return []
-        
-        routers = []
-        for f in routers_dir.glob("*.py"):
-            if f.stem != "__init__":
-                routers.append((f.stem, f.stem))
-        
-        if routers:
-            log("HEAL", f"🔍 Discovered {len(routers)} routers: {[r[0] for r in routers]}")
-        
-        return routers
+        entity_name, model_name = discover_primary_entity(self.project_path)
+        if not entity_name:
+            log("HEAL", "⚠️ No entity found in project artifacts")
+        return (entity_name, model_name)
 
     # ----------------------------------------------------------------
     # HIGH-LEVEL REPAIR ENTRY POINT
@@ -199,9 +118,12 @@ class SelfHealingManager:
     def _repair_backend_router(self) -> bool:
         """Repair the backend router using LLM or fallback template."""
         
-        # DYNAMIC: Discover actual model name
-        model_name, entity_name = self._discover_primary_model()
-        entity_plural = entity_name + "s" if not entity_name.endswith("s") else entity_name
+        # DYNAMIC: Discover actual model name using centralized utility
+        entity_name, model_name = discover_primary_entity(self.project_path)
+        if not entity_name:
+            log("HEAL", "❌ Cannot repair router - no entity found!")
+            return False
+        entity_plural = get_entity_plural(entity_name)
         
         # Use entity-specific router path
         router_path = self.project_path / "backend" / "app" / "routers" / f"{entity_plural}.py"
@@ -235,9 +157,12 @@ class SelfHealingManager:
         """Repair the frontend API client using LLM or fallback template."""
         api_path = self.project_path / "frontend" / "src" / "lib" / "api.js"
         
-        # DYNAMIC: Get entity name for API endpoints
-        model_name, entity_name = self._discover_primary_model()
-        entity_plural = entity_name + "s" if not entity_name.endswith("s") else entity_name
+        # DYNAMIC: Get entity name using centralized utility
+        entity_name, model_name = discover_primary_entity(self.project_path)
+        if not entity_name:
+            log("HEAL", "❌ Cannot repair API client - no entity found!")
+            return False
+        entity_plural = get_entity_plural(entity_name)
         
         # Try LLM regeneration first
         if self.llm_caller:
@@ -279,20 +204,25 @@ class SelfHealingManager:
     # ----------------------------------------------------------------
     def _repair_backend_db(self) -> bool:
         """
-        Repair backend/app/db.py - the test wrapper required by conftest.py.
+        Repair backend/app/db.py - optional wrapper for legacy compatibility.
         
-        Tests import: from app.db import connect_db, disconnect_db
-        This file wraps database.py's init_db() function.
+        NOTE: The standardized pattern now uses app.database directly:
+        - conftest.py imports: from app.database import init_db, close_db
+        - This wrapper is for legacy support only.
         """
         db_path = self.project_path / "backend" / "app" / "db.py"
         
-        # DYNAMIC: Discover actual db init function
-        db_init_func = self._discover_db_init_function()
+        # DYNAMIC: Discover actual db init function using centralized utility
+        db_init_func = discover_db_function(self.project_path)
         
         template = f'''# backend/app/db.py
 """
-Database connection wrapper for testing.
-Tests use: from app.db import connect_db, disconnect_db
+Database connection wrapper (legacy compatibility).
+
+PREFERRED: Import directly from app.database:
+  from app.database import init_db, close_db
+
+This file exists for backwards compatibility only.
 """
 from app.database import {db_init_func}
 
@@ -307,11 +237,12 @@ async def disconnect_db():
     pass  # Motor handles connection cleanup automatically
 
 
+# Re-export for compatibility
 __all__ = ["connect_db", "disconnect_db"]
 '''
         
         self._write_file(db_path, template)
-        log("HEAL", "✅ Backend db.py written (connect_db/disconnect_db wrapper)")
+        log("HEAL", "✅ Backend db.py written (legacy wrapper)")
         return True
 
     # ----------------------------------------------------------------
@@ -374,11 +305,11 @@ Do NOT truncate output. Generate the COMPLETE file."""
         - Actual database init function name from database.py
         - Actual router files from routers/ directory
         """
-        # DYNAMIC: Discover actual db function name
-        db_init_func = self._discover_db_init_function()
+        # DYNAMIC: Discover actual db function name using centralized utility
+        db_init_func = discover_db_function(self.project_path)
         
-        # DYNAMIC: Discover actual routers
-        routers = self._discover_routers()
+        # DYNAMIC: Discover actual routers using centralized utility
+        routers = discover_routers(self.project_path)
         
         # Build router imports
         if routers:
@@ -392,14 +323,18 @@ Do NOT truncate output. Generate the COMPLETE file."""
             ])
         else:
             # Fallback: discover primary model and create router reference
-            model_name, entity_name = self._discover_primary_model()
-            entity_plural = entity_name + "s" if not entity_name.endswith("s") else entity_name
-            router_imports = f"from app.routers.{entity_plural} import router as {entity_plural}_router"
-            router_includes = f"app.include_router({entity_plural}_router, prefix=\"/api/{entity_plural}\", tags=[\"{entity_plural}\"])"
+            entity_name, model_name = discover_primary_entity(self.project_path)
+            if entity_name:
+                entity_plural = get_entity_plural(entity_name)
+                router_imports = f"from app.routers.{entity_plural} import router as {entity_plural}_router"
+                router_includes = f"app.include_router({entity_plural}_router, prefix=\"/api/{entity_plural}\", tags=[\"{entity_plural}\"])"
+            else:
+                router_imports = "# No routers found"
+                router_includes = "# No routers to include"
         
-        # Get primary entity for API title
-        model_name, entity_name = self._discover_primary_model()
-        api_title = f"{model_name}s API"
+        # Get primary entity for API title using centralized utility
+        entity_name, model_name = discover_primary_entity(self.project_path)
+        api_title = f"{model_name}s API" if model_name else "GenCode API"
         
         return f'''# backend/app/main.py
 """

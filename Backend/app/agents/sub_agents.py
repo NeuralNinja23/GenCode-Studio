@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
 from app.core.types import ChatMessage
-from app.core.constants import DEFAULT_MAX_TOKENS, TEST_FILE_MIN_TOKENS
+from app.core.constants import TEST_FILE_MIN_TOKENS
 from app.llm.prompts.derek import DEREK_PROMPT
 from app.llm.prompts.luna import LUNA_PROMPT
 from app.llm.prompts.victoria import VICTORIA_PROMPT
@@ -72,12 +72,19 @@ async def _llm_generate_tests(
 
     # Collect lightweight context (file list + a few file contents)
     p = Path(project_path)
-    file_list: List[str] = []
-    for root, _, files in os.walk(p):
-        for f in files:
-            if f.endswith((".py", ".js", ".jsx", ".ts", ".tsx", ".json")):
-                rel = os.path.relpath(os.path.join(root, f), project_path)
-                file_list.append(rel)
+    
+    # FIX ASYNC-001: Wrap blocking os.walk in thread pool
+    def _collect_files_sync():
+        file_list = []
+        for root, _, files in os.walk(p):
+            for f in files:
+                if f.endswith((".py", ".js", ".jsx", ".ts", ".tsx", ".json")):
+                    rel = os.path.relpath(os.path.join(root, f), project_path)
+                    file_list.append(rel)
+        return file_list
+
+    file_list = await asyncio.to_thread(_collect_files_sync)
+    
     sample_context: Dict[str, str] = {}
     for f in file_list[:10]:
         try:
@@ -155,18 +162,31 @@ def _write_tests_to_workspace(project_path: str, tests: List[Dict[str, str]]) ->
     return written
 
 
-def _run_pytest(project_path: str, test_paths: Optional[List[str]] = None, timeout: int = 60) -> Dict[str, Any]:
+async def _run_pytest(project_path: str, test_paths: Optional[List[str]] = None, timeout: int = 60) -> Dict[str, Any]:
     """
-    Run pytest programmatically via subprocess.
+    Run pytest programmatically via async subprocess.
     Returns structured dict: passed(bool), failures(list), output(str)
     """
     cmd = ["pytest", "-q"]
     if test_paths:
         cmd.extend(test_paths)
     try:
-        proc = subprocess.run(cmd, cwd=project_path, capture_output=True, text=True, timeout=timeout)
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
+        # FIX ASYNC-001: Use async subprocess instead of blocking subprocess.run
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=project_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
+            stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return {"passed": False, "failures": [{"description": "pytest timeout"}], "output": "", "returncode": None}
+        
         output = stdout + ("\nSTDERR:\n" + stderr if stderr else "")
         passed = proc.returncode == 0
         failures: List[Dict[str, Any]] = []
@@ -181,24 +201,35 @@ def _run_pytest(project_path: str, test_paths: Optional[List[str]] = None, timeo
         return {"passed": passed, "failures": failures, "output": output, "returncode": proc.returncode}
     except FileNotFoundError:
         return {"passed": False, "failures": [{"description": "pytest not installed"}], "output": "pytest not found on PATH", "returncode": None}
-    except subprocess.TimeoutExpired as e:
-        return {"passed": False, "failures": [{"description": "pytest timeout", "exception": str(e)}], "output": "", "returncode": None}
     except Exception as e:
         return {"passed": False, "failures": [{"description": "pytest run failed", "exception": str(e)}], "output": "", "returncode": None}
 
 
-def _run_playwright(project_path: str, test_paths: Optional[List[str]] = None, timeout: int = 120) -> Dict[str, Any]:
+async def _run_playwright(project_path: str, test_paths: Optional[List[str]] = None, timeout: int = 120) -> Dict[str, Any]:
     """
-    Try to run playwright tests via CLI 'playwright test'.
+    Try to run playwright tests via CLI 'playwright test' (async).
     Returns structured dict similar to pytest runner.
     """
     cmd = ["playwright", "test"]
     if test_paths:
         cmd.extend(test_paths)
     try:
-        proc = subprocess.run(cmd, cwd=project_path, capture_output=True, text=True, timeout=timeout)
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
+        # FIX ASYNC-001: Use async subprocess instead of blocking subprocess.run
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=project_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
+            stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return {"passed": False, "failures": [{"description": "playwright timeout"}], "output": "", "returncode": None}
+        
         output = stdout + ("\nSTDERR:\n" + stderr if stderr else "")
         passed = proc.returncode == 0
         failures: List[Dict[str, Any]] = []
@@ -210,8 +241,6 @@ def _run_playwright(project_path: str, test_paths: Optional[List[str]] = None, t
         return {"passed": passed, "failures": failures, "output": output, "returncode": proc.returncode}
     except FileNotFoundError:
         return {"passed": False, "failures": [{"description": "playwright not installed"}], "output": "playwright not found on PATH", "returncode": None}
-    except subprocess.TimeoutExpired as e:
-        return {"passed": False, "failures": [{"description": "playwright timeout", "exception": str(e)}], "output": "", "returncode": None}
     except Exception as e:
         return {"passed": False, "failures": [{"description": "playwright run failed", "exception": str(e)}], "output": "", "returncode": None}
 
@@ -244,9 +273,9 @@ async def run_sub_agent(
 
         # Run according to runner hint
         if runner_hint and "playwright" in runner_hint.lower():
-            run_result = _run_playwright(project_path, test_paths)
+            run_result = await _run_playwright(project_path, test_paths)
         else:
-            run_result = _run_pytest(project_path, test_paths)
+            run_result = await _run_pytest(project_path, test_paths)
 
         issues = []
         if not run_result.get("passed"):
@@ -335,11 +364,12 @@ async def marcus_call_sub_agent(
         )
 
         # ============================================================
-        # MAX TOKENS - Now controlled by BudgetManager
+        # MAX TOKENS - Step-specific token policies (Option 3 #7)
         # ============================================================
-        # Token limits are now managed by BudgetManager.get_step_policy()
-        # Using conservative default here, orchestrator can override
-        max_tokens = 10000 if not is_retry else 12000
+        # Use centralized token policy system for step-aware allocation
+        from app.orchestration.token_policy import get_tokens_for_step
+        
+        max_tokens = get_tokens_for_step(step_name, is_retry=is_retry)
 
         print(f"[marcus_call_sub_agent] Calling {agent_name} (retry={is_retry}) with max_tokens={max_tokens}")
         print(f"[OPTIMIZATION] Core prompt: ~{len(core_prompt)//4} tokens, Context: ~{len(dynamic_context)//4} tokens")

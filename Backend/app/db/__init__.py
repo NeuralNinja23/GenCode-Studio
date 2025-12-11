@@ -24,7 +24,12 @@ async def connect_db():
         
         mongo_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
         _client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-        _db = _client.gencode
+
+        # FIX DB-001: Robust database name parsing
+        try:
+            _db = _client.get_default_database()
+        except Exception:
+            _db = _client.gencode
         
         # Test connection - this will fail fast if MongoDB is not running
         await _client.admin.command("ping")
@@ -33,10 +38,12 @@ async def connect_db():
         # Initialize Beanie
         from beanie import init_beanie
         from app.models import Project, WorkflowStepRecord, Snapshot
+        from app.models.deployment import Deployment
+        from app.models.workflow import WorkflowSession
         
         await init_beanie(
             database=_db,
-            document_models=[Project, WorkflowStepRecord, Snapshot]
+            document_models=[Project, WorkflowStepRecord, Snapshot, Deployment, WorkflowSession]
         )
         print("✅ [DB] Beanie ODM Initialized")
         _connection_error = None

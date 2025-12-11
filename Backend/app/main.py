@@ -12,7 +12,13 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, JSONResponse
+
+# Rate limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -95,6 +101,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate Limiting - protect against API abuse
+# Default: 100 requests per minute per IP
+# Configure via RATE_LIMIT env var (e.g., "50/minute")
+rate_limit = os.getenv("RATE_LIMIT", "100/minute")
+limiter = Limiter(key_func=get_remote_address, default_limits=[rate_limit])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+print(f"🛡️ [SECURITY] Rate limiting enabled: {rate_limit}")
 
 
 # ---------------------------------------------------------------------------

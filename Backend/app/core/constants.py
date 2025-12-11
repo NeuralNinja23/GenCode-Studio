@@ -57,10 +57,21 @@ class WorkflowStep:
 
 
 # LLM Configuration
-# PHASE 5 OPTIMIZATION: Reduced to force conciseness (5-10% token savings)
-# Previous: 16000, New: 10000 (agents must be more concise)
+# ═══════════════════════════════════════════════════════
+# ⚠️ DEPRECATION NOTICE: These constants are kept for backwards compatibility only.
+# 
+# USE app.orchestration.token_policy.get_tokens_for_step() instead!
+# Different workflow steps need different token budgets:
+#   - Analysis/Contracts: 8,000 tokens
+#   - Frontend Mock: 12,000 tokens  
+#   - Backend Implementation: 20,000 tokens (Models + Routers + Manifest)
+#   - Testing: 12,000-14,000 tokens
+# 
+# See: app/orchestration/token_policy.py
+# ═══════════════════════════════════════════════════════
+
+# Fallback defaults (only used by code that hasn't migrated to token_policy yet)
 DEFAULT_MAX_TOKENS = 10000
-# Previous: 20000, New: 12000 (test files still get more tokens but optimized)
 TEST_FILE_MIN_TOKENS = 12000
 
 # Agent Names

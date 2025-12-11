@@ -25,12 +25,12 @@ CONTEXT_COMPRESSION_THRESHOLD = int(os.getenv("CONTEXT_COMPRESSION_THRESHOLD", "
 # Database path
 MEMORY_DB_PATH_TEMPLATE = os.getenv("MEMORY_DB_PATH_TEMPLATE", "data/memory_{project_id}.db")
 
-# Sample Models (Reference)
+# Sample Models (Reference) - Updated for 2024-2025
 AVAILABLE_MODELS = {
-    "gemini": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
-    "openai": ["gpt-5", "gpt-4o-mini"],
-    "anthropic": ["claude-3.5-sonnet", "claude-3.5-opus"],
-    "ollama": ["qwen2.5-coder:7b", "mistral", "codellama"],
+    "gemini": ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"],
+    "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+    "anthropic": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-haiku-20240307"],
+    "ollama": ["qwen2.5-coder:7b", "mistral", "codellama", "llama3.1"],
 }
 
 

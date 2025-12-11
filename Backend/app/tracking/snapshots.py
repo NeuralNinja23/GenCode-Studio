@@ -3,6 +3,7 @@
 Workflow snapshots for rollback.
 """
 import os
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -24,19 +25,8 @@ class Snapshot:
 _project_snapshots: Dict[str, List[Snapshot]] = {}
 
 
-def save_snapshot(
-    project_id: str,
-    project_path: Path,
-    step_name: str,
-    agent_name: str,
-    quality_score: int,
-    approved: bool,
-) -> None:
-    """Save a snapshot of current project state."""
-    if project_id not in _project_snapshots:
-        _project_snapshots[project_id] = []
-    
-    # Collect current files
+def _collect_files_sync(project_path: Path) -> Dict[str, str]:
+    """Synchronous file collection helper (to be run in thread pool)."""
     files = {}
     try:
         for root, _, filenames in os.walk(project_path):
@@ -48,10 +38,25 @@ def save_snapshot(
                         files[rel_path] = filepath.read_text(encoding='utf-8')
                     except (UnicodeDecodeError, PermissionError) as e:
                         print(f"[SNAPSHOT] Warning: Skipping file {rel_path}: {e}")
-                        pass
     except Exception as e:
         print(f"[SNAPSHOT] Checkpoint creation failed: {e}")
-        pass
+    return files
+
+
+async def save_snapshot(
+    project_id: str,
+    project_path: Path,
+    step_name: str,
+    agent_name: str,
+    quality_score: int,
+    approved: bool,
+) -> None:
+    """Save a snapshot of current project state (async-safe)."""
+    if project_id not in _project_snapshots:
+        _project_snapshots[project_id] = []
+    
+    # FIX ASYNC-001: Run blocking os.walk in thread pool to not block event loop
+    files = await asyncio.to_thread(_collect_files_sync, project_path)
     
     snapshot = Snapshot(
         step_name=step_name,

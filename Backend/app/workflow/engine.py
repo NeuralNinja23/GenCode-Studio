@@ -183,7 +183,7 @@ class WorkflowEngine:
         """Pause the workflow for user input."""
         log("WORKFLOW", f"Pausing at {self.current_step}")
         
-        WorkflowStateManager.pause_workflow(
+        await WorkflowStateManager.pause_workflow(
             self.project_id,
             self.current_step,
             self.current_turn,
@@ -266,8 +266,16 @@ async def run_workflow(
         log("WORKFLOW", f"⚠️ Workflow already running for {project_id}, ignoring duplicate request", project_id=project_id)
         return
     
-    # Create project directory
-    project_path = workspaces_path / project_id
+    # Create project directory (Atomic scaffolding)
+    final_project_path = workspaces_path / project_id
+    
+    # FIX ATOMIC-001: Use temporary directory until scaffolding is complete
+    # This prevents broken project state if scaffolding fails halfway
+    temp_dir_name = f".tmp_scaffold_{project_id}"
+    project_path = workspaces_path / temp_dir_name
+    if project_path.exists():
+        import shutil
+        shutil.rmtree(project_path)
     project_path.mkdir(parents=True, exist_ok=True)
     
     # ============================================================
@@ -327,17 +335,27 @@ async def run_workflow(
                  shutil.copytree(item, frontend_dest / "public", dirs_exist_ok=True)
 
         # --- Docker Infrastructure ---
+        # FIX: Align with new template structure (backend/Dockerfile, frontend/Dockerfile)
+        
+        # 1. Backend Docker Config
+        backend_tmpl = base_templates / "backend"
+        if (backend_tmpl / "Dockerfile").exists():
+             shutil.copy2(backend_tmpl / "Dockerfile", backend_dest / "Dockerfile")
+        if (backend_tmpl / ".dockerignore").exists():
+             shutil.copy2(backend_tmpl / ".dockerignore", backend_dest / ".dockerignore")
+             
+        # 2. Frontend Docker Config
+        frontend_tmpl = base_templates / "frontend"
+        if (frontend_tmpl / "Dockerfile").exists():
+             shutil.copy2(frontend_tmpl / "Dockerfile", frontend_dest / "Dockerfile")
+        if (frontend_tmpl / ".dockerignore").exists():
+             shutil.copy2(frontend_tmpl / ".dockerignore", frontend_dest / ".dockerignore")
+
+        # 3. Root Docker Compose
         docker_tmpl = base_templates / "docker"
         if docker_tmpl.exists():
-            if (docker_tmpl / "Dockerfile.backend").exists():
-                shutil.copy2(docker_tmpl / "Dockerfile.backend", backend_dest / "Dockerfile")
-            if (docker_tmpl / "Dockerfile.frontend").exists():
-                shutil.copy2(docker_tmpl / "Dockerfile.frontend", frontend_dest / "Dockerfile")
             if (docker_tmpl / "docker-compose.yml").exists():
                  shutil.copy2(docker_tmpl / "docker-compose.yml", project_path / "docker-compose.yml")
-            if (docker_tmpl / ".dockerignore").exists():
-                shutil.copy2(docker_tmpl / ".dockerignore", backend_dest / ".dockerignore")
-                shutil.copy2(docker_tmpl / ".dockerignore", frontend_dest / ".dockerignore")
             
             # Create frontend/.env with VITE_API_URL
             frontend_env_content = """# Frontend Environment Variables
@@ -347,9 +365,25 @@ VITE_API_URL=http://localhost:8001/api
             (frontend_dest / ".env").write_text(frontend_env_content, encoding="utf-8")
         
         log("WORKFLOW", f"[{project_id}] Golden Seed Scaffolding Complete")
+        
+        # FIX ATOMIC-001: Commit atomic scaffolding
+        if final_project_path.exists():
+            shutil.rmtree(final_project_path)
+        shutil.move(str(project_path), str(final_project_path))
+        project_path = final_project_path  # Point to real path for engine
             
     except Exception as e:
         log("WORKFLOW", f"Failed to scaffold project: {e}")
+        # Cleanup temp
+        if project_path.exists() and "tmp_scaffold" in str(project_path):
+             try:
+                 shutil.rmtree(project_path)
+             except:
+                 pass
+        
+        # Don't proceed if scaffolding failed
+        await WorkflowStateManager.stop_workflow(project_id)
+        return
 
     # ============================================================
     # ENGINE SELECTION: FAST V2 (Hybrid Adaptive)
@@ -398,12 +432,12 @@ async def resume_workflow(
     - If project exists but not paused: Start refine workflow
     - If project doesn't exist: Log warning and return
     """
-    paused = WorkflowStateManager.get_paused_state(project_id)
+    paused = await WorkflowStateManager.get_paused_state(project_id)
     
     if paused:
         # Resume from saved state
         log("WORKFLOW", f"Resuming paused workflow for {project_id}")
-        WorkflowStateManager.resume_workflow(project_id)
+        await WorkflowStateManager.resume_workflow(project_id)
         
         engine = WorkflowEngine(
             project_id=project_id,

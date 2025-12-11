@@ -9,6 +9,9 @@ import glob
 
 from app.core.logging import log
 
+# Centralized entity discovery for dynamic fallback
+from app.utils.entity_discovery import discover_primary_entity
+
 
 # Define which files are relevant for each step
 # Define which files are relevant for each step
@@ -135,7 +138,7 @@ def get_relevant_files(
     return ""
 
 
-def get_entity_context(project_id: str, user_request: str = "") -> str:
+def get_entity_context(project_id: str, user_request: str = "", project_path: Path = None) -> str:
     """
     Get entity-specific context for agents.
     Tells them what the primary entity is and where to find/create related files.
@@ -144,7 +147,15 @@ def get_entity_context(project_id: str, user_request: str = "") -> str:
     
     intent = WorkflowStateManager.get_intent(project_id) or {}
     entities = intent.get("entities", [])
-    primary_entity = entities[0] if entities else "item"
+    
+    # Use centralized discovery as fallback instead of hardcoded "item"
+    if entities:
+        primary_entity = entities[0]
+    elif project_path:
+        entity_name, _ = discover_primary_entity(project_path)
+        primary_entity = entity_name if entity_name else "item"  # Last resort
+    else:
+        primary_entity = "item"  # No project path available
     
     # Smart pluralization
     if primary_entity.endswith("s"):
@@ -224,7 +235,7 @@ class CrossStepContext:
     
     Usage:
         ctx = CrossStepContext(project_id)
-        ctx.record_step_completion("backend_models", {"entity": "Note", "fields": ["title", "content"]})
+        ctx.record_step_completion("backend_models", {"entity": "product", "fields": ["name", "price"]})
         
         # Later step can get summary:
         summary = ctx.get_summary_for_step("backend_routers")

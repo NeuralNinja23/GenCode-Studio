@@ -13,12 +13,9 @@ from typing import Dict, Any, Optional, Union, List
 from datetime import datetime, timezone
 import traceback
 
-# yaml import removed - was unused
-
 from .sandbox_config import SandboxConfig
 from .health_monitor import HealthMonitor
 from .log_streamer import LogStreamer
-# Firecracker removed - using Docker Compose for WSL2 compatibility
 
 # Note: PROTECTED_FILES is imported from app.core.constants if needed
 
@@ -318,36 +315,40 @@ class SandboxManager:
         full_cmd = f'{base} -f "{compose_file}" {command}'
 
         try:
-            result = subprocess.run(
+            # FIX ASYNC-001: Use asyncio.create_subprocess_shell instead of blocking subprocess.run
+            proc = await asyncio.create_subprocess_shell(
                 full_cmd,
-                shell=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                capture_output=True,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 cwd=str(project_path),
-                timeout=timeout,
             )
+            
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=timeout
+                )
+                stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
+                stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return {
+                    "returncode": -1,
+                    "stdout": "",
+                    "stderr": "[Sandbox] docker compose command timed out.",
+                }
+            
             return {
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
+                "returncode": proc.returncode,
+                "stdout": stdout,
+                "stderr": stderr,
             }
-        except subprocess.TimeoutExpired as e:
-            raw_stdout = getattr(e, "stdout", "") or ""
-            raw_stderr = getattr(e, "stderr", "") or ""
-
-            if isinstance(raw_stdout, bytes):
-                raw_stdout = raw_stdout.decode("utf-8", "replace")
-            if isinstance(raw_stderr, bytes):
-                raw_stderr = raw_stderr.decode("utf-8", "replace")
-
-            stderr = raw_stderr + "\n[Sandbox] docker compose command timed out."
-
+        except Exception as e:
             return {
                 "returncode": -1,
-                "stdout": raw_stdout,
-                "stderr": stderr,
+                "stdout": "",
+                "stderr": f"Error executing docker compose: {e}",
             }
 
     async def _get_compose_logs(self, project_path: Path) -> str:
@@ -399,16 +400,67 @@ class SandboxManager:
             return self._compose_cmd
 
         try:
-            subprocess.run(
+            # FIX ASYNC-001: This is called once at startup, keeping sync for simplicity
+            result = subprocess.run(
                 ["docker", "compose", "version"],
                 capture_output=True,
                 check=True,
+                timeout=5,
             )
             self._compose_cmd = "docker compose"
         except Exception:
             self._compose_cmd = "docker-compose"
 
         return self._compose_cmd
+
+    async def _get_project_containers_async(self, project_id: str) -> Dict[str, Dict[str, Any]]:
+        """Async version of _get_project_containers."""
+        containers: Dict[str, Dict[str, Any]] = {}
+        try:
+            # FIX ASYNC-001: Use asyncio subprocess for container lookup
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "ps",
+                "--filter", f"name={project_id}",
+                "--format", "{{json .}}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            
+            try:
+                stdout_bytes, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+                stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return containers
+            
+            for line in stdout.splitlines():
+                try:
+                    data = json.loads(line)
+                except Exception:
+                    continue
+
+                container_name = data.get("Names", "")
+                service_name = "unknown"
+                if "-backend-" in container_name:
+                    service_name = "backend"
+                elif "-frontend-" in container_name:
+                    service_name = "frontend"
+
+                cid = data.get("ID", "")
+                containers[service_name] = {
+                    "id": cid,
+                    "short_id": cid[:12],
+                    "name": container_name,
+                    "status": data.get("Status"),
+                    "ports": data.get("Ports", ""),
+                }
+
+        except Exception as e:
+            print(f"[SANDBOX] CRITICAL ERROR getting containers for {project_id}: {e}")
+            traceback.print_exc()
+        
+        return containers
 
     def _get_project_containers(self, project_id: str) -> Dict[str, Dict[str, Any]]:
         containers: Dict[str, Dict[str, Any]] = {}
@@ -464,7 +516,7 @@ class SandboxManager:
         command: str,
         timeout: int = 30,
     ) -> Dict[str, Any]:
-        """Execute a command inside a service container (Docker)."""
+        """Execute a command inside a service container (Docker) - async version."""
         try:
             if project_id not in self.active_sandboxes:
                 return {"success": False, "error": f"Sandbox {project_id} not found"}
@@ -479,31 +531,38 @@ class SandboxManager:
             # Use -w /app to ensure commands run from the correct working directory
             full_cmd = f"docker exec -w /app {container_id} {command}"
 
-            result = subprocess.run(
+            # FIX ASYNC-001: Use async subprocess instead of blocking subprocess.run
+            proc = await asyncio.create_subprocess_shell(
                 full_cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
+            
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=timeout
+                )
+                stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
+                stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return {
+                    "success": False,
+                    "stdout": "",
+                    "stderr": "",
+                    "error": f"Command timed out after {timeout}s",
+                    "returncode": -1,
+                }
 
             return {
-                "success": result.returncode == 0,
-                "stdout": result.stdout or "",
-                "stderr": result.stderr or "",
-                "returncode": result.returncode,
+                "success": proc.returncode == 0,
+                "stdout": stdout,
+                "stderr": stderr,
+                "returncode": proc.returncode,
             }
 
-        except subprocess.TimeoutExpired as e:
-            return {
-                "success": False,
-                "stdout": (e.stdout or "") if hasattr(e, "stdout") else "",
-                "stderr": (e.stderr or "") if hasattr(e, "stderr") else "",
-                "error": f"Command timed out after {timeout}s",
-                "returncode": -1,
-            }
         except Exception as e:
             print(f"[SANDBOX] ERROR executing command in container: {e}")
             traceback.print_exc()

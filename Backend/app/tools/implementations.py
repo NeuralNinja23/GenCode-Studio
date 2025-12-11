@@ -49,6 +49,69 @@ from app.core.logging import log
 
 
 # =====================================================================
+# FIX ASYNC-001: Async subprocess helper to avoid blocking event loop
+# =====================================================================
+async def _async_run_command(
+    cmd: Union[str, List[str]],
+    cwd: str = ".",
+    timeout: int = 60,
+    shell: bool = True,
+) -> Dict[str, Any]:
+    """
+    Run a command asynchronously using asyncio.create_subprocess_shell/exec.
+    Returns dict with success, stdout, stderr, returncode.
+    """
+    try:
+        if shell:
+            proc = await asyncio.create_subprocess_shell(
+                cmd if isinstance(cmd, str) else " ".join(cmd),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+        else:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd if isinstance(cmd, list) else cmd.split(),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+        
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=timeout
+            )
+            stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
+            stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "returncode": -1,
+                "error": f"Command timed out after {timeout}s",
+            }
+        
+        return {
+            "success": proc.returncode == 0,
+            "stdout": stdout,
+            "stderr": stderr,
+            "returncode": proc.returncode,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": str(e),
+            "returncode": -1,
+            "error": str(e),
+        }
+
+
+# =====================================================================
 # Enum – All supported tools
 # =====================================================================
 class GenCodeTool(str, Enum):
@@ -380,39 +443,22 @@ async def tool_code_viewer(args: Dict[str, Any]) -> Dict[str, Any]:
 # EXECUTION TOOLS
 # =====================================================================
 async def tool_bash_runner(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Run a shell command with timeout."""
+    """Run a shell command with timeout (async, non-blocking)."""
     cmd = args.get("command", "")
     cwd = args.get("cwd", ".")
-    timeout_val = int(args.get("timeout", 60))  # define outside try for Pylance
+    timeout_val = int(args.get("timeout", 60))
 
-    try:
-        if not cmd:
-            return {"success": False, "error": "No command provided"}
+    if not cmd:
+        return {"success": False, "error": "No command provided"}
 
-        result = subprocess.run(
-            cmd,
-            shell=True,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_val,
-        )
-
-        return {
-            "success": result.returncode == 0,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode,
-            "command": cmd,
-        }
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": f"Command timed out after {timeout_val}s"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    # FIX ASYNC-001: Use async subprocess instead of blocking subprocess.run
+    result = await _async_run_command(cmd, cwd=cwd, timeout=timeout_val)
+    result["command"] = cmd
+    return result
 
 
 async def tool_python_executor(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute a snippet of Python code in a temp file."""
+    """Execute a snippet of Python code in a temp file (async, non-blocking)."""
     try:
         code = args.get("code", "")
         if not code:
@@ -424,49 +470,26 @@ async def tool_python_executor(args: Dict[str, Any]) -> Dict[str, Any]:
             f.write(code)
             temp_path = f.name
 
-        result = subprocess.run(
-            ["python", temp_path],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
+        # FIX ASYNC-001: Use async subprocess
+        result = await _async_run_command(f"python {temp_path}", timeout=30)
 
         Path(temp_path).unlink(missing_ok=True)
-
-        return {
-            "success": result.returncode == 0,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode,
-        }
+        return result
 
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
 async def tool_npm_runner(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Run an npm command, e.g. 'install', 'run build', etc."""
+    """Run an npm command, e.g. 'install', 'run build', etc. (async, non-blocking)."""
     try:
         cmd = args.get("command")
         cwd = args.get("cwd", ".")
         if not cmd:
             return {"success": False, "error": "Missing npm command"}
 
-        result = subprocess.run(
-            f"npm {cmd}",
-            shell=True,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-
-        return {
-            "success": result.returncode == 0,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode,
-        }
+        # FIX ASYNC-001: Use async subprocess
+        return await _async_run_command(f"npm {cmd}", cwd=cwd, timeout=300)
 
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -476,7 +499,7 @@ async def tool_npm_runner(args: Dict[str, Any]) -> Dict[str, Any]:
 # TESTING TOOLS
 # =====================================================================
 async def tool_pytest_runner(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Run pytest in a given directory."""
+    """Run pytest in a given directory (async, non-blocking)."""
     try:
         test_path = args.get("test_path", "tests/")
         cwd = args.get("cwd", ".")
@@ -486,51 +509,24 @@ async def tool_pytest_runner(args: Dict[str, Any]) -> Dict[str, Any]:
         if verbose:
             cmd += " -v"
 
-        result = subprocess.run(
-            cmd,
-            shell=True,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=90,
-        )
+        # FIX ASYNC-001: Use async subprocess
+        result = await _async_run_command(cmd, cwd=cwd, timeout=90)
+        result["tests_passed"] = "failed" not in result.get("stdout", "").lower()
+        return result
 
-        return {
-            "success": result.returncode == 0,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode,
-            "tests_passed": ("failed" not in result.stdout.lower()),
-        }
-
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": "pytest timed out"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
 async def tool_playwright_runner(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Run Playwright E2E tests."""
+    """Run Playwright E2E tests (async, non-blocking)."""
     try:
         test_file = args.get("test_file", "tests/e2e.spec.js")
         cwd = args.get("cwd", ".")
 
         cmd = f"npx playwright test {test_file}"
-        result = subprocess.run(
-            cmd,
-            shell=True,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-
-        return {
-            "success": result.returncode == 0,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode,
-        }
+        # FIX ASYNC-001: Use async subprocess
+        return await _async_run_command(cmd, cwd=cwd, timeout=180)
 
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -1038,53 +1034,29 @@ async def tool_db_query_runner(args: Dict[str, Any]) -> Dict[str, Any]:
 # DEPLOYMENT TOOLS
 # =====================================================================
 async def tool_docker_builder(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Build a Docker image using docker CLI."""
+    """Build a Docker image using docker CLI (async, non-blocking)."""
     try:
         dockerfile_path = args.get("dockerfile_path", "Dockerfile")
         image_name = args.get("image_name", "app_image")
         cwd = args.get("cwd", ".")
 
         cmd = f"docker build -t {image_name} -f {dockerfile_path} ."
-        result = subprocess.run(
-            cmd,
-            shell=True,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-
-        return {
-            "success": result.returncode == 0,
-            "image_name": image_name,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode,
-        }
+        # FIX ASYNC-001: Use async subprocess
+        result = await _async_run_command(cmd, cwd=cwd, timeout=300)
+        result["image_name"] = image_name
+        return result
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
 async def tool_vercel_deployer(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Deploy a project using `vercel --prod`."""
+    """Deploy a project using `vercel --prod` (async, non-blocking)."""
     try:
         project_path = args.get("project_path", ".")
-        result = subprocess.run(
-            "vercel --prod",
-            shell=True,
-            cwd=project_path,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-
-        return {
-            "success": result.returncode == 0,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "message": "Vercel deployment executed",
-            "returncode": result.returncode,
-        }
+        # FIX ASYNC-001: Use async subprocess
+        result = await _async_run_command("vercel --prod", cwd=project_path, timeout=300)
+        result["message"] = "Vercel deployment executed"
+        return result
     except Exception as e:
         return {"success": False, "error": str(e)}
 

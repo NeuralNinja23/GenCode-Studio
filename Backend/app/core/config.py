@@ -49,10 +49,12 @@ class SandboxSettings:
 class PathSettings:
     """Path configuration."""
     base_dir: Path = field(default_factory=lambda: Path(__file__).parent.parent.parent.parent)
-    workspaces_dir: Path = field(default_factory=lambda: Path(os.getenv(
-        "WORKSPACES_DIR", 
+    # FIX ENV-001: Accept both WORKSPACES_DIR (preferred) and WORKSPACES_PATH (legacy from .env.example)
+    workspaces_dir: Path = field(default_factory=lambda: Path(
+        os.getenv("WORKSPACES_DIR") or 
+        os.getenv("WORKSPACES_PATH") or
         str(Path(__file__).parent.parent.parent.parent / "workspaces")
-    )))
+    ))
     # NOTE: Using 'Frontend' (capitalized) for cross-platform compatibility
     # Windows is case-insensitive, but Linux/Mac are case-sensitive
     frontend_dist: Path = field(default_factory=lambda: Path(os.getenv(

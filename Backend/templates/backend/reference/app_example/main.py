@@ -10,17 +10,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .db import connect_db, disconnect_db
+from .database import init_db, close_db
 from .routers_tasks import router as tasks_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_db()
+    await init_db()
     try:
         yield
     finally:
-        await disconnect_db()
+        await close_db()
 
 
 app = FastAPI(

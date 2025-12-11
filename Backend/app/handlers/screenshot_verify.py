@@ -161,7 +161,7 @@ async def step_screenshot_verify(
     code_samples_str = "\n".join(frontend_code_samples)
     
     # Get UI vibe from intent
-    intent = WorkflowStateManager.get_intent(project_id) or {}
+    intent = await WorkflowStateManager.get_intent(project_id) or {}
     ui_vibe = ((intent.get("uiVibeRouting") or {}).get("top")) or "unknown"
     
     # Build Marcus UI Critic prompt

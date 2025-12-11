@@ -53,8 +53,8 @@ class FilePersistence:
             if os.path.exists(tmp):
                 try:
                     os.remove(tmp)
-                except:
-                    pass
+                except OSError:
+                    pass  # Temp file cleanup is best-effort
             return False
 
     def read(self, path: str) -> Optional[str]:

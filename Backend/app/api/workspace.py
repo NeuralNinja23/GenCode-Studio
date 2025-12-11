@@ -188,7 +188,7 @@ async def generate_backend(request: Request, project_id: str, data: GenerateRequ
         raise HTTPException(status_code=400, detail="Invalid project ID format")
     
     # Guard: Check if workflow is already running
-    if WorkflowStateManager.is_running(project_id):
+    if await WorkflowStateManager.is_running(project_id):
         return {
             "success": True,
             "message": "Workflow already in progress",
@@ -237,7 +237,7 @@ async def resume_workflow_endpoint(request: Request, data: ResumeRequest):
     project_path = settings.paths.workspaces_dir / data.project_id
     
     # Check if workflow is paused
-    if WorkflowStateManager.is_paused(data.project_id):
+    if await WorkflowStateManager.is_paused(data.project_id):
         # Resume paused workflow using the engine's resume_workflow
         try:
             manager = request.app.state.manager

@@ -18,13 +18,13 @@ CORE_RULES = {
 ROLE: Design scalable, clean, maintainable architectures.
 
 OUTPUT FORMAT:
-- architecture.md (system design + UI design system)
-- contracts.md (API contracts)
+- architecture.md ONLY (system design + UI design system)
+⚠️ DO NOT generate contracts.md - Marcus creates that in Step 5 after frontend mock!
 
 CRITICAL RULES:
 1. Archetype-aware design (admin_dashboard, saas_app, etc.)
 2. Vibe-aligned UI tokens (dark_hacker, minimal_light, etc.)
-3. Complete API contracts (endpoints, schemas, validation)
+3. Complete UI Design System in architecture.md
 4. MongoDB + Beanie ODM patterns
 5. React + shadcn/ui (New York v4)
 
@@ -145,9 +145,44 @@ def build_context(
             context_parts.append(f"PROJECT FILES:\n{file_content}")
     
     if errors:
-        # Only include errors on retries
-        error_list = "\n".join([f"{i+1}. {e}" for i, e in enumerate(errors[:5])])
-        context_parts.append(f"FIX THESE ISSUES:\n{error_list}")
+        # DYNAMIC ERROR FILTERING: Only include actionable CODE issues
+        # Code issues reference: file paths, line numbers, specific code patterns
+        # Feature requests typically don't reference specific files/code
+        
+        # Get file paths from context for matching
+        file_paths = [f.get("path", "").lower() for f in (files or [])]
+        
+        actionable_errors = []
+        for error in errors[:5]:
+            error_lower = error.lower()
+            
+            # Is this a CODE issue? (references specific code or files)
+            is_code_issue = any([
+                any(path and path in error_lower for path in file_paths),  # Mentions output file
+                "line " in error_lower,  # References line number
+                "import" in error_lower,  # Import issues
+                "syntax" in error_lower,  # Syntax error
+                "async def" in error_lower or "def " in error_lower,  # Function issues
+                "class " in error_lower,  # Class issues
+                "missing `" in error_lower or "should be `" in error_lower,  # Specific fixes
+                ".py" in error_lower or ".jsx" in error_lower,  # File references
+            ])
+            
+            if is_code_issue:
+                actionable_errors.append(error)
+        
+        # Use filtered errors, or fallback to first error if none matched
+        errors_to_show = actionable_errors if actionable_errors else errors[:1]
+        error_list = "\n".join([f"{i+1}. {e}" for i, e in enumerate(errors_to_show)])
+        
+        context_parts.append(f"""FIX THESE CODE ISSUES:
+{error_list}
+
+⚠️ IMPORTANT: Fix ONLY the issues listed above.
+- Do NOT change your overall approach or architecture
+- Do NOT add features beyond what's required
+- Keep the same file structure
+- Just fix the specific code problems mentioned""")
     
     if memory_hint:
         context_parts.append(f"MEMORY_HINT: {memory_hint[:300]}")
@@ -191,13 +226,24 @@ STEP_CONTEXT_RULES = {
         "include_architecture": False,
     },
     "testing_backend": {
-        "files": ["backend/tests/*.py", "backend/app/**/*.py"],
+        "files": ["backend/tests/*.py", "backend/app/**/*.py", "tests/conftest.py"],
         "include_contracts": False,
         "include_architecture": False,
     },
     "testing_frontend": {
         "files": ["frontend/tests/*.js", "frontend/src/**/*.jsx"],
         "include_contracts": False,
+        "include_architecture": False,
+    },
+    # Issue #4 Fix: Add rules for test diagnosis steps
+    "backend_test_diagnosis": {
+        "files": ["backend/tests/*.py", "backend/app/**/*.py", "tests/conftest.py", "backend/app/models.py", "backend/app/routers/*.py"],
+        "include_contracts": False,
+        "include_architecture": False,
+    },
+    "backend_testing_fix": {
+        "files": ["backend/tests/*.py", "backend/app/**/*.py", "tests/conftest.py", "backend/app/models.py", "backend/app/routers/*.py"],
+        "include_contracts": True,  # May need contracts to understand expected behavior
         "include_architecture": False,
     },
 }

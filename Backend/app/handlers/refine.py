@@ -121,7 +121,7 @@ async def step_refine(
     )
 
     # 🔥 NEW: detect if user is changing vibe/style
-    intent = WorkflowStateManager.get_intent(project_id) or {}
+    intent = await WorkflowStateManager.get_intent(project_id) or {}
     prev_vibe = ((intent.get("uiVibeRouting") or {}).get("top")) or None
     archetype = (intent.get("archetypeRouting") or {}).get("top") or "general"
 
@@ -131,7 +131,7 @@ async def step_refine(
         new_vibe = (routing or {}).get("top")
         if new_vibe:
             intent["uiVibeRouting"] = routing
-            WorkflowStateManager.set_intent(project_id, intent)
+            await WorkflowStateManager.set_intent(project_id, intent)
     except Exception as e:
         log("REFINE", f"UI vibe routing failed during refine: {e}", project_id=project_id)
 

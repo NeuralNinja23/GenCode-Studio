@@ -38,7 +38,53 @@ from app.persistence.validator import validate_file_output
 # Protected sandbox files - imported from centralized constants
 from app.core.constants import PROTECTED_SANDBOX_FILES
 
+# Centralized entity discovery for dynamic fallback
+from app.utils.entity_discovery import discover_primary_entity
+
 # REMOVED: Restrictive allowed prefixes - agents can write to any file except protected ones
+
+
+def _extract_entity_from_request(user_request: str) -> str:
+    """
+    Dynamically extract a potential entity name from the user request.
+    """
+    import re
+    
+    if not user_request:
+        return None
+    
+    request_lower = user_request.lower()
+    patterns = [
+        r'(?:manage|track|create|build|store|list)\s+(\w+)',
+        r'(\w+)\s+(?:app|application|manager|tracker|system)',
+        r'(?:a|an)\s+(\w+)\s+(?:management|tracking|listing)',
+    ]
+    
+    skip_words = {'the', 'a', 'an', 'my', 'your', 'web', 'full', 'stack', 'simple', 'basic', 'new'}
+    
+    def singularize(word: str) -> str:
+        """Simple singularization that handles common patterns."""
+        word = word.lower().strip()
+        if word.endswith('ies') and len(word) > 4:
+            return word[:-3] + 'y'
+        if word.endswith('sses'):
+            return word[:-2]
+        if word.endswith('ches') or word.endswith('shes'):
+            return word[:-2]
+        if word.endswith('xes') or word.endswith('zes'):
+            return word[:-2]
+        if word.endswith('s') and len(word) > 2 and not word.endswith('ss'):
+            return word[:-1]
+        return word
+    
+    for pattern in patterns:
+        match = re.search(pattern, request_lower)
+        if match:
+            candidate = match.group(1)
+            if candidate not in skip_words and len(candidate) > 2:
+                return singularize(candidate)
+    
+    return None
 
 
 async def safe_write_llm_files_for_testing(
@@ -179,9 +225,20 @@ async def step_testing_backend(
     from app.orchestration.state import WorkflowStateManager
     from app.orchestration.utils import pluralize
     
-    intent = WorkflowStateManager.get_intent(project_id) or {}
+    intent = await WorkflowStateManager.get_intent(project_id) or {}
     entities = intent.get("entities", [])
-    primary_entity = entities[0] if entities else "item"
+    
+    # Use centralized discovery as fallback with dynamic last-resort
+    if entities:
+        primary_entity = entities[0]
+    else:
+        entity_name, _ = discover_primary_entity(project_path)
+        if entity_name:
+            primary_entity = entity_name
+        else:
+            # Dynamic last resort: extract from user request
+            primary_entity = _extract_entity_from_request(user_request) or "entity"
+    
     primary_entity_plural = pluralize(primary_entity)
     
     # Get archetype for test guidance

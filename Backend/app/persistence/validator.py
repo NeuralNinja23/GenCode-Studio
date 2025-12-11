@@ -173,6 +173,15 @@ def validate_file_output(
             log("VALIDATE", f"[{step_name}] Skipping non-dict file entry at index {idx}")
             continue
         
+        # 🛡️ FIX: Handle "name", "filename", "filepath" as aliases for "path"
+        # Derek sometimes uses wrong key names - accept them all
+        if "path" not in f:
+            for alias in ["name", "filename", "filepath", "file_path", "filePath"]:
+                if alias in f:
+                    f["path"] = f.pop(alias)
+                    log("VALIDATE", f"[{step_name}] 🔧 Converted '{alias}' to 'path' for file at index {idx}")
+                    break
+        
         path = f.get("path", "")
         content = f.get("content", "")
         

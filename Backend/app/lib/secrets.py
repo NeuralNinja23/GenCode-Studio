@@ -22,14 +22,19 @@ class EncryptedSecret(BaseModel):
 def encrypt_secret(plaintext: str, key_base64: str) -> EncryptedSecret:
     """
     Encrypts a plaintext secret using AES-256-GCM.
+    
+    Args:
+        plaintext: The secret to encrypt
+        key_base64: Base64-encoded 32-byte key for AES-256
     """
-    if not os.getenv("ENCRYPTION_KEY"):
-        raise ValueError("ENCRYPTION_KEY environment variable not configured")
+    # FIX SEC-001: Validate the key_base64 parameter, not env var
+    if not key_base64:
+        raise ValueError("key_base64 parameter is required for encryption")
 
     try:
         key_buffer = base64.b64decode(key_base64)
         if len(key_buffer) != 32:
-            raise ValueError("ENCRYPTION_KEY must be 32 bytes (256 bits)")
+            raise ValueError("key_base64 must decode to 32 bytes (256 bits)")
 
         iv = os.urandom(16)  # 16 bytes for GCM
 

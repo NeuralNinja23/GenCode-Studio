@@ -32,6 +32,9 @@ from .fallback_api_agent import FallbackAPIAgent
 from .checkpoint import CheckpointManagerV2
 from .budget_manager import BudgetManager, get_budget_manager
 
+# Centralized entity discovery for dynamic fallback
+from app.utils.entity_discovery import discover_primary_entity
+
 
 # Map V2 step names to WorkflowStep constants
 STEP_NAME_MAP = {
@@ -261,26 +264,21 @@ class FASTOrchestratorV2:
                     # ════════════════════════════════════════════════════════
                     # V2 FEATURE #4: POST-STEP VALIDATION FOR CRITICAL STEPS  
                     # ════════════════════════════════════════════════════════
-                    # PHASE 3: Check if step returned files, try healing, stop on critical failure
+                    # Issue #1 Fix: Use FILESYSTEM validation, not result.output
+                    # StepResult doesn't have output.files - files are written to disk
                     if step in self.CRITICAL_STEPS:
-                        # Check 1: File existence in output
-                        files_exist = False
-                        if hasattr(result, "output") and isinstance(result.output, dict):
-                             files_exist = bool(result.output.get("files"))
-                        
-                        # Check 2: Structural validation (if files exist)
-                        validation_passed = files_exist and self._validate_step_output(step)
+                        # Check filesystem directly - this is the source of truth
+                        validation_passed = self._validate_step_output(step)
                         
                         if not validation_passed:
-                            reason = "no files returned" if not files_exist else "structural validation failed"
-                            log("FAST-V2", f"⚠️ {step} issue detected: {reason}. Triggering healing...")
+                            log("FAST-V2", f"⚠️ {step} filesystem validation failed. Triggering healing...")
                             
                             if self._attempt_healing(step):
                                 log("FAST-V2", f"✅ {step} healed successfully")
                             else:
                                 log("FAST-V2", f"❌ {step} healing failed (Unrecoverable)")
                                 self.failed_steps.append(step)
-                                self.step_results[step] = {"status": "failed", "reason": reason}
+                                self.step_results[step] = {"status": "failed", "reason": "validation_failed"}
                                 log("FAST-V2", f"🛑 Stopping - critical failure in {step}")
                                 break
 
@@ -401,7 +399,10 @@ class FASTOrchestratorV2:
         Validate critical files exist before running testing/preview steps.
         
         V2 Feature: Pre-flight check to prevent wasted Docker builds.
+        Now also validates that models.py contains actual model definitions!
         """
+        import re
+        
         checks = {
             "testing_backend": [
                 self.project_path / "backend" / "app" / "main.py",
@@ -422,6 +423,21 @@ class FASTOrchestratorV2:
             if not file_path.exists():
                 log("FAST-V2", f"   Missing: {file_path}")
                 return False
+            
+            # CRITICAL: For models.py, also check it has an actual Document class (not in comments!)
+            if file_path.name == "models.py":
+                content = file_path.read_text(encoding="utf-8")
+                has_model = False
+                for line in content.splitlines():
+                    stripped = line.lstrip()
+                    if not stripped or stripped.startswith('#'):
+                        continue
+                    if re.match(r'class\s+\w+\s*\(\s*Document\s*\)', stripped):
+                        has_model = True
+                        break
+                if not has_model:
+                    log("FAST-V2", f"   Invalid: {file_path} - no Document class found")
+                    return False
         
         # Check routers directory has files
         routers_dir = self.project_path / "backend" / "app" / "routers"
@@ -444,23 +460,54 @@ class FASTOrchestratorV2:
         """
         # Get primary entity for dynamic validation
         entities = self.cross_ctx._ctx.get("entities", [])
-        primary_entity = entities[0] if entities else "item"
+        if entities:
+            primary_entity = entities[0]
+        else:
+            entity_name, _ = discover_primary_entity(self.project_path)
+            primary_entity = entity_name if entity_name else "item"  # Last resort
         from app.orchestration.utils import pluralize
         primary_plural = pluralize(primary_entity)
 
         if step == "backend_implementation":
-            # Check models.py AND router
+            import re
+            # Check models.py has actual model definition (not just imports!)
             models_path = self.project_path / "backend" / "app" / "models.py"
             router_path = self.project_path / "backend" / "app" / "routers" / f"{primary_plural}.py"
             
             if not models_path.exists():
+                log("FAST-V2", f"   ❌ models.py does not exist")
                 return False
+            
+            # CRITICAL: Check that model class is actually DEFINED (not in comments!)
+            models_content = models_path.read_text(encoding="utf-8")
+            model_class_name = primary_entity.capitalize()
+            
+            # Helper to check for actual (non-commented) class definition
+            def has_document_class(content: str, class_name: str = None) -> bool:
+                for line in content.splitlines():
+                    stripped = line.lstrip()
+                    if not stripped or stripped.startswith('#'):
+                        continue
+                    if class_name:
+                        if re.match(rf'class\s+{class_name}\s*\(\s*Document\s*\)', stripped):
+                            return True
+                    else:
+                        if re.match(r'class\s+\w+\s*\(\s*Document\s*\)', stripped):
+                            return True
+                return False
+            
+            if not has_document_class(models_content, model_class_name):
+                # Also check for any Document class (in case entity name differs)
+                if not has_document_class(models_content):
+                    log("FAST-V2", f"   ❌ models.py exists but no Document class found")
+                    return False
                 
             # Fallback: check ALL routers if specific one missing
             if not router_path.exists():
                 routers_dir = self.project_path / "backend" / "app" / "routers"
                 if routers_dir.exists() and any(f.suffix == ".py" and f.stem != "__init__" for f in routers_dir.iterdir()):
                     return True # Found some router, good enough
+                log("FAST-V2", f"   ❌ No router files found")
                 return False
                 
             content = router_path.read_text(encoding="utf-8")
@@ -474,7 +521,11 @@ class FASTOrchestratorV2:
             
             # Dynamic validation
             entities = self.cross_ctx._ctx.get("entities", [])
-            primary_entity = entities[0] if entities else "Note"
+            if entities:
+                primary_entity = entities[0]
+            else:
+                entity_name, _ = discover_primary_entity(self.project_path)
+                primary_entity = entity_name if entity_name else "item"  # Last resort
             return self.compiler.api_is_complete(content, entity_name=primary_entity)
         
         return True
@@ -502,7 +553,11 @@ class FASTOrchestratorV2:
         try:
             # Get dynamic paths
             entities = self.cross_ctx._ctx.get("entities", [])
-            primary_entity = entities[0] if entities else "item"
+            if entities:
+                primary_entity = entities[0]
+            else:
+                entity_name, _ = discover_primary_entity(self.project_path)
+                primary_entity = entity_name if entity_name else "item"  # Last resort
             from app.orchestration.utils import pluralize
             primary_plural = pluralize(primary_entity)
 
@@ -557,7 +612,11 @@ class FASTOrchestratorV2:
                 models_path = self.project_path / "backend" / "app" / "models.py"
                 if models_path.exists():
                     entities = self.cross_ctx._ctx.get("entities", [])
-                    primary = entities[0] if entities else "Item"
+                    if entities:
+                        primary = entities[0]
+                    else:
+                        entity_name, _ = discover_primary_entity(self.project_path)
+                        primary = entity_name if entity_name else "item"  # Last resort
                     from app.orchestration.utils import pluralize
                     plural = pluralize(primary)
                     summary = {

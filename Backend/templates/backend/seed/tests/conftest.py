@@ -1,10 +1,8 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
-from app.db.session import connect_to_mongo as connect_db
-# Disconnect is minimal in new session.py, we can just pass or add a helper if needed.
-# For now, let's just mock disconnect or add it to session.py
-async def disconnect_db(): pass
+from app.database import init_db, close_db
+
 
 @pytest.fixture(scope="session")
 def anyio_backend():
@@ -25,7 +23,6 @@ async def client(async_client):
 
 @pytest.fixture(scope="module", autouse=True)
 async def db_connection():
-    await connect_db()
+    await init_db()
     yield
-    await disconnect_db()
-
+    await close_db()

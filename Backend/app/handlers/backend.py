@@ -16,6 +16,9 @@ from app.orchestration.state import WorkflowStateManager
 from app.supervision import supervised_agent_call
 from app.persistence import persist_agent_output
 
+# Centralized entity discovery for dynamic fallback
+from app.utils.entity_discovery import discover_primary_entity
+
 
 
 # Constants from legacy
@@ -25,6 +28,55 @@ MAX_FILE_LINES = 400
 
 from app.persistence.validator import validate_file_output
 from app.orchestration.utils import pluralize
+
+
+def _extract_entity_from_request(user_request: str) -> str:
+    """
+    Dynamically extract a potential entity name from the user request.
+    
+    Uses common patterns like "manage X", "X app", "create X" to identify entities.
+    Returns None if no clear entity can be extracted.
+    """
+    import re
+    
+    if not user_request:
+        return None
+    
+    request_lower = user_request.lower()
+    
+    # Common patterns to extract entity names
+    patterns = [
+        r'(?:manage|track|create|build|store|list)\s+(\w+)',  # manage tasks, track bugs
+        r'(\w+)\s+(?:app|application|manager|tracker|system)',  # task app, bug tracker
+        r'(?:a|an)\s+(\w+)\s+(?:management|tracking|listing)',  # a task management
+    ]
+    
+    skip_words = {'the', 'a', 'an', 'my', 'your', 'web', 'full', 'stack', 'simple', 'basic', 'new'}
+    
+    def singularize(word: str) -> str:
+        """Simple singularization that handles common patterns."""
+        word = word.lower().strip()
+        # Handle special cases first
+        if word.endswith('ies') and len(word) > 4:  # categories -> category
+            return word[:-3] + 'y'
+        if word.endswith('sses'):  # classes -> class
+            return word[:-2]
+        if word.endswith('ches') or word.endswith('shes'):  # watches -> watch
+            return word[:-2]
+        if word.endswith('xes') or word.endswith('zes'):  # boxes -> box
+            return word[:-2]
+        if word.endswith('s') and len(word) > 2 and not word.endswith('ss'):  # notes -> note
+            return word[:-1]
+        return word
+    
+    for pattern in patterns:
+        match = re.search(pattern, request_lower)
+        if match:
+            candidate = match.group(1)
+            if candidate not in skip_words and len(candidate) > 2:
+                return singularize(candidate)
+    
+    return None
 
 
 
@@ -73,9 +125,20 @@ async def step_backend_implementation(
     except Exception:
         contracts = "Standard CRUD"
         
-    intent = WorkflowStateManager.get_intent(project_id) or {}
-    entities_list = intent.get("entities", ["item"])
-    primary_entity = entities_list[0] if entities_list else "item"
+    intent = await WorkflowStateManager.get_intent(project_id) or {}
+    entities_list = intent.get("entities", [])
+    
+    # Use centralized discovery as fallback with dynamic last-resort
+    if entities_list:
+        primary_entity = entities_list[0]
+    else:
+        entity_name, _ = discover_primary_entity(project_path)
+        if entity_name:
+            primary_entity = entity_name
+        else:
+            # Dynamic last resort: extract from user request or use domain-based name
+            primary_entity = _extract_entity_from_request(user_request) or "entity"
+    
     primary_entity_capitalized = primary_entity.capitalize()
     
     archetype = (intent.get("archetypeRouting") or {}).get("top") or "general"
@@ -96,14 +159,12 @@ FILES TO GENERATE:
 1. **backend/app/models.py** (Beanie Models)
    - Class {primary_entity_capitalized}
    - Fields matching Contracts
+   - Include all CRUD operations
    
 2. **backend/app/routers/{primary_entity}s.py** (FastAPI Router)
-   - CRUD Endpoints using the Model you just wrote.
+   - CRUD Endpoints using the Model you just wrote
    - Import `from app.models import {primary_entity_capitalized}`
-   
-3. **backend/requirements.txt** (Dependencies)
-   - Add ONLY extra libs (e.g. `stripe`). 
-   - DO NOT list defaults (fastapi, beanie).
+   - Include proper error handling
 
 ═══════════════════════════════════════════════════════════
 🚫 FORBIDDEN FILES (DO NOT TOUCH)
@@ -111,14 +172,39 @@ FILES TO GENERATE:
 - backend/app/main.py (The Integrator handles this)
 - backend/app/database.py (Seeded)
 - backend/app/db.py (Seeded)
-- backend/requirements.txt (Put dependencies in 'manifest' object)
+- backend/requirements.txt (Put extra dependencies in 'manifest' object instead)
 
 ═══════════════════════════════════════════════════════════
 📋 CONTRACTS
 ═══════════════════════════════════════════════════════════
 {contracts}
 
-CRITICAL: Return JSON with "files": [...] and "manifest": {{ "dependencies": [...], "backend_routers": [...] }}
+═══════════════════════════════════════════════════════════
+📤 OUTPUT FORMAT (CRITICAL - MUST MATCH THIS EXACTLY)
+═══════════════════════════════════════════════════════════
+
+Return ONLY valid JSON with this EXACT structure:
+
+{{
+  "thinking": "Detailed explanation of your implementation approach for {primary_entity_capitalized}...",
+  "manifest": {{
+    "dependencies": ["stripe", "redis"],
+    "backend_routers": ["{primary_entity}s"],
+    "notes": "Any additional context or incomplete work"
+  }},
+  "files": [
+    {{ "path": "backend/app/models.py", "content": "from beanie import Document\\n\\nclass {primary_entity_capitalized}(Document):\\n    ..." }},
+    {{ "path": "backend/app/routers/{primary_entity}s.py", "content": "from fastapi import APIRouter\\n\\nrouter = APIRouter()\\n..." }}
+  ]
+}}
+
+🚨 CRITICAL REQUIREMENTS:
+- Each file object MUST have BOTH "path" and "content" fields
+- The "path" field MUST be the full file path (e.g., "backend/app/models.py")
+- The "content" field MUST have COMPLETE, non-empty code
+- DO NOT generate backend/requirements.txt as a file - use manifest.dependencies instead
+
+Generate the complete backend vertical for {primary_entity_capitalized} now!
 """
 
     try:
@@ -210,16 +296,29 @@ async def step_system_integration(
         for router in existing_routers:
             imports_block += f"from app.routers import {router}\n"
             routes_block += f"app.include_router({router}.router, prefix='/api/{router}', tags=['{router}'])\n"
-            
-        # Inject Imports
+        
+        import re
+        
+        # Inject Imports - Replace ENTIRE marker line (not just prefix)
+        # This prevents leaving " - DO NOT REMOVE THIS LINE" as orphaned code
         if "# @ROUTER_IMPORTS" in content:
-            content = content.replace("# @ROUTER_IMPORTS", f"# @ROUTER_IMPORTS\n{imports_block}")
+            content = re.sub(
+                r'^# @ROUTER_IMPORTS.*$',
+                f"# @ROUTER_IMPORTS\n{imports_block.rstrip()}",
+                content,
+                flags=re.MULTILINE
+            )
         elif imports_block not in content:
             content = f"{imports_block}\n{content}"
             
-        # Inject Routes
+        # Inject Routes - Replace ENTIRE marker line
         if "# @ROUTER_REGISTER" in content:
-            content = content.replace("# @ROUTER_REGISTER", f"# @ROUTER_REGISTER\n{routes_block}")
+            content = re.sub(
+                r'^# @ROUTER_REGISTER.*$',
+                f"# @ROUTER_REGISTER\n{routes_block.rstrip()}",
+                content,
+                flags=re.MULTILINE
+            )
         elif routes_block not in content:
             content += f"\n{routes_block}"
             

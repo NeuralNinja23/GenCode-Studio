@@ -207,9 +207,8 @@ As the supervisor, you oversee a sophisticated 3-layer quality gate system:
 
 **COST AWARENESS (Token Tracking):**
    - Every agent call uses tokens (costs money)
-   - Token limits:
-     • DEFAULT_MAX_TOKENS = 16000 (standard steps)
-     • TEST_FILE_MIN_TOKENS = 20000 (testing steps)
+   - Token limits are managed dynamically by the orchestrator (token_policy.py)
+   - Each step has its own optimized token allocation
    - Your reviews also use tokens
    - Be thorough but efficient:
      • Don't reject for minor issues (costly retry)

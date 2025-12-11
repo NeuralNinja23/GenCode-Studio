@@ -25,3 +25,15 @@ async def init_db() -> None:
 
     document_models: Sequence[Type[Document]] = [Task]
     await init_beanie(database=db, document_models=document_models)
+
+
+async def close_db() -> None:
+    """
+    Close MongoDB connection.
+    Motor handles cleanup automatically when the client closes.
+    This is the canonical close pattern GenCode Studio agents should follow.
+    """
+    global client
+    if client:
+        client.close()
+        client = None

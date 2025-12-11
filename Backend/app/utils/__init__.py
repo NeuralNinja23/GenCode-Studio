@@ -14,6 +14,12 @@ from .dependency_fixer import (
     detect_missing_dependencies,
     add_dependencies_to_requirements,
 )
+from .entity_discovery import (
+    discover_primary_entity,
+    discover_db_function,
+    discover_routers,
+    get_entity_plural,
+)
 
 __all__ = [
     "normalize_llm_output",
@@ -24,4 +30,9 @@ __all__ = [
     "auto_fix_backend_dependencies",
     "detect_missing_dependencies",
     "add_dependencies_to_requirements",
+    # Entity Discovery
+    "discover_primary_entity",
+    "discover_db_function",
+    "discover_routers",
+    "get_entity_plural",
 ]

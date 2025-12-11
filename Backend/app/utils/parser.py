@@ -120,6 +120,14 @@ def _normalize_llm_output_inner(raw_output: str) -> Dict[str, Any]:
                 valid_files: List[Dict[str, Any]] = []
                 for f in files_list:  # ✅ Now iterating over explicitly typed list
                     if isinstance(f, dict):
+                        # 🛡️ FIX: Handle "name", "filename", "filepath" as aliases for "path"
+                        if "path" not in f:
+                            for alias in ["name", "filename", "filepath", "file_path", "filePath"]:
+                                if alias in f:
+                                    f["path"] = f.pop(alias)
+                                    print(f"[normalize_llm_output] 🔧 Converted '{alias}' to 'path'")
+                                    break
+                        
                         path = f.get("path", "")
                         # ✅ Check if path contains file extension or directory separator
                         if ("/" in path or "\\" in path or "." in path) and len(path) > 3:
@@ -494,7 +502,103 @@ def _fix_unterminated_strings(text: str) -> str:
     return text
 
 
+def _salvage_complete_functions(code: str) -> str:
+    """
+    Extract only complete function/class definitions from truncated Python code.
+    Discards incomplete functions at the end.
+    
+    Returns:
+        - Salvaged code with complete functions only
+        - Empty string if no complete code could be salvaged
+    
+    Strategy:
+        1. Try to parse the whole thing (if it works, return as-is)
+        2. Split into lines and find last complete function/class
+        3. Return everything up to the last complete definition
+        4. Verify the salvaged code parses without errors
+    """
+    import ast
+    
+    # Try to parse the whole thing first
+    try:
+        ast.parse(code)
+        return code  # No truncation, return as-is
+    except SyntaxError:
+        pass  # Expected for truncated code
+    
+    # Split by lines and find last complete function/class
+    lines = code.split('\n')
+    
+    # Track function/class boundaries by indentation
+    last_complete_line = 0
+    function_starts = []  # Stack of (line_number, indent_level)
+    
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        
+        # Calculate indentation
+        indent = len(line) - len(stripped)
+        
+        # New top-level function/class definition
+        if (stripped.startswith('def ') or 
+            stripped.startswith('class ') or 
+            stripped.startswith('async def ')) and indent == 0:
+            function_starts.append((i, indent))
+        
+        # If we have function starts and current line returns to base indentation
+        # it means previous function is complete
+        if function_starts and indent == 0 and i > function_starts[-1][0] + 1:
+            if not (stripped.startswith('def ') or 
+                   stripped.startswith('class ') or 
+                   stripped.startswith('async def ')):
+                # We've exited a function block
+                last_complete_line = i - 1
+    
+    # Also check if we have at least one complete function by looking at the stack
+    if function_starts and len(function_starts) >= 1:
+        # If we have multiple functions, the second-to-last is definitely complete
+        if len(function_starts) >= 2:
+            # Find the line where the second-to-last function ends
+            # (start of last function - 1)
+            last_complete_line = function_starts[-1][0] - 1
+        elif last_complete_line == 0:
+            # Single function - try to find where it ends naturally
+            # Look for the last line with content at base indentation
+            for i in range(len(lines) - 1, function_starts[0][0], -1):
+                stripped = lines[i].lstrip()
+                if stripped and not stripped.startswith('#'):
+                    indent = len(lines[i]) - len(stripped)
+                    if indent > 0:  # Still inside function
+                        last_complete_line = i
+                        break
+    
+    # Try to salvage up to the last complete line
+    if last_complete_line > 10:  # At least some meaningful code
+        salvaged = '\n'.join(lines[:last_complete_line + 1])
+        
+        # Verify it parses
+        try:
+            ast.parse(salvaged)
+            return salvaged
+        except SyntaxError:
+            # Final attempt: remove last few lines and try again
+            for attempt in range(5, 0, -1):
+                try_line = last_complete_line - attempt
+                if try_line > 10:
+                    salvaged = '\n'.join(lines[:try_line + 1])
+                    try:
+                        ast.parse(salvaged)
+                        return salvaged
+                    except SyntaxError:
+                        continue
+    
+    return ""  # Could not salvage anything
+
+
 def _extract_partial_files(raw: str) -> List[Dict[str, str]]:
+
     """
     Extract files array from partially broken JSON.
     Handles cases where the JSON structure is valid but content is truncated.
@@ -563,8 +667,19 @@ def _extract_partial_files(raw: str) -> List[Dict[str, str]]:
             continue
         
         if content and content.strip():
-            # CRITICAL: Validate content is not truncated
+            # IMPROVED: Validate content and attempt salvage if truncated
             if _is_truncated_code(path, content):
+                print(f"[_extract_partial_files] ⚠️ Detected truncation in triple-quote: {path}")
+                
+                # Try to salvage complete functions (Python only)
+                if path.endswith('.py'):
+                    salvaged_content = _salvage_complete_functions(content)
+                    if salvaged_content and len(salvaged_content) > 100:
+                        print(f"[_extract_partial_files] ✅ Salvaged {len(salvaged_content)} bytes from triple-quoted content: {path}")
+                        files.append({"path": path, "content": salvaged_content})
+                        continue
+                
+                # If salvage failed, reject
                 print(f"[_extract_partial_files] 🚨 REJECTING truncated file from triple-quote: {path}")
                 continue
             
@@ -598,12 +713,24 @@ def _extract_partial_files(raw: str) -> List[Dict[str, str]]:
             print(f"[_extract_partial_files] ⚠️ Skipping empty file: {path}")
             continue
         
-        # CRITICAL: Validate content is not truncated
+        # IMPROVED: Check for truncation and try to salvage complete code
         if _is_truncated_code(path, content):
+            print(f"[_extract_partial_files] ⚠️ Detected truncation in: {path}")
+            
+            # Try to salvage complete functions (Python only)
+            if path.endswith('.py'):
+                salvaged_content = _salvage_complete_functions(content)
+                if salvaged_content and len(salvaged_content) > 100:
+                    print(f"[_extract_partial_files] ✅ Salvaged {len(salvaged_content)} bytes from truncated file: {path}")
+                    files.append({"path": path, "content": salvaged_content})
+                    continue
+            
+            # If salvage failed, reject the file
             print(f"[_extract_partial_files] 🚨 REJECTING truncated file: {path}")
             continue
         
         files.append({"path": path, "content": content})
+
     
     if files:
         return files

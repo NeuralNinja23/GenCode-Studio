@@ -58,7 +58,7 @@ async def step_architecture(
         current_turn, max_turns
     )
     
-    intent = WorkflowStateManager.get_intent(project_id) or {}
+    intent = await WorkflowStateManager.get_intent(project_id) or {}
     
     # Extract attention routing results
     archetype_routing = intent.get("archetypeRouting", {})
@@ -104,8 +104,15 @@ CRITICAL OUTPUT RULES:
         
         parsed = result.get("output", {})
         if isinstance(parsed, dict) and "files" in parsed and parsed["files"]:
-            validated = validate_file_output(parsed, WorkflowStep.ARCHITECTURE, max_files=1)
-            await persist_agent_output(manager, project_id, project_path, validated, WorkflowStep.ARCHITECTURE)
+            # FIX: Only accept architecture.md from Victoria - discard any contracts.md
+            # (Victoria sometimes adds contracts.md despite being told not to)
+            parsed["files"] = [f for f in parsed["files"] if f.get("path", "").endswith("architecture.md")]
+            
+            if not parsed["files"]:
+                log("ARCHITECTURE", "⚠️ Victoria produced no architecture.md file")
+            else:
+                validated = validate_file_output(parsed, WorkflowStep.ARCHITECTURE, max_files=3)
+                await persist_agent_output(manager, project_id, project_path, validated, WorkflowStep.ARCHITECTURE)
             
             status = "✅ approved" if result.get("approved") else "⚠️ best effort"
             log("ARCHITECTURE", f"Victoria created architecture plan ({status}, attempt {result.get('attempt', 1)})")

@@ -36,10 +36,6 @@ async def call(
     if not api_key:
         raise Exception("GEMINI_API_KEY not configured")
     
-    # Debug: Show which API key is being used (masked)
-    masked_key = f"{api_key[:10]}...{api_key[-4:]}" if len(api_key) > 14 else "***"
-    print(f"[GEMINI] Using API key: {masked_key}")
-    
     model = model or DEFAULT_MODEL
     url = f"{API_URL}/{model}:generateContent?key={api_key}"
     

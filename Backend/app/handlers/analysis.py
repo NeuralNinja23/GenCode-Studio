@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from app.core.types import ChatMessage, StepResult
-from app.core.constants import WorkflowStep, DEFAULT_MAX_TOKENS
+from app.core.constants import WorkflowStep
 from app.core.exceptions import RateLimitError
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.core.logging import log
@@ -33,20 +33,66 @@ ENTITY_PATTERNS: List[Tuple[str, List[str]]] = [
     ("query", ["database", "chat with database", "sql"]),
     ("recipe", ["recipe", "cooking", "food"]),
     ("expense", ["expense", "budget", "finance tracker"]),
-    ("contact", ["contact", "crm", "customer"]),
+    ("contact", ["contact", "crm", "customer relationship"]),
     ("event", ["event", "calendar", "scheduling"]),
     ("message", ["chat", "messaging", "communication"]),
     ("file", ["file manager", "storage", "upload"]),
+    ("ticket", ["ticketing", "support ticket", "help desk", "customer support"]),
+    ("order", ["order management", "orders", "fulfillment"]),
+    ("invoice", ["invoice", "billing", "payment"]),
+    ("project", ["project management", "projects"]),
+    ("user", ["user management", "users", "authentication"]),
 ]
 
 
 def _detect_primary_entity(user_request: str) -> str:
-    """Detect primary entity from user request using pattern matching."""
+    """
+    Detect primary entity from user request using dynamic pattern matching.
+    
+    Issue #8 Fix: Uses multiple strategies for robust entity extraction:
+    1. Known entity patterns (e.g., "ticketing tool" → "ticket")
+    2. Dynamic extraction from "X tracker/manager/tool" patterns
+    3. Fallback to default "item"
+    """
+    import re
     request_lower = user_request.lower()
+    
+    # Strategy 1: Check known entity patterns first
     for entity, keywords in ENTITY_PATTERNS:
         if any(kw in request_lower for kw in keywords):
             return entity
-    return "item"  # default
+    
+    # Strategy 2: Dynamic extraction - "X tracker/manager/system/tool/dashboard/app"
+    # Pattern: word + (tracker|manager|system|tool|dashboard|app)
+    match = re.search(r'(\w+)\s*(?:tracker|manager|management|system|tool|dashboard|app|application)', request_lower)
+    if match:
+        word = match.group(1)
+        # Skip common non-entity words
+        if word not in ["the", "a", "an", "my", "your", "our", "this", "that", "web", "full", "stack", "simple", "basic", "modern", "new"]:
+            # Singularize if plural (basic heuristic)
+            if word.endswith("ing"):
+                # "ticketing" → "ticket", "tracking" → "track"
+                word = word[:-3] if word.endswith("ting") else word[:-3]
+            elif word.endswith("s") and len(word) > 3:
+                word = word[:-1]
+            return word
+    
+    # Strategy 3: Look for "manage/track/create/build X" pattern
+    match = re.search(r'(?:manage|track|create|build|store|list)\s+(?:a\s+)?(?:list\s+of\s+)?(\w+)', request_lower)
+    if match:
+        word = match.group(1)
+        if word not in ["the", "a", "an", "my", "your", "our", "items", "data", "things"]:
+            # Singularize
+            if word.endswith("s") and len(word) > 3:
+                word = word[:-1]
+            return word
+    
+    # Strategy 4: Look for nouns after "with" (e.g., "with ticket list, filters")
+    match = re.search(r'with[:\s]+(\w+)\s*(?:list|management|tracking)', request_lower)
+    if match:
+        return match.group(1)
+    
+    return "item"  # Final fallback
 
 
 
@@ -133,12 +179,16 @@ NO explanations. ONLY JSON."""
     )
     
     try:
+        # Use step-specific token allocation
+        from app.orchestration.token_policy import get_tokens_for_step
+        analysis_tokens = get_tokens_for_step(WorkflowStep.ANALYSIS, is_retry=False)
+        
         raw = await call_llm(
             prompt=intent_prompt,
             system_prompt=MARCUS_PROMPT,
             provider=provider,
             model=model,
-            max_tokens=DEFAULT_MAX_TOKENS,
+            max_tokens=analysis_tokens,
         )
         
         try:
@@ -175,7 +225,7 @@ NO explanations. ONLY JSON."""
             except Exception as e:
                 log("ANALYSIS", f"Attention routing failed: {e}", project_id=project_id)
             
-            WorkflowStateManager.set_intent(project_id, intent)
+            await WorkflowStateManager.set_intent(project_id, intent)
         else:
             # Smart fallback - use shared entity detection function
             primary_entity = _detect_primary_entity(user_request)
@@ -200,9 +250,9 @@ NO explanations. ONLY JSON."""
             except Exception as e:
                 log("ANALYSIS", f"Attention routing failed in fallback: {e}", project_id=project_id)
             
-            WorkflowStateManager.set_intent(project_id, intent)
+            await WorkflowStateManager.set_intent(project_id, intent)
         
-        WorkflowStateManager.set_original_request(project_id, user_request)
+        await WorkflowStateManager.set_original_request(project_id, user_request)
         
         # Broadcast Marcus's reasoning
         domain = intent.get('domain', 'unknown')
@@ -256,8 +306,8 @@ NO explanations. ONLY JSON."""
         except Exception as e:
             log("ANALYSIS", f"Attention routing failed in exception fallback: {e}", project_id=project_id)
         
-        WorkflowStateManager.set_intent(project_id, fallback_intent)
-        WorkflowStateManager.set_original_request(project_id, user_request)
+        await WorkflowStateManager.set_intent(project_id, fallback_intent)
+        await WorkflowStateManager.set_original_request(project_id, user_request)
     
     return StepResult(
         nextstep=WorkflowStep.ARCHITECTURE,

@@ -1,4 +1,4 @@
-# app/workflow/engine_v2/structural_compiler.py
+# app/orchestration/structural_compiler.py
 """
 Compiler-Layer Structural Validator (Python + JS) — Python 3.12
 
@@ -92,10 +92,14 @@ class StructuralCompiler:
     # ---------------------------------------------------------
     # API export completeness check
     # ---------------------------------------------------------
-    def api_is_complete(self, code: str, entity_name: str = "Note") -> bool:
+    def api_is_complete(self, code: str, entity_name: str) -> bool:
         """
         Check if API client has all required exports for the entity.
         e.g. getNotes, createNote, updateNote, deleteNote
+        
+        Args:
+            code: The API client code to validate
+            entity_name: Entity name (REQUIRED - no hardcoded default)
         """
         # Smart pluralization/capitalization
         singular = entity_name.capitalize()
@@ -115,8 +119,13 @@ class StructuralCompiler:
                 return False
         return True
 
-    def get_missing_api_exports(self, code: str, entity_name: str = "Note") -> List[str]:
-        """Get list of missing API exports."""
+    def get_missing_api_exports(self, code: str, entity_name: str) -> List[str]:
+        """Get list of missing API exports.
+        
+        Args:
+            code: The API client code to validate
+            entity_name: Entity name (REQUIRED - no hardcoded default)
+        """
         singular = entity_name.capitalize()
         plural = singular + "s" if not singular.endswith("s") else singular
         

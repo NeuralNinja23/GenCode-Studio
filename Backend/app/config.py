@@ -1,8 +1,16 @@
 # app/config.py
 """
 DEPRECATED - Use app.core.config instead.
-This file exists for backward compatibility.
+This file exists for backward compatibility and will be removed in v3.0.
 """
+import warnings
+
+warnings.warn(
+    "app.config is deprecated, use app.core.config instead",
+    DeprecationWarning,
+    stacklevel=2
+)
+
 from app.core.config import settings
 
 # Re-export for backward compatibility

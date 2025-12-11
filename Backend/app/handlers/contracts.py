@@ -3,7 +3,7 @@
 Step 5: Marcus creates API contracts AFTER seeing the frontend mock.
 
 Workflow order: Analysis (1) → Architecture (2) → Frontend Mock (3) → 
-Screenshot Verify (4) → Contracts (5) → Backend Models (6) → ...
+Screenshot Verify (4) → Contracts (5) → Backend Implementation (6) → ...
 
 GenCode Studio pattern:
 - Frontend with mock data is already built
@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from app.core.types import ChatMessage, StepResult
-from app.core.constants import WorkflowStep, DEFAULT_MAX_TOKENS
+from app.core.constants import WorkflowStep
 from app.core.exceptions import RateLimitError
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.core.logging import log
@@ -27,6 +27,52 @@ from app.utils.parser import normalize_llm_output
 
 from app.persistence.validator import validate_file_output
 from app.orchestration.utils import pluralize
+
+# Centralized entity discovery for dynamic fallback
+from app.utils.entity_discovery import discover_primary_entity
+
+
+def _extract_entity_from_request(user_request: str) -> str:
+    """
+    Dynamically extract a potential entity name from the user request.
+    """
+    import re
+    
+    if not user_request:
+        return None
+    
+    request_lower = user_request.lower()
+    patterns = [
+        r'(?:manage|track|create|build|store|list)\s+(\w+)',
+        r'(\w+)\s+(?:app|application|manager|tracker|system)',
+        r'(?:a|an)\s+(\w+)\s+(?:management|tracking|listing)',
+    ]
+    
+    skip_words = {'the', 'a', 'an', 'my', 'your', 'web', 'full', 'stack', 'simple', 'basic', 'new'}
+    
+    def singularize(word: str) -> str:
+        """Simple singularization that handles common patterns."""
+        word = word.lower().strip()
+        if word.endswith('ies') and len(word) > 4:
+            return word[:-3] + 'y'
+        if word.endswith('sses'):
+            return word[:-2]
+        if word.endswith('ches') or word.endswith('shes'):
+            return word[:-2]
+        if word.endswith('xes') or word.endswith('zes'):
+            return word[:-2]
+        if word.endswith('s') and len(word) > 2 and not word.endswith('ss'):
+            return word[:-1]
+        return word
+    
+    for pattern in patterns:
+        match = re.search(pattern, request_lower)
+        if match:
+            candidate = match.group(1)
+            if candidate not in skip_words and len(candidate) > 2:
+                return singularize(candidate)
+    
+    return None
 
 
 
@@ -65,9 +111,20 @@ async def step_contracts(
     )
     
     # Get intent context
-    intent = WorkflowStateManager.get_intent(project_id) or {}
-    entities_list = intent.get("entities", ["item"])
-    primary_entity = entities_list[0] if entities_list else "item"
+    intent = await WorkflowStateManager.get_intent(project_id) or {}
+    entities_list = intent.get("entities", [])
+    
+    # Use centralized discovery as fallback with dynamic last-resort
+    if entities_list:
+        primary_entity = entities_list[0]
+    else:
+        entity_name, _ = discover_primary_entity(project_path)
+        if entity_name:
+            primary_entity = entity_name
+        else:
+            # Dynamic last resort: extract from user request
+            primary_entity = _extract_entity_from_request(user_request) or "entity"
+    
     primary_entity_capitalized = primary_entity.capitalize()
     primary_entity_plural = pluralize(primary_entity)
     features = intent.get("coreFeatures", [])
@@ -231,12 +288,16 @@ Return ONLY JSON:
     )
     
     try:
+        # Use step-specific token allocation
+        from app.orchestration.token_policy import get_tokens_for_step
+        contracts_tokens = get_tokens_for_step(WorkflowStep.CONTRACTS, is_retry=False)
+        
         raw = await call_llm(
             prompt=contracts_prompt,
             system_prompt=MARCUS_PROMPT,
             provider=provider,
             model=model,
-            max_tokens=DEFAULT_MAX_TOKENS,
+            max_tokens=contracts_tokens,
         )
 
         parsed = normalize_llm_output(raw)

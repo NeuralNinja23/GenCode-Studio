@@ -32,7 +32,6 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional, List
 from datetime import datetime, timezone
 import threading
-import threading
 
 
 @dataclass
@@ -157,6 +156,9 @@ class BudgetManager:
     
     def __init__(self, config: Optional[BudgetConfig] = None):
         self.config = config or BudgetConfig()
+        # Note LOGIC-001: threading.Lock is intentionally used here instead of asyncio.Lock
+        # because all operations inside the lock are quick (no await). This avoids the
+        # overhead of async context managers while maintaining thread safety.
         self._lock = threading.Lock()
         self._reset_run_state()
     

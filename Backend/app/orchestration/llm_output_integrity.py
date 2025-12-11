@@ -127,14 +127,31 @@ class LLMOutputIntegrity:
     # Empty function / class blocks
     # ---------------------------------------------------------
     def _has_incomplete_class_or_function(self, text: str) -> bool:
+        """
+        Checks if the text ends abruptly inside a function/class header.
+        
+        FIX: Uses \Z to match ONLY the end of the string.
+        Previous bug used $ with re.MULTILINE which matched every valid function definition.
+        """
+        text = text.strip() # Remove trailing whitespace first
+        
         patterns = [
-            r"def\s+\w+\([^)]*\)\s*:\s*$",   # Function with no body
-            r"class\s+\w+\s*:\s*$",           # Class with no body
-            r"async\s+def\s+\w+\([^)]*\)\s*:\s*$",  # Async function with no body
+            # Match "def func():" ONLY if it is the absolute end of the string
+            r"def\s+\w+\([^)]*\)\s*:\s*\Z",
+            
+            # Match "class Name:" or "class Name(Parent):" ONLY at end of string
+            r"class\s+\w+.*:\s*\Z",
+            
+            # Match "async def func():" ONLY at end of string
+            r"async\s+def\s+\w+\([^)]*\)\s*:\s*\Z",
         ]
+        
         for p in patterns:
-            if re.search(p, text, re.MULTILINE):
+            # Note: We do NOT use re.MULTILINE here because \Z ignores it anyway,
+            # but it is safer to be explicit that we are scanning the whole string.
+            if re.search(p, text):
                 return True
+                
         return False
     
     # ---------------------------------------------------------

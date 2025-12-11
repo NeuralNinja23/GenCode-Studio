@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 from beanie import Document
 from pydantic import Field
@@ -9,7 +9,7 @@ class Snapshot(Document):
     agent: str
     quality_score: int
     approved: bool
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     files_snapshot: Dict[str, str] = Field(default_factory=dict)
     
     class Settings:

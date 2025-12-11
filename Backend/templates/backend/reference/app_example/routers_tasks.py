@@ -44,7 +44,7 @@ async def list_tasks(
 
 @router.post("/", response_model=Task, status_code=status.HTTP_201_CREATED)
 async def create_task(payload: TaskIn) -> Task:
-    task = Task(**payload.dict())
+    task = Task(**payload.model_dump())
     await task.insert()
     return task
 
@@ -63,7 +63,7 @@ async def update_task(task_id: str, payload: TaskUpdate) -> Task:
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-    update_data = payload.dict(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(task, field, value)
     await task.save()

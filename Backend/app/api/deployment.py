@@ -9,6 +9,8 @@ from typing import Optional, Dict
 from datetime import datetime, timezone
 import io
 
+from app.models.deployment import Deployment
+
 router = APIRouter(prefix="/api/deployment", tags=["Deployment"])
 
 
@@ -33,21 +35,27 @@ class DomainRequest(BaseModel):
     customDomain: str
 
 
-# In-memory storage for deployment state (would be in DB in production)
-_deployments: Dict[str, dict] = {}
-
-
 @router.post("/initialize")
 async def initialize_deployment(data: DeploymentInitRequest):
     """Initialize a new deployment."""
-    _deployments[data.projectId] = {
-        "project_id": data.projectId,
-        "project_name": data.projectName,
-        "status": "initialized",
-        "environment_vars": data.environmentVars or {},
-        "custom_domain": data.customDomain,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    # FIX STATE-002: Persist to DB instead of memory
+    existing = await Deployment.find_one(Deployment.project_id == data.projectId)
+    if existing:
+        existing.status = "initialized"
+        existing.environment_vars = data.environmentVars or {}
+        existing.custom_domain = data.customDomain
+        existing.last_updated_at = datetime.now(timezone.utc)
+        await existing.save()
+    else:
+        deployment = Deployment(
+            project_id=data.projectId,
+            project_name=data.projectName,
+            status="initialized",
+            environment_vars=data.environmentVars or {},
+            custom_domain=data.customDomain
+        )
+        await deployment.insert()
+        
     return {
         "success": True,
         "project_id": data.projectId,
@@ -58,18 +66,23 @@ async def initialize_deployment(data: DeploymentInitRequest):
 @router.post("/{project_id}")
 async def start_deployment(project_id: str, data: DeploymentRequest):
     """Start one-click deployment."""
-    if project_id not in _deployments:
-        _deployments[project_id] = {
-            "project_id": project_id,
-            "status": "deploying",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
+    deployment = await Deployment.find_one(Deployment.project_id == project_id)
+    if not deployment:
+        # Auto-create if not exists (lazy init)
+        deployment = Deployment(
+            project_id=project_id,
+            project_name=project_id,  # Default name
+            status="deploying"
+        )
+        await deployment.insert()
     else:
-        _deployments[project_id]["status"] = "deploying"
+        deployment.status = "deploying"
+        if data.environmentVars:
+            deployment.environment_vars = data.environmentVars
+        await deployment.save()
     
-    _deployments[project_id]["deployed_at"] = datetime.now(timezone.utc).isoformat()
+    # In production, trigger actual deployment here
     
-    # Simulated deployment - in production this would trigger actual deployment
     return {
         "success": True,
         "status": "deploying",
@@ -81,40 +94,53 @@ async def start_deployment(project_id: str, data: DeploymentRequest):
 @router.get("/status/{project_id}")
 async def get_deployment_status(project_id: str):
     """Get deployment status."""
-    deployment = _deployments.get(project_id, {})
+    deployment = await Deployment.find_one(Deployment.project_id == project_id)
+    if not deployment:
+        return {
+            "project_id": project_id,
+            "status": "not_deployed",
+            "version": "1.0.0",
+        }
+        
     return {
         "project_id": project_id,
-        "status": deployment.get("status", "not_deployed"),
-        "version": deployment.get("version", "1.0.0"),
-        "url": deployment.get("url"),
-        "customDomain": deployment.get("custom_domain"),
-        "containerHealth": deployment.get("container_health", "unknown"),
-        "deployedAt": deployment.get("deployed_at"),
-        "port": deployment.get("port", 3000),
+        "status": deployment.status,
+        "version": deployment.version,
+        "url": deployment.url,
+        "customDomain": deployment.custom_domain,
+        "containerHealth": deployment.container_health,
+        "deployedAt": deployment.deployed_at.isoformat() if deployment.deployed_at else None,
+        "port": deployment.port,
     }
 
 
 @router.get("/history/{project_id}")
 async def get_deployment_history(project_id: str, limit: int = 10):
     """Get deployment history."""
-    # Return mock history
+    # In V2: implement actual history table. for now return mock based on current state.
+    deployment = await Deployment.find_one(Deployment.project_id == project_id)
+    history = []
+    if deployment and deployment.deployed_at:
+        history.append({
+            "version": deployment.version,
+            "status": "success",
+            "deployed_at": deployment.deployed_at.isoformat(),
+        })
+        
     return {
         "project_id": project_id,
-        "history": [
-            {
-                "version": "1.0.0",
-                "status": "success",
-                "deployed_at": datetime.now(timezone.utc).isoformat(),
-            }
-        ],
+        "history": history,
     }
 
 
 @router.post("/rollback/{project_id}")
 async def rollback_deployment(project_id: str):
     """Rollback to previous version."""
-    if project_id in _deployments:
-        _deployments[project_id]["status"] = "rolling_back"
+    deployment = await Deployment.find_one(Deployment.project_id == project_id)
+    if deployment:
+        deployment.status = "rolling_back"
+        await deployment.save()
+        
     return {
         "success": True,
         "project_id": project_id,
@@ -125,9 +151,14 @@ async def rollback_deployment(project_id: str):
 @router.post("/config/env/{project_id}")
 async def update_env_vars(project_id: str, data: EnvVarsRequest):
     """Update environment variables."""
-    if project_id not in _deployments:
-        _deployments[project_id] = {}
-    _deployments[project_id]["environment_vars"] = data.environmentVars
+    deployment = await Deployment.find_one(Deployment.project_id == project_id)
+    if not deployment:
+         deployment = Deployment(project_id=project_id, project_name=project_id)
+         await deployment.insert()
+         
+    deployment.environment_vars = data.environmentVars
+    await deployment.save()
+    
     return {
         "success": True,
         "project_id": project_id,
@@ -137,19 +168,24 @@ async def update_env_vars(project_id: str, data: EnvVarsRequest):
 @router.get("/config/env/{project_id}")
 async def get_env_vars(project_id: str):
     """Get environment variables."""
-    deployment = _deployments.get(project_id, {})
+    deployment = await Deployment.find_one(Deployment.project_id == project_id)
     return {
         "project_id": project_id,
-        "environmentVars": deployment.get("environment_vars", {}),
+        "environmentVars": deployment.environment_vars if deployment else {},
     }
 
 
 @router.post("/config/domain/{project_id}")
 async def setup_custom_domain(project_id: str, data: DomainRequest):
     """Setup custom domain."""
-    if project_id not in _deployments:
-        _deployments[project_id] = {}
-    _deployments[project_id]["custom_domain"] = data.customDomain
+    deployment = await Deployment.find_one(Deployment.project_id == project_id)
+    if not deployment:
+         deployment = Deployment(project_id=project_id, project_name=project_id)
+         await deployment.insert()
+         
+    deployment.custom_domain = data.customDomain
+    await deployment.save()
+    
     return {
         "success": True,
         "project_id": project_id,
@@ -160,10 +196,11 @@ async def setup_custom_domain(project_id: str, data: DomainRequest):
 @router.get("/logs/{project_id}")
 async def get_deployment_logs(project_id: str):
     """Get deployment logs."""
+    # In future: fetch from DB or container logs
     return {
         "project_id": project_id,
         "logs": [
-            {"timestamp": datetime.now(timezone.utc).isoformat(), "message": "Deployment log message"},
+            {"timestamp": datetime.now(timezone.utc).isoformat(), "message": "Deployment logs not yet integrated with DB persistence."},
         ],
     }
 
@@ -183,6 +220,7 @@ async def download_logs(project_id: str):
 @router.post("/restart/{project_id}")
 async def restart_deployment(project_id: str):
     """Restart deployment."""
+    # Logic to restart container would go here
     return {
         "success": True,
         "project_id": project_id,
@@ -204,8 +242,9 @@ async def get_deployment_metrics(project_id: str):
 @router.get("/health/{project_id}")
 async def get_container_health(project_id: str):
     """Get container health status."""
+    deployment = await Deployment.find_one(Deployment.project_id == project_id)
     return {
         "project_id": project_id,
-        "status": "unknown",
-        "healthy": False,
+        "status": deployment.container_health if deployment else "unknown",
+        "healthy": deployment.container_health == "healthy" if deployment else False,
     }
