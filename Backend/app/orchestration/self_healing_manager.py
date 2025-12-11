@@ -18,7 +18,8 @@ Uses:
 import os
 import re
 from pathlib import Path
-from typing import Optional, Callable, Tuple, List
+from typing import Optional, Callable, Tuple, List, Dict
+
 
 from app.core.logging import log
 from app.orchestration.structural_compiler import StructuralCompiler
@@ -88,15 +89,28 @@ class SelfHealingManager:
     # ----------------------------------------------------------------
     # HIGH-LEVEL REPAIR ENTRY POINT
     # ----------------------------------------------------------------
-    def repair(self, artifact_name: str) -> bool:
+    # ----------------------------------------------------------------
+    # HIGH-LEVEL REPAIR ENTRY POINT
+    # ----------------------------------------------------------------
+    def repair(self, artifact_name: str, strategy_id: str = "generic", params: Dict = None) -> bool:
         """
-        Attempt to repair a broken artifact.
+        Attempt to repair a broken artifact with tailored strategy.
         
+        Args:
+            artifact_name: Name of artifact to repair
+            strategy_id: Strategy identifier (e.g. 'syntax_fix')
+            params: Synthesized behavior parameters (e.g. {'max_edits': 2})
+            
         Returns:
             True if repair succeeded, False otherwise
         """
-        log("HEAL", f"🔧 Attempting repair for artifact: {artifact_name}")
-
+        params = params or {}
+        log("HEAL", f"🔧 Repairing {artifact_name} with strategy '{strategy_id}'")
+        
+        # Example of using params:
+        # strictness = params.get("priority", 0.5)
+        # if strictness > 0.8: ...
+        
         if artifact_name == "backend_router":
             return self._repair_backend_router()
 
@@ -111,6 +125,7 @@ class SelfHealingManager:
 
         log("HEAL", f"⚠️ Unknown artifact: {artifact_name}")
         return False
+
 
     # ----------------------------------------------------------------
     # REPAIR BACKEND ROUTER (DYNAMIC)

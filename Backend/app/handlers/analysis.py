@@ -16,7 +16,7 @@ from app.orchestration.state import WorkflowStateManager
 from app.llm import call_llm
 from app.llm.prompts import MARCUS_PROMPT
 from app.utils.parser import normalize_llm_output
-from app.orchestration.attention_router import (
+from app.attention import (
     compute_archetype_routing,
     compute_ui_vibe_routing,
 )

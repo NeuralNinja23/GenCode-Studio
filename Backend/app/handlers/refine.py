@@ -16,7 +16,7 @@ from app.core.logging import log
 from app.tools import run_tool
 from app.utils.parser import normalize_llm_output
 from app.orchestration.state import WorkflowStateManager
-from app.orchestration.attention_router import compute_ui_vibe_routing
+from app.attention import compute_ui_vibe_routing
 
 
 # Constants from legacy

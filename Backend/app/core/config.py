@@ -64,12 +64,46 @@ class PathSettings:
 
 
 @dataclass
+class UoTSettings:
+    """
+    Universe of Thought (UoT) configuration.
+    
+    Controls the creative reasoning operators:
+    - C-UoT: Combinational (blend multiple archetypes)
+    - E-UoT: Exploratory (inject foreign patterns)
+    - T-UoT: Transformational (mutate constraints)
+    """
+    # Feature Flags (Safety Layer)
+    enable_cuot: bool = field(default_factory=lambda: os.getenv("ENABLE_CUOT", "true").lower() == "true")
+    enable_euot: bool = field(default_factory=lambda: os.getenv("ENABLE_EUOT", "true").lower() == "true")
+    enable_tuot: bool = field(default_factory=lambda: os.getenv("ENABLE_TUOT", "false").lower() == "true")  # Sandbox only by default
+    
+    # Rollout Percentages (0-100)
+    cuot_rollout_pct: int = field(default_factory=lambda: int(os.getenv("CUOT_ROLLOUT_PCT", "100")))
+    euot_rollout_pct: int = field(default_factory=lambda: int(os.getenv("EUOT_ROLLOUT_PCT", "100")))
+    tuot_rollout_pct: int = field(default_factory=lambda: int(os.getenv("TUOT_ROLLOUT_PCT", "0")))
+    
+    # Retry Thresholds for Escalation
+    euot_retry_threshold: int = 2   # Activate E-UoT after this many retries
+    tuot_retry_threshold: int = 3   # Activate T-UoT after this many retries
+    
+    # T-UoT Safety
+    tuot_require_sandbox: bool = True  # Always run T-UoT mutations in sandbox first
+    tuot_require_approval: bool = True  # Require human approval for T-UoT writes
+    
+    # Entropy Thresholds
+    entropy_high: float = 1.5   # Above this = multi-domain query
+    entropy_low: float = 0.5    # Below this = confident single option
+
+
+@dataclass
 class Settings:
     """Main application settings."""
     llm: LLMSettings = field(default_factory=LLMSettings)
     workflow: WorkflowSettings = field(default_factory=WorkflowSettings)
     sandbox: SandboxSettings = field(default_factory=SandboxSettings)
     paths: PathSettings = field(default_factory=PathSettings)
+    uot: UoTSettings = field(default_factory=UoTSettings)
     port: int = field(default_factory=lambda: int(os.getenv("PORT", 8000)))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")
     

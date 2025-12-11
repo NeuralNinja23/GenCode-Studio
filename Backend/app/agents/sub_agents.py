@@ -1,6 +1,10 @@
 # app/agents/sub_agents.py
 """
 Sub-agent wrappers: Derek (backend QA), Luna (frontend QA), Victoria (architecture).
+
+SELF-EVOLVING: File and tool selection decisions are tracked and outcomes
+reported to enable learning over time.
+
 Each sub-agent:
  - Uses the integration adapter LLM to generate tests (pytest / Playwright).
  - Writes tests to workspace path.
@@ -16,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
+from app.core.logging import log
 from app.core.types import ChatMessage
 from app.core.constants import TEST_FILE_MIN_TOKENS
 from app.llm.prompts.derek import DEREK_PROMPT
@@ -286,6 +291,49 @@ async def run_sub_agent(
                     issues.append(f)
                 else:
                     issues.append({"description": str(f)})
+            
+            # ════════════════════════════════════════════════════════
+            # FAILURE LEARNING: Feedback loop from Testing → Learning
+            # ════════════════════════════════════════════════════════
+            try:
+                # 1. Identify which generation step likely caused this
+                # If backend tests fail, blame backend_implementation
+                blame_step = "backend_implementation" if "pytest" in runner_hint else "frontend_integration"
+                blame_agent = "Derek" if "pytest" in runner_hint else "Derek" # Derek does both mostly
+                
+                from app.learning.failure_store import get_failure_store
+                from app.learning.pattern_store import get_pattern_store
+                
+                fail_store = get_failure_store()
+                pattern_store = get_pattern_store()
+                
+                # 2. Record the failure (Logic/Bug)
+                # We interpret test failures as logic bugs in the implementation
+                fail_desc = f"Test failed: {issues[0].get('text', '')[:100] if issues else 'Unknown failure'}"
+                snippet = issues[0].get('text', '') if issues else ""
+                
+                fail_store.record_failure(
+                    archetype="generic", # We don't have archetype here easily, default to generic
+                    agent=blame_agent,
+                    step=blame_step,
+                    error_type="test_failure",
+                    description=fail_desc,
+                    code_snippet=snippet,
+                    fix_summary=""
+                )
+                
+                # 3. Penalize the "successful" pattern (False Positive Correction)
+                # If we previously gave this code a 9/10, we now deduct points
+                pattern_store.penalize_pattern(
+                    archetype="generic",
+                    agent=blame_agent,
+                    step=blame_step,
+                    penalty=3.0 # Heavy penalty for passing review but failing tests
+                )
+                
+            except Exception as e:
+                print(f"[LEARNING] Failed to record test feedback: {e}")
+
         return {
             "agent": name,
             "passed": bool(run_result.get("passed")),
@@ -295,6 +343,7 @@ async def run_sub_agent(
             "notes": notes,
             "raw_generation": gen
         }
+
     except Exception as e:
         return {"agent": name, "passed": False, "issues": [{"description": "sub-agent failure", "exception": str(e)}], "raw_exception": str(e)}
 
@@ -342,6 +391,92 @@ async def marcus_call_sub_agent(
         # PHASE 2: Build MINIMAL DYNAMIC CONTEXT
         # ============================================================
         
+        # Query is combination of task + step
+        query = f"{step_name}: {user_request}"
+
+        # Smart File Selection using Attention
+        # Instead of generic k=5, we use V!=K to decide context width
+        selected_files = files
+        if files and len(files) > 5:
+            try:
+                from app.attention import route_query
+                
+                # 1. Determine Context Mode (V!=K)
+                FILE_SELECTION_MODES = [
+                    {
+                        "id": "narrow",
+                        "description": "Specific task, single file fix, minor edit, typo, simple feature",
+                        "value": {"max_files": 4, "include_tests": False, "expand_context": False, "rank_bias": "similarity"}
+                    },
+                    {
+                        "id": "broad",
+                        "description": "General feature implementation, CRUD, API endpoint, component creation",
+                        "value": {"max_files": 10, "include_tests": True, "expand_context": True, "rank_bias": "similarity"}
+                    },
+                    {
+                        "id": "architectural",
+                        "description": "Complex integration, refactoring, architectural change, debugging across modules, full system review",
+                        "value": {"max_files": 15, "include_tests": True, "expand_context": True, "rank_bias": "similarity"}
+                    }
+                ]
+                
+                # Get context configuration with self-evolution tracking
+                mode_result = await route_query(
+                    query, 
+                    FILE_SELECTION_MODES,
+                    context_type="file_selection_mode",
+                    archetype=archetype or "unknown"
+                )
+                file_mode_decision_id = mode_result.get("decision_id", "")
+                
+                context_params = mode_result.get("value", {})
+                max_files = int(context_params.get("max_files", 5))
+                include_tests = context_params.get("include_tests", False)
+                expand_context = context_params.get("expand_context", False)
+                
+                log("ATTENTION", f"🧠 Context Mode: {mode_result['selected']} (limit: {max_files}, expand: {expand_context})")
+                if mode_result.get("evolved"):
+                    log("ATTENTION", f"   🧬 Mode evolved from learning history")
+
+                # 2. Select Files using dynamic limit
+                # If expand_context is True, we might want to ensure we're looking at ALL files, 
+                # but 'files' argument passed here is already filtered by get_relevant_files() glob.
+                # However, we can re-filter or ensure tests are included.
+                
+                candidates = files
+                if not include_tests:
+                    # Filter out test files if likely present
+                    candidates = [f for f in files if "test" not in f.get("path", "").lower()]
+                
+                file_options = []
+                for f in candidates:
+                    # Description combines path and a snippet of content for embedding
+                    desc = f"Path: {f.get('path', '')}\nContent: {f.get('content', '')[:300]}"
+                    file_options.append({"id": f.get("path"), "description": desc, "original": f})
+                
+                log("ATTENTION", f"   Selecting top {max_files} relevant files from {len(candidates)} candidates...")
+                
+                # If we have fewer candidates than max, take them all
+                if len(candidates) <= max_files:
+                    selected_files = candidates
+                else:
+                    result = await route_query(query, file_options, top_k=max_files)
+                    
+                    # Get the top ranked files
+                    top_ids = [r["id"] for r in result["ranked"]]
+                    top_ids = top_ids[:max_files]
+                    
+                    selected_files = [f for f in files if f.get("path") in top_ids]
+
+                
+            except Exception as e:
+                log("ATTENTION", f"⚠️ File selection failed: {e}, using fallback")
+                selected_files = files[:5]
+                file_mode_decision_id = ""  # No decision to track
+        else:
+            file_mode_decision_id = ""  # No attention routing was needed
+
+        
         # Get memory hint (pattern learning) - kept for quality improvement
         memory_hint = None
         try:
@@ -349,19 +484,45 @@ async def marcus_call_sub_agent(
             memory_hint = get_memory_hint(agent_name, step_name) if step_name else None
         except ImportError:
             pass  # Memory module may not exist yet
+            
+        # ════════════════════════════════════════════════════════
+        # DYNAMIC TOOL SELECTION (V!=K)
+        # ════════════════════════════════════════════════════════
+        selected_tools = []
+        tool_decision_id = ""
+        try:
+             # Use Attention to select and configure tools
+             from app.tools.registry import get_relevant_tools_for_query
+             log("ATTENTION", f"🧠 Selecting tools for {step_name}...")
+             tool_result = await get_relevant_tools_for_query(
+                 query, 
+                 top_k=3,
+                 context_type="agent_tool_selection",
+                 archetype=archetype or "unknown",
+                 step_name=step_name
+             )
+             selected_tools = tool_result if isinstance(tool_result, list) else []
+             # Check if we got a decision_id back (if registry returns it)
+             if isinstance(tool_result, dict):
+                 tool_decision_id = tool_result.get("decision_id", "")
+                 selected_tools = tool_result.get("tools", [])
+        except Exception as e:
+             log("ATTENTION", f"⚠️ Tool selection failed: {e}")
         
         # Build context string
-        dynamic_context = build_context(
+        dynamic_context = await build_context(
             agent_name=agent_name,
             task=user_request,
             step_name=step_name,
             archetype=archetype,
             vibe=vibe,
-            files=files[:5] if files else None,  # Limit to 5 files
+            files=selected_files,  # Use smart selected files
             contracts=contracts,
             errors=errors if is_retry else None,
             memory_hint=memory_hint,
+            tools=selected_tools # Inject configured tools
         )
+
 
         # ============================================================
         # MAX TOKENS - Step-specific token policies (Option 3 #7)
@@ -462,6 +623,33 @@ async def marcus_call_sub_agent(
 
         if normalized is not None:
             # Happy path: we got a usable files schema
+            
+            # ════════════════════════════════════════════════════════
+            # SELF-EVOLUTION: Report SUCCESS for attention decisions
+            # ════════════════════════════════════════════════════════
+            try:
+                from app.attention import report_routing_outcome
+                
+                # File selection mode worked
+                if file_mode_decision_id:
+                    report_routing_outcome(
+                        decision_id=file_mode_decision_id,
+                        success=True,
+                        quality_score=8.0,
+                        details=f"Agent {agent_name} succeeded with file mode"
+                    )
+                
+                # Tool selection worked (if tracked)
+                if tool_decision_id:
+                    report_routing_outcome(
+                        decision_id=tool_decision_id,
+                        success=True,
+                        quality_score=8.0,
+                        details=f"Agent {agent_name} succeeded with selected tools"
+                    )
+            except Exception as e:
+                log("EVOLUTION", f"⚠️ Failed to report success outcome: {e}")
+            
             return {
                 "passed": True,
                 "output": normalized,
@@ -475,6 +663,32 @@ async def marcus_call_sub_agent(
             issues.append({"raw": json.dumps(parsed)})
         else:
             issues.append({"raw": raw})
+
+        # ════════════════════════════════════════════════════════
+        # SELF-EVOLUTION: Report FAILURE for attention decisions
+        # ════════════════════════════════════════════════════════
+        try:
+            from app.attention import report_routing_outcome
+            
+            quality = 3.0  # Low quality - output wasn't parseable
+            
+            if file_mode_decision_id:
+                report_routing_outcome(
+                    decision_id=file_mode_decision_id,
+                    success=False,
+                    quality_score=quality,
+                    details=f"Agent {agent_name} failed - output not parseable"
+                )
+            
+            if tool_decision_id:
+                report_routing_outcome(
+                    decision_id=tool_decision_id,
+                    success=False,
+                    quality_score=quality,
+                    details=f"Agent {agent_name} failed - output not parseable"
+                )
+        except Exception:
+            pass
 
         return {
             "passed": False,

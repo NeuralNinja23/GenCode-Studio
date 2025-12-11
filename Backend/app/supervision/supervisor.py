@@ -57,8 +57,27 @@ async def marcus_supervise(
     cleaned_output, rejection_reasons = preflight_check(agent_output)
     
     # If pre-flight failed, reject immediately
+    # If pre-flight failed, reject immediately
     if rejection_reasons:
         log("SUPERVISION", f"❌ Pre-flight failed: {rejection_reasons[0]}", project_id)
+        
+        # ════════════════════════════════════════════════════════
+        # FAILURE LEARNING: Record Pre-Flight Failure (Syntax/Structure)
+        # ════════════════════════════════════════════════════════
+        try:
+            from app.learning.failure_store import get_failure_store
+            store = get_failure_store()
+            store.record_failure(
+                archetype="generic", 
+                agent=agent_name,
+                step=step_name,
+                error_type="preflight_validation",
+                description=f"Pre-flight failed: {rejection_reasons[0]}",
+                code_snippet="" # Can't easily isolate snippet without parsing, but error desc is good
+            )
+        except Exception:
+            pass
+
         # Fix formatting for pre-flight errors
         fixed_reasons = [f"- {r}" for r in rejection_reasons]
         return {
@@ -68,6 +87,7 @@ async def marcus_supervise(
             "feedback": f"Your code failed pre-flight validation:\n" + "\n".join(fixed_reasons) + "\n\nFix these syntax errors immediately.",
             "corrections": []
         }
+
 
     # Update output with cleaned code (e.g. fixed newlines)
     parsed = cleaned_output
@@ -308,7 +328,7 @@ RESPOND WITH JSON:
         # ============================================================
         # Only reject for CRITICAL issues; warnings are logged but don't block
         if not approved and issues:
-            critical_issues, warnings = postprocess_marcus_issues(quality, issues)
+            critical_issues, warnings = await postprocess_marcus_issues(quality, issues)
             
             if not critical_issues:
                 # All issues are just warnings - upgrade to approved with warnings
@@ -324,6 +344,7 @@ RESPOND WITH JSON:
                 log("MARCUS", f"❌ Found {len(critical_issues)} critical issues (+ {len(warnings)} warnings)", project_id=project_id)
                 result["critical_issues"] = critical_issues
                 result["warnings"] = warnings
+
         
         # Log Marcus's thinking using centralized logging
         if thinking:
@@ -377,45 +398,30 @@ RESPOND WITH JSON:
         }
 
 
-def categorize_issue_severity(issue: str) -> str:
+
+async def categorize_issue_severity(issue: str) -> str:
     """
-    Categorize Marcus's issues into 'critical' or 'warning'.
-    
-    Critical issues: Syntax errors, broken functionality, missing required features
-    Warnings: Style preferences, best practices, minor improvements, placeholders
+    Categorize Marcus's issues into 'critical' or 'warning' using Universal Attention.
     """
-    text = issue.lower()
+    from app.orchestration.attention_router import route_query
     
-    # ═══════════════════════════════════════════════════════
-    # PLACEHOLDER/MOCK DATA ISSUES (warnings, not critical)
-    # ═══════════════════════════════════════════════════════
-    # These are expected during mock data step
-    if "coming soon" in text or "placeholder" in text:
-        return "warning"
-    if "not implemented" in text or "incomplete" in text:
-        return "warning"
-    if "chart" in text and ("missing" in text or "placeholder" in text or "empty" in text):
-        return "warning"
-    if "mock" in text and ("data" in text or "using" in text):
-        return "warning"
+    options = [
+        {"id": "warning", "description": "Style preference, suggestion, best practice, optimization, maintainability, naming convention, optional improvement, placeholder text, mock data, future todo"},
+        {"id": "critical", "description": "Syntax error, bug, broken functionality, missing requirement, crash, infinite loop, undefined variable, import error, potential security vulnerability, test failure"}
+    ]
     
-    # ═══════════════════════════════════════════════════════
-    # STYLE/PREFERENCE ISSUES (warnings, not critical)
-    # ═══════════════════════════════════════════════════════
-    if "faker" in text or "hardcoded test data" in text:
-        return "warning"
-    if "data-testid" in text and ("backend" in text or "query" in text):
-        return "warning"  # data-testid on backend params is a style issue
-    if "consider using" in text or "prefer" in text or "recommended" in text:
-        return "warning"
-    if "could be improved" in text or "suggestion" in text:
-        return "warning"
+    # Use attention to classify
+    result = await route_query(issue, options)
     
-    # Everything else defaults to critical
+    # Default to critical if confidence is low, otherwise use selection
+    # But for "warning", we want to be sure. If unsure, treat as critical.
+    if result["selected"] == "warning" and result["confidence"] > 0.15:
+        return "warning"
+        
     return "critical"
 
 
-def postprocess_marcus_issues(quality: int, issues: List[str]):
+async def postprocess_marcus_issues(quality: int, issues: List[str]):
     """
     Split issues into critical (must fix) and warnings (nice-to-have).
     
@@ -425,13 +431,15 @@ def postprocess_marcus_issues(quality: int, issues: List[str]):
     warnings = []
     
     for issue in issues or []:
-        severity = categorize_issue_severity(issue)
+        # Use semantic attention routing
+        severity = await categorize_issue_severity(issue)
         if severity == "critical":
             critical.append(issue)
         else:
             warnings.append(issue)
     
     return critical, warnings
+
 
 
 def _extract_archetype(user_request: str) -> str:
@@ -574,6 +582,7 @@ async def supervised_agent_call(
     last_output = {}
     last_review = None
     errors_from_previous = []  # For differential retry
+    last_supervisor_decision_id = ""  # For self-evolution tracking
     
     # V2: Initialize adaptive prompt adapter and integrity checker
     prompt_adapter = PromptAdapter()
@@ -699,6 +708,23 @@ async def supervised_agent_call(
                         )
                     except Exception as learn_error:
                         log("LEARNING", f"⚠️ Pattern storage failed (non-fatal): {learn_error}")
+                    
+                    # ═══════════════════════════════════════════════════════
+                    # SELF-EVOLUTION: Report supervisor decision outcome as SUCCESS
+                    # ═══════════════════════════════════════════════════════
+                    # If we had a supervisor decision from a previous retry, report success
+                    if attempt > 1 and 'last_supervisor_decision_id' in dir() and last_supervisor_decision_id:
+                        try:
+                            from app.attention import report_routing_outcome
+                            report_routing_outcome(
+                                last_supervisor_decision_id, 
+                                True, 
+                                quality, 
+                                f"Retry succeeded after {attempt} attempts"
+                            )
+                            log("EVOLUTION", f"📈 Reported success for supervisor decision")
+                        except Exception as e:
+                            pass
                 
                 return {"output": parsed, "approved": True, "attempt": attempt, "quality": quality}
             
@@ -706,6 +732,30 @@ async def supervised_agent_call(
             quality = review.get("quality_score", 4)
             track_quality_score(project_id, agent_name, quality, False)  # Track rejection
             
+            # ════════════════════════════════════════════════════════
+            # FAILURE LEARNING: Record Intermediate Failure (Logic/Style)
+            # ════════════════════════════════════════════════════════
+            # Capture the mistake even if we fix it later!
+            try:
+                from app.learning.failure_store import get_failure_store
+                store = get_failure_store()
+                
+                issues = review.get("issues", [])
+                feedback = review.get("feedback", "")
+                
+                if issues:
+                    store.record_failure(
+                        archetype=archetype,
+                        agent=agent_name,
+                        step=step_name,
+                        error_type="supervision_rejection",
+                        description=f"Rejected (Score {quality}): {issues[0][:100]}",
+                        code_snippet=str(issues[:2]), # Store issues as the snippet context
+                        fix_summary=feedback[:100]
+                    )
+            except Exception as e:
+                log("LEARNING", f"⚠️ Failed to record intermediate failure: {e}")
+
             from app.supervision.quality_gate import check_quality_gate
             should_block, block_reason = await check_quality_gate(
                 project_id, step_name, quality, False, attempt, max_retries
@@ -713,12 +763,101 @@ async def supervised_agent_call(
             if should_block:
                 log("SUPERVISION", f"🚫 Quality gate blocked: {block_reason}", project_id=project_id)
                 # Don't proceed - let the workflow handle this
+
+            
+            # Not approved - build retry instructions
             
             # Not approved - build retry instructions
             
             if attempt < max_retries:
                 feedback = review.get("feedback", "")
                 issues = review.get("issues", [])
+                
+                # ════════════════════════════════════════════════════════
+                # PHASE 3.1: UoT-Driven Repair Strategy (C-UoT -> E-UoT -> T-UoT)
+                # ════════════════════════════════════════════════════════
+                try:
+                    from app.orchestration.error_router import ErrorRouter
+                    from app.attention import report_routing_outcome
+                    
+                    # Use the advanced UoT Router
+                    error_router = ErrorRouter()
+                    
+                    # Synthesize error context
+                    error_context = f"Step: {step_name}\nAttempts: {attempt}\nIssues: {str(issues[:3])}"
+                    
+                    # Decide strategy with escalation (Standard -> Exploratory -> Transformational)
+                    repair_decision = await error_router.decide_repair_strategy(
+                        error_log=error_context, 
+                        archetype=archetype,
+                        retries=attempt,
+                        max_retries=max_retries,
+                        context={"current_value": {}} # Context for mutation if needed
+                    )
+                    
+                    log("SUPERVISION", f"🧠 Repair Strategy: {repair_decision.get('mode', 'standard').upper()} -> {repair_decision.get('selected')}", project_id=project_id)
+                    
+                    # Store decision ID for later outcome reporting
+                    last_supervisor_decision_id = repair_decision.get("decision_id", "")
+                    
+                    # Extract control parameters from the decision value
+                    config = repair_decision.get("value", {})
+                    
+                    # Apply UoT specific modes
+                    if repair_decision.get("mode") == "exploratory":
+                         # Inject foreign patterns into instructions
+                         patterns = repair_decision.get("patterns", [])
+                         if patterns:
+                             hint_text = "\n\n💡 FOREIGN PATTERN SUGGESTION (E-UoT):\n"
+                             for p in patterns:
+                                 hint_text += f"- From {p.get('archetype')}: {p.get('description', '')}\n"
+                             current_instructions += hint_text
+                             log("SUPERVISION", f"   Updated instructions with {len(patterns)} foreign patterns")
+
+                    elif repair_decision.get("mode") == "transformational":
+                         # Apply mutation to constraints (instructions)
+                         mutation = repair_decision.get("mutation", {})
+                         desc = mutation.get("description", "")
+                         if desc:
+                             current_instructions += f"\n\n🔮 CONSTRAINT MUTATION (T-UoT):\n{desc}\n(You are authorized to bypass previous constraints)"
+                             log("SUPERVISION", f"   Applied constraint mutation: {desc}")
+                    
+                    # Standard control flags
+                    force_healer = config.get("force_healer", False)
+                    if config.get("retry_on_fail") == 0:
+                        force_healer = True
+                        
+                    regenerate_context = config.get("regenerate_context", False)
+                    
+                    # Check Force Healer
+                    if force_healer:
+                        log("SUPERVISION", "🩹 Policy suggests delegating to Healer immediately")
+                        if last_supervisor_decision_id:
+                             try:
+                                 report_routing_outcome(last_supervisor_decision_id, True, 6.0, "Delegated to healer")
+                             except: pass
+                        
+                        return {
+                             "output": parsed, 
+                             "approved": False, 
+                             "attempt": attempt, 
+                             "quality": quality, 
+                             "issues": issues,
+                             "feedback": "Supervisor policy delegated to healer",
+                             "force_healer": True 
+                        }
+                    
+                    # Check Context Regeneration
+                    if regenerate_context:
+                        log("SUPERVISION", "🔄 Policy requests context regeneration/reset")
+                        prompt_adapter.record_failure(step_name)
+                        errors_from_previous = []
+
+                except Exception as e:
+                    log("SUPERVISION", f"⚠️ UoT routing failed: {e}, falling back to standard retry", project_id=project_id)
+                    force_healer = False
+                    last_supervisor_decision_id = ""
+
                 corrections = review.get("corrections", [])
                 
                 # ============================================================
@@ -798,6 +937,32 @@ Corrections: {correction_text}
     MIN_QUALITY = 5
     if is_critical and quality < MIN_QUALITY:
          log("SUPERVISION", f"❌ {step_name} failed quality gate (q={quality}), discarding output", project_id=project_id)
+         
+         # ════════════════════════════════════════════════════════
+         # FAILURE LEARNING: Record this critical failure 
+         # ════════════════════════════════════════════════════════
+         try:
+             from app.learning.failure_store import get_failure_store
+             store = get_failure_store()
+             
+             # Extract error details from last review
+             issues = last_review.get("issues", []) if last_review else ["Unknown critical failure"]
+             feedback = last_review.get("feedback", "") if last_review else ""
+             
+             store.record_failure(
+                 archetype=archetype,
+                 agent=agent_name,
+                 step=step_name,
+                 error_type="quality_gate_failure",
+                 description=f"Failed quality gate (Score {quality}). Issues: {'; '.join(str(i) for i in issues[:3])}",
+                 code_snippet=str(issues[:1]) if issues else "",
+                 fix_summary=feedback[:200]
+             )
+         except Exception as e:
+             log("LEARNING", f"⚠️ Failed to record failure: {e}")
+             
+         return {"output": None, "approved": False, "attempt": max_retries, "error": f"Failed quality gate (Score {quality})"}
+
          # Return empty files to signal failure to orchestrator (which will trigger healing)
          return {
              "output": {"files": [], "message": f"Quality gate failed ({quality}/10)"}, 

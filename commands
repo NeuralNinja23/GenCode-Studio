@@ -2,6 +2,7 @@ python -m venv .venv
 .\.venv\Scripts\activate
 uvicorn app.main:app --reload
 sudo .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+python -m GitHub.pretrain --sample-size 30
 
 But to be honest this fixes are fixed not dynamic, if user will run another prompt it wont work
 

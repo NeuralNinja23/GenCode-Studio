@@ -326,6 +326,58 @@ For "{archetype}" applications, high-quality code typically includes:
         
         return list(set(imports))[:10]
 
+    def penalize_pattern(
+        self,
+        archetype: str,
+        agent: str,
+        step: str,
+        entity_type: str = "",
+        penalty: float = 2.0,
+    ) -> bool:
+        """
+        Retroactively penalize a pattern if it led to a failure later.
+        
+        This handles the "False Positive" problem where Marcus generates
+        a high score for code that actually crashes during testing.
+        
+        Args:
+            penalty: Amount to deduct from quality_score
+        """
+        pattern_id = self._generate_pattern_id(archetype, agent, step, entity_type)
+        
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                existing = conn.execute(
+                    "SELECT quality_score, success_count FROM patterns WHERE pattern_id = ?",
+                    (pattern_id,)
+                ).fetchone()
+                
+                if existing:
+                    old_score = existing[0]
+                    new_score = max(1.0, old_score - penalty)
+                    
+                    # If score drops too low, reset success count too
+                    if new_score < 6.0:
+                        new_count = 0  # It's no longer a "proven" pattern
+                    else:
+                        new_count = existing[1]
+                    
+                    conn.execute("""
+                        UPDATE patterns 
+                        SET quality_score = ?, success_count = ?, timestamp = ?
+                        WHERE pattern_id = ?
+                    """, (new_score, new_count, datetime.now(timezone.utc).isoformat(), pattern_id))
+                    
+                    log("LEARNING", f"📉 Penalized pattern {pattern_id[:8]} (False Positive Detected): {old_score} → {new_score}")
+                    conn.commit()
+                    return True
+                
+            return False
+        except Exception as e:
+            log("LEARNING", f"⚠️ Failed to penalize pattern: {e}")
+            return False
+
+
 
 # Global instance
 _pattern_store: Optional[PatternStore] = None
@@ -335,10 +387,15 @@ def get_pattern_store() -> PatternStore:
     """Get the global pattern store instance."""
     global _pattern_store
     if _pattern_store is None:
-        # Store in .gemini directory
-        storage_dir = Path.home() / ".gemini" / "gencode_learning"
+        # Store in project's backend/data directory
+        # We assume this code runs from within the app, so we find the path relative to this file
+        # File is in: app/learning/pattern_store.py
+        # Root is: app/../..
+        root_dir = Path(__file__).parent.parent.parent
+        storage_dir = root_dir / "data"
         _pattern_store = PatternStore(storage_dir)
     return _pattern_store
+
 
 
 def learn_from_success(

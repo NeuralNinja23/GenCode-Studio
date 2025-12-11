@@ -203,9 +203,8 @@ def test_attention_router_embeddings_fallback():
     """
     Smoke test: Attention router handles missing API keys gracefully.
     
-    Should fall back to hash-based embeddings if no API keys.
     """
-    from app.orchestration.attention_router import _get_fallback_embedding
+    from app.attention.router import _get_fallback_embedding
     
     # Test fallback embedding
     embedding = _get_fallback_embedding("test query", dim=768)

@@ -1,11 +1,14 @@
 # app/orchestration/healing_pipeline.py
 """
-FAST v2 Healing Pipeline
+FAST v2 Healing Pipeline (Self-Evolving)
 
 Coordinates the self-healing process:
 1. Error attribution (which artifact failed?)
 2. Self-healing attempt (LLM regeneration)
 3. Fallback to templates (last resort)
+
+SELF-EVOLUTION: Tracks repair strategy decisions and learns from
+outcomes to improve future healing attempts.
 
 Usage:
     healer = HealingPipeline(project_path, llm_caller)
@@ -59,11 +62,27 @@ class HealingPipeline:
         # Fallback agents for direct template generation
         self.fallback_router = FallbackRouterAgent()
         self.fallback_api = FallbackAPIAgent()
+        
+        # Self-evolution tracking
+        self._last_repair_decision_id = ""
+        self._last_archetype = "unknown"
 
     # -------------------------------------------------------------
-    def attempt_heal(self, step: str) -> Optional[str]:
+    async def attempt_heal(
+        self, 
+        step: str, 
+        error_log: str = "",
+        archetype: str = "unknown",
+        retries: int = 0
+    ) -> Optional[str]:
         """
         Attempt to heal a failed step.
+        
+        Args:
+            step: The failed step name
+            error_log: The error message or log trace
+            archetype: Project archetype for self-evolution context
+            retries: Current retry count (for UoT escalation)
         
         Returns:
             - "SELF_HEALED" if self-healing wrote files directly
@@ -76,13 +95,74 @@ class HealingPipeline:
             log("HEAL", f"⚠️ No repair route for step: {step}")
             return None
 
-        log("HEAL", f"🔧 Attempting to heal {step} → {artifact}")
+        # ════════════════════════════════════════════════════════
+        # PHASE 3.2: Attention-Selected Repair Strategy (UoT-Enhanced)
+        # ════════════════════════════════════════════════════════
+        strategy_id = "generic_fix"
+        strategy_params = {}
+        repair_decision_id = ""
+        uot_mode = "standard"
+        
+        if error_log:
+            try:
+                # Returns dict with 'selected', 'value', 'decision_id', and 'mode'
+                result = await self.error_router.decide_repair_strategy(
+                    error_log, 
+                    archetype=archetype,
+                    retries=retries  # Pass retries for UoT escalation
+                )
+                strategy_id = result.get("selected", "generic_fix")
+                strategy_params = result.get("value", {})
+                repair_decision_id = result.get("decision_id", "")
+                uot_mode = result.get("mode", "standard")
+                
+                # Store for outcome reporting
+                self._last_repair_decision_id = repair_decision_id
+                self._last_archetype = archetype
+                
+                # Log UoT mode if not standard
+                if uot_mode != "standard":
+                    log("HEAL", f"🧠 UoT Mode: {uot_mode.upper()}")
+                    if uot_mode == "exploratory" and result.get("source_archetypes"):
+                        log("HEAL", f"   📚 Foreign patterns from: {result['source_archetypes']}")
+                    if uot_mode == "transformational" and result.get("mutation"):
+                        log("HEAL", f"   🔮 Mutation: {result['mutation'].get('description', 'N/A')}")
+                
+                log("HEAL", f"🧠 Attention selected strategy: '{strategy_id}'")
+                log("HEAL", f"   ⚙️ Params: {strategy_params}")
+                if result.get("evolved"):
+                    log("HEAL", f"   🧬 Strategy parameters evolved from learning")
+            except Exception as e:
+                log("HEAL", f"⚠️ Strategy selection failed: {e}")
+
+        log("HEAL", f"🔧 Attempting to heal {step} → {artifact} (Strategy: {strategy_id})")
 
         # Attempt explicit self-healing first
-        healed = self.healing_manager.repair(artifact)
+        try:
+            # Pass synthesized parameters to repair manager
+            healed = self.healing_manager.repair(
+                artifact, 
+                strategy_id=strategy_id, 
+                params=strategy_params
+            )
+        except TypeError:
+             # Fallback if repair doesn't support params yet
+             healed = self.healing_manager.repair(artifact)
+             
         if healed:
             log("HEAL", f"✅ Self-healing succeeded for {artifact}")
+            
+            # SELF-EVOLUTION: Report success
+            self._report_healing_outcome(
+                repair_decision_id,
+                success=True,
+                quality_score=8.0,
+                details=f"Self-healing succeeded for {artifact} using {strategy_id}"
+            )
+            
             return "SELF_HEALED"
+            
+        # ... fallback logic continues ...
 
         log("HEAL", f"⚠️ Self-healing failed for {artifact}, trying fallback agent")
 
@@ -90,10 +170,51 @@ class HealingPipeline:
         fallback_code = self._fallback(step)
         if fallback_code:
             log("HEAL", f"✅ Fallback agent succeeded for {step}")
+            
+            # SELF-EVOLUTION: Report partial success (fallback worked but self-healing didn't)
+            self._report_healing_outcome(
+                repair_decision_id,
+                success=True,
+                quality_score=6.0,
+                details=f"Fallback succeeded for {step} after self-healing failed"
+            )
+            
             return fallback_code
 
         log("HEAL", f"❌ All healing options exhausted for {step}")
+        
+        # SELF-EVOLUTION: Report failure
+        self._report_healing_outcome(
+            repair_decision_id,
+            success=False,
+            quality_score=2.0,
+            details=f"All healing options failed for {step}"
+        )
+        
         return None
+    
+    def _report_healing_outcome(
+        self,
+        decision_id: str,
+        success: bool,
+        quality_score: float,
+        details: str
+    ) -> None:
+        """
+        Report the outcome of a healing attempt for self-evolution.
+        """
+        if not decision_id:
+            return
+        
+        try:
+            self.error_router.report_repair_outcome(
+                decision_id=decision_id,
+                success=success,
+                quality_score=quality_score,
+                details=details
+            )
+        except Exception as e:
+            log("HEAL", f"⚠️ Failed to report healing outcome: {e}")
 
     # -------------------------------------------------------------
     def _fallback(self, step: str) -> Optional[str]:

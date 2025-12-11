@@ -1187,6 +1187,10 @@ async def run_tool(name: str, args: Optional[Dict[str, Any]] = None) -> Dict[str
         # explicit aliases for sandbox_exec
         if normalized in {"sandboxexec", "sandbox_exec"}:
             return await tool_sandbox_exec(args)
+            
+        # explicit alias for code_generator (V!=K spec)
+        if normalized == "code_generator":
+            normalized = "subagentcaller"
 
         func = TOOL_FUNCTION_MAP.get(normalized)
         if func is None:
