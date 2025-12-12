@@ -7,7 +7,7 @@ Workflow order: ... → Testing Frontend (10) → Preview Final (11) → COMPLET
 import asyncio
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, List
 
 import aiohttp
 
@@ -149,12 +149,11 @@ services:
             # 6) Verify Frontend Reachability
             if preview_url:
                 log("PREVIEW", f"Waiting for {preview_url}...")
-                is_reachable = False
+
                 for i in range(60):
                     try:
                         async with session.get(preview_url, timeout=aiohttp.ClientTimeout(total=1)) as check_resp:
                             if check_resp.status == 200:
-                                is_reachable = True
                                 break
                     except Exception:
                         pass # Retrying silently

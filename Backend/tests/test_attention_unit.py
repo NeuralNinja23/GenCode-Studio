@@ -1,6 +1,5 @@
 import pytest
-import numpy as np
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 from app.arbormind import ArborMindRouter
 
 # Mock embedding function to avoid API calls

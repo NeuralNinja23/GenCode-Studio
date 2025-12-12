@@ -1,7 +1,7 @@
 from typing import Dict, List
 import asyncio
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
 
 class ConnectionManager:

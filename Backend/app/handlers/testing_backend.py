@@ -11,19 +11,19 @@ Marcus-as-Critic Pattern:
 - Marcus provides Derek with structured fix instructions
 - Derek then implements the fixes following Marcus's guidance
 """
-import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app.core.types import ChatMessage, StepResult
-from app.core.constants import WorkflowStep, TEST_FILE_MIN_TOKENS
-from app.core.exceptions import RateLimitError
+from app.core.constants import WorkflowStep
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.core.logging import log
 from app.tools import run_tool
 from app.llm.prompts.derek import DEREK_TESTING_INSTRUCTIONS
-from app.utils.parser import normalize_llm_output
+from app.persistence.validator import validate_file_output
+from app.core.constants import PROTECTED_SANDBOX_FILES
+from app.utils.entity_discovery import discover_primary_entity
 
 
 # Constants from legacy
@@ -31,15 +31,15 @@ MAX_FILES_PER_STEP = 10
 MAX_FILE_LINES = 400
 
 
-from app.persistence.validator import validate_file_output
+
 
 
 
 # Protected sandbox files - imported from centralized constants
-from app.core.constants import PROTECTED_SANDBOX_FILES
+
 
 # Centralized entity discovery for dynamic fallback
-from app.utils.entity_discovery import discover_primary_entity
+
 
 # REMOVED: Restrictive allowed prefixes - agents can write to any file except protected ones
 
@@ -186,7 +186,6 @@ async def _generate_tests_from_template(
     from app.handlers.base import broadcast_agent_log
     
     tests_dir = project_path / "backend" / "tests"
-    test_file = tests_dir / "test_api.py"
     template_file = tests_dir / "test_api.py.template"
     
     # ALWAYS generate tests from template - Derek creates project-specific tests
@@ -501,12 +500,12 @@ Write pytest tests that ensure tenant scoping:
 - Response format follows the standard envelope.
 """
     else:
-        test_instructions = f"""
+        test_instructions = """
 Write basic CRUD tests for the primary entity router:
 
 - List, create, get-by-id, delete.
 - 404 on unknown id.
-- Response envelopes: {{ "data": <object> }} for single, {{ "data": [...], "total": int }} for lists.
+- Response envelopes: { "data": <object> } for single, { "data": [...], "total": int } for lists.
 """
     
     if test_file_exists:
@@ -624,13 +623,15 @@ Focus on fixing the {primary_entity} router and related models.
         try:
             main_py = (project_path / "backend/app/main.py").read_text(encoding="utf-8")
             source_context += f"📄 backend/app/main.py (System Wiring):\n```python\n{main_py}\n```\n\n"
-        except Exception: pass
+        except Exception:
+            pass
             
         # 2. Models.py
         try:
             models_py = (project_path / "backend/app/models.py").read_text(encoding="utf-8")
             source_context += f"📄 backend/app/models.py:\n```python\n{models_py}\n```\n\n"
-        except Exception: pass
+        except Exception:
+            pass
 
         # 3. Routers (API Implementation)
         try:
@@ -640,7 +641,8 @@ Focus on fixing the {primary_entity} router and related models.
                     if r_file.name != "__init__.py":
                         r_content = r_file.read_text(encoding="utf-8")
                         source_context += f"📄 backend/app/routers/{r_file.name}:\n```python\n{r_content}\n```\n\n"
-        except Exception: pass
+        except Exception:
+            pass
 
 
         # Marcus as Backend Critic - analyze failure and provide structured instructions
@@ -773,7 +775,7 @@ Focus on fixing the {primary_entity} router and related models.
                 manager,
                 project_id,
                 "AGENT:Marcus",
-                f"⚠️ Analysis skipped due to error. Derek will fix directly."
+                "⚠️ Analysis skipped due to error. Derek will fix directly."
             )
 
         # ------------------------------------------------------------

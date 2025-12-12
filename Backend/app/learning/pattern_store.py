@@ -16,7 +16,7 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import hashlib
 
 from app.core.logging import log

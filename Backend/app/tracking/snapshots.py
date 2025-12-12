@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass

@@ -5,7 +5,6 @@ Agent status routes.
 from fastapi import APIRouter
 
 from app.core.constants import AgentName
-from app.orchestration.state import WorkflowStateManager
 
 router = APIRouter(prefix="/api/agents", tags=["Agents"])
 

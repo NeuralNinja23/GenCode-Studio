@@ -9,10 +9,6 @@ This seed exists so that:
 
 When Derek generates models, he writes the COMPLETE file - not patches.
 """
-from datetime import datetime
-from typing import Optional, List
-from beanie import Document
-from pydantic import Field
 
 
 # Derek will replace this entire file with project-specific models.

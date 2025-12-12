@@ -4,8 +4,7 @@ Context selection for agents - only provide relevant files per step.
 Reduces token usage and improves LLM output quality.
 """
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-import glob
+from typing import List, Dict, Any
 
 from app.core.logging import log
 

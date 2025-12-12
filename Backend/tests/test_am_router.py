@@ -15,14 +15,11 @@ from app.arbormind.router import (
     arbormind_attention,
     arbormind_blend,
     should_use_combinational_mode,
-    DEFAULT_SCALE_STANDARD,
-    DEFAULT_SCALE_COMBINATIONAL,
-    ENTROPY_HIGH_THRESHOLD,
 )
 
 
 class TestCreativeAttention:
-    """Tests for the creative_attention function."""
+    """Tests for the arbormind_attention function (formerly creative_attention)."""
     
     def test_standard_mode_sharp_attention(self):
         """Standard mode should produce sharp (winner-takes-all) weights."""
@@ -134,8 +131,8 @@ class TestBlendValues:
         
         result = arbormind_blend(weights, values)
         
-        assert result["verify"] == True
-        assert result["strict"] == False
+        assert result["verify"]
+        assert not result["strict"]
     
     def test_missing_keys_handled(self):
         """Missing keys in some dicts should be handled gracefully."""
@@ -162,13 +159,13 @@ class TestModeDetection:
     
     def test_high_entropy_suggests_combinational(self):
         """High entropy should suggest combinational mode."""
-        assert should_use_combinational_mode(2.0) == True
-        assert should_use_combinational_mode(1.8) == True
+        assert should_use_combinational_mode(2.0)
+        assert should_use_combinational_mode(1.8)
     
     def test_low_entropy_suggests_standard(self):
         """Low entropy should suggest standard mode."""
-        assert should_use_combinational_mode(0.5) == False
-        assert should_use_combinational_mode(1.0) == False
+        assert not should_use_combinational_mode(0.5)
+        assert not should_use_combinational_mode(1.0)
 
 
 if __name__ == "__main__":

@@ -6,9 +6,9 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from app.core.config import settings
+
 
 from app.core.logging import log, log_section, log_thinking, log_files, log_result
 from app.llm import call_llm
@@ -84,7 +84,7 @@ async def marcus_supervise(
             "approved": False,
             "quality_score": 1,
             "issues": rejection_reasons,
-            "feedback": f"Your code failed pre-flight validation:\n" + "\n".join(fixed_reasons) + "\n\nFix these syntax errors immediately.",
+            "feedback": "Your code failed pre-flight validation:\n" + "\n".join(fixed_reasons) + "\n\nFix these syntax errors immediately.",
             "corrections": []
         }
 
@@ -116,7 +116,7 @@ async def marcus_supervise(
                 break
     
     if not needs_full_review:
-        log("SUPERVISION", f"⏭️ Skipping full review (Tiered Strategy): No critical files modified", project_id)
+        log("SUPERVISION", "⏭️ Skipping full review (Tiered Strategy): No critical files modified", project_id)
         return {
             "approved": True,
             "quality_score": 8, # Assume good if it passes pre-flight
@@ -260,7 +260,7 @@ RESPOND WITH JSON:
                 # parse_json returned files instead of review - this is wrong
                 raise ValueError("Got files result instead of review result")
                 
-        except Exception as parse_error:
+        except Exception:
             # Try extracting JSON with regex as fallback (greedy match for outermost braces)
             import re
             
@@ -310,7 +310,7 @@ RESPOND WITH JSON:
                         "feedback": feedback_match.group(1).replace('\\"', '"') if feedback_match else ("Issues found - see thinking for details" if issues_extracted else ""),
                         "corrections": []
                     }
-                    log("MARCUS", f"✅ Reconstructed review from partial response", project_id=project_id)
+                    log("MARCUS", "✅ Reconstructed review from partial response", project_id=project_id)
         
         # Final fallback
         if not result or not isinstance(result, dict):
@@ -515,7 +515,7 @@ async def supervised_agent_call(
     # ============================================================
     # Rate limits are now handled by BudgetManager and LLMAdapter throwing exceptions
     
-    provider = settings.llm.default_provider
+    # Rate limits are now handled by BudgetManager and LLMAdapter throwing exceptions
     
     # ============================================================
     # PHASE 1-2: Build Context for Agent
@@ -538,7 +538,7 @@ async def supervised_agent_call(
     # ============================================================
     # CRITICAL: Read and Filter Project Files
     # ============================================================
-    from app.llm.prompt_management import get_relevant_files, STEP_CONTEXT_RULES
+    from app.llm.prompt_management import get_relevant_files
     import os
     
     # FIX ASYNC-002: Use asyncio.to_thread to avoid blocking event loop for large projects
@@ -722,8 +722,8 @@ async def supervised_agent_call(
                                 quality, 
                                 f"Retry succeeded after {attempt} attempts"
                             )
-                            log("EVOLUTION", f"📈 Reported success for supervisor decision")
-                        except Exception as e:
+                            log("EVOLUTION", "📈 Reported success for supervisor decision")
+                        except Exception:
                             pass
                 
                 return {"output": parsed, "approved": True, "attempt": attempt, "quality": quality}
@@ -835,7 +835,8 @@ async def supervised_agent_call(
                         if last_supervisor_decision_id:
                              try:
                                  report_routing_outcome(last_supervisor_decision_id, True, 6.0, "Delegated to healer")
-                             except: pass
+                             except Exception as e:
+                                 log("SUPERVISION", f"Failed to report routing outcome: {e}")
                         
                         return {
                              "output": parsed, 
@@ -978,7 +979,7 @@ Corrections: {correction_text}
     if last_review and not last_review.get("approved"):
         # Even for best effort, don't persist SyntaxErrors
         if any(issue for issue in last_review.get("issues", []) if "syntax error" in issue.lower() or "truncated" in issue.lower()):
-             log("SUPERVISION", f"⚠️ Dropping broken files from best-effort output", project_id=project_id)
+             log("SUPERVISION", "⚠️ Dropping broken files from best-effort output", project_id=project_id)
              # Try to filter files if possible, or drop all if unsure
              final_output = {**last_output, "files": []} 
     

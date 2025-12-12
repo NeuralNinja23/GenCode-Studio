@@ -6,7 +6,6 @@ Ensures model output is complete, not truncated, and structurally valid
 BEFORE passing to syntax validators or compiler layer.
 """
 import re
-from typing import Optional
 
 
 class LLMOutputIntegrity:

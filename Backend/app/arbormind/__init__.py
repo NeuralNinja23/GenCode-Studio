@@ -57,6 +57,9 @@ from .explorer import (
     get_archetype_hints_for_error,
 )
 
+# Backward compatibility alias
+inject_foreign_patterns = arbormind_explore
+
 __all__ = [
     # Core Router
     "ArborMindRouter",
@@ -87,6 +90,7 @@ __all__ = [
     
     # E-AM Explorer
     "arbormind_explore",
+    "inject_foreign_patterns",  # Backward compatibility alias
     "get_archetype_hints_for_error",
     
     # Evolution Layer

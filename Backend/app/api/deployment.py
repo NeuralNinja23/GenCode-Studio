@@ -2,7 +2,7 @@
 """
 Deployment routes.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, Dict

@@ -11,7 +11,7 @@ GenCode Studio pattern:
 - This ensures the backend is built to serve the exact data the frontend expects
 """
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, List
 
 from app.core.types import ChatMessage, StepResult
 from app.core.constants import WorkflowStep

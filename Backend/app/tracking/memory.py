@@ -3,7 +3,6 @@ import sqlite3
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from pathlib import Path
 from app.core.config import settings
 
 # ================================================================

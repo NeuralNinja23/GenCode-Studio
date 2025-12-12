@@ -2,7 +2,7 @@ import json
 import re
 from contextvars import ContextVar
 from typing import Optional, Any, List, Dict, cast
-from app.core.types import TestReport, QAIssue, MarcusPlan, GeneratedFile
+from app.core.types import TestReport, MarcusPlan
 
 # =======================================================
 # 🚫 INVALID PSEUDO-FILENAMES (HTML-ish junk we ignore)
@@ -92,7 +92,7 @@ def normalize_llm_output(raw_output: str) -> Dict[str, Any]:
     # FIX #8: Use ContextVar for async-safe recursion guard
     current_depth = _parsing_depth.get()
     if current_depth > _MAX_PARSING_DEPTH:
-        print(f"[normalize_llm_output] ⚠️ Max parsing depth exceeded, returning empty")
+        print("[normalize_llm_output] ⚠️ Max parsing depth exceeded, returning empty")
         return {}
     
     # Set incremented depth for this context
@@ -452,9 +452,9 @@ def parse_json(raw: str) -> Optional[MarcusPlan]:
     except Exception:
         pass
     
-    print(f"[parse_json] ❌ All repair attempts failed")
+    print("[parse_json] ❌ All repair attempts failed")
     print(f"[parse_json] Sanitized snippet: {sanitized[:500]}...")
-    raise ValueError(f"JSON parse failed after all repair attempts")
+    raise ValueError("JSON parse failed after all repair attempts")
 
 
 def _fix_unterminated_strings(text: str) -> str:

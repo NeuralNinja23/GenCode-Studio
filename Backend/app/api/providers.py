@@ -4,7 +4,7 @@ LLM provider management routes.
 """
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 
 from app.core.config import settings
 

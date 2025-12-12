@@ -5,7 +5,6 @@ Quality gate - blocks workflow if quality is too low.
 import asyncio
 from typing import Any, Dict, Tuple
 
-from app.core.config import settings
 
 
 # Quality gate state

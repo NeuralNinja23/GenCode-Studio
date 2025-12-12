@@ -16,9 +16,9 @@ import json
 import sqlite3
 import hashlib
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 from app.core.logging import log
 
@@ -544,7 +544,6 @@ class VVectorStore:
                     ).fetchone()
                     
                     old_evolved = json.loads(row[0])
-                    old_rate = row[1]
                     
                     # Blend values
                     new_evolved = {}
@@ -639,7 +638,8 @@ class VVectorStore:
                                 "description": f"Learned {ctx_type} pattern from {arch}",
                                 "context_key": row["context_key"]
                             })
-                        except:
+                        except Exception as e:
+                            log("V_VECTOR", f"Row decode failed: {e}")
                             continue
                         
             # Pseudo-ranking could happen here if we matched 'query' to 'val' keys

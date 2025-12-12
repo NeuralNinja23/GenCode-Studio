@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import List, Any, Dict, Optional
+from typing import Any, Dict, Optional
 from beanie import Document, Indexed
 from pydantic import Field
 

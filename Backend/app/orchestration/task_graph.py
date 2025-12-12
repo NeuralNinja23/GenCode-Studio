@@ -7,7 +7,7 @@ behavior INSIDE each step (hybrid adaptive mode).
 Steps cannot be removed, added, or reordered globally.
 Only intra-step adaptation is allowed.
 """
-from typing import Dict, List, Callable, Optional
+from typing import Dict, List
 
 
 class TaskGraph:

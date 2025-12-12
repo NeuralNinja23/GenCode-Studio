@@ -50,7 +50,7 @@ async def connect_db():
     except Exception as e:
         error_msg = str(e)
         print(f"⚠️ [DB] MongoDB not available: {error_msg}")
-        print(f"   ℹ️ The system will continue but database features will be disabled.")
+        print("   ℹ️ The system will continue but database features will be disabled.")
         print(f"   ℹ️ To enable MongoDB, ensure it's running on {os.getenv('MONGODB_URL', 'mongodb://localhost:27017')}")
         _client = None
         _db = None

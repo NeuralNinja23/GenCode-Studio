@@ -2,9 +2,8 @@
 # Fully improved version with REAL unified diff support.
 # Supports multi-hunk patches, file adds, deletes, and modifications.
 
-import difflib
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Tuple, Dict, Any
 
 
 def apply_patch(root: Path, patch: str) -> Dict[str, Any]:
@@ -78,7 +77,6 @@ def _apply_single_file_patch(root: Path, patch_text: str) -> Tuple[str, str]:
         )
 
     # Normalize paths
-    old_clean = old_path.replace("a/", "").replace("b/", "")
     new_clean = new_path.replace("a/", "").replace("b/", "")
     target_file = root / new_clean
 
@@ -124,7 +122,6 @@ def _apply_hunks(original: list, hunk_lines: list) -> list:
         _, old_info, new_info, _ = header.split(" ")
 
         old_start = int(old_info.split(",")[0][1:])
-        new_start = int(new_info.split(",")[0][1:])
 
         index += 1
         new_block = []

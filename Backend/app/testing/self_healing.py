@@ -242,7 +242,6 @@ def extract_testids_from_project(project_path) -> list:
     Extract all data-testid values from JSX/TSX files in the project.
     Returns a list of testid strings that actually exist in the UI.
     """
-    from pathlib import Path
     import re
     
     testids = []
@@ -375,7 +374,6 @@ def get_available_selectors(project_path) -> dict:
     Analyze the project to find all available selectors for testing.
     Returns a dict with categories of selectors.
     """
-    from pathlib import Path
     import re
     
     selectors = {

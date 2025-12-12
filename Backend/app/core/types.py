@@ -3,8 +3,7 @@
 Shared type definitions used across the application.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
+from typing import Any, Dict, List, Literal, Optional, TypedDict
 from enum import Enum
 
 

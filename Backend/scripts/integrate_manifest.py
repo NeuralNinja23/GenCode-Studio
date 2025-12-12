@@ -9,7 +9,6 @@ Usage:
 import sys
 import os
 import json
-import ast
 from pathlib import Path
 
 def integrate_manifest(project_path_str: str, manifest_data: dict):

@@ -10,7 +10,7 @@ Acts like a mini-compiler to ensure the generated code is structurally valid.
 """
 import ast
 import re
-from typing import Optional, Dict, List
+from typing import Optional, List
 
 
 class StructuralCompiler:

@@ -204,7 +204,6 @@ class SandboxPool:
     
     async def _warm_container(self):
         """Create and warm a new container."""
-        import subprocess
         
         try:
             # Create a minimal container that can be configured later

@@ -2,7 +2,7 @@
 """
 Output validation before persistence.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from app.core.config import settings
 from app.core.logging import log  # Use canonical import
@@ -149,7 +149,6 @@ def validate_file_output(
     Raises:
         ValueError: If response structure is invalid
     """
-    from app.core.config import settings
     
     max_files = max_files or settings.workflow.max_files_per_step
     

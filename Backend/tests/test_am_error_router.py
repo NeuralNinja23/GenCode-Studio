@@ -6,7 +6,7 @@ Tests the escalation ladder: standard → E-AM → T-AM
 import pytest
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 # Add app to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -148,7 +148,7 @@ class TestMutationOperators:
         mutation = error_router._build_mutation("DROP", "strict type error", {})
         
         assert mutation["operator"] == "DROP"
-        assert mutation["mutated_value"]["strict_mode"] == False
+        assert not mutation["mutated_value"]["strict_mode"]
         assert mutation["mutated_value"]["max_edits"] == 10
     
     def test_mutation_build_vary(self, error_router):
@@ -157,8 +157,8 @@ class TestMutationOperators:
         mutation = error_router._build_mutation("VARY", "timeout error", context)
         
         assert mutation["operator"] == "VARY"
-        assert mutation["mutated_value"]["apply_diff"] == False  # Toggled
-        assert mutation["mutated_value"]["force_rewrite"] == True
+        assert not mutation["mutated_value"]["apply_diff"]  # Toggled
+        assert mutation["mutated_value"]["force_rewrite"]
     
     def test_mutation_build_add(self, error_router):
         """ADD mutation should add new capabilities."""
@@ -166,7 +166,7 @@ class TestMutationOperators:
         
         assert mutation["operator"] == "ADD"
         assert mutation["mutated_value"]["allowed_imports"] == ["*"]
-        assert mutation["mutated_value"]["use_external_lib"] == True
+        assert mutation["mutated_value"]["use_external_lib"]
 
 
 if __name__ == "__main__":

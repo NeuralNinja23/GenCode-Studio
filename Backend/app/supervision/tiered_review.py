@@ -149,7 +149,7 @@ async def tiered_review(
     Returns:
         Tuple of (approved_files, review_summary)
     """
-    from app.validation import preflight_check, validate_file
+    from app.validation import validate_file
     
     classified = classify_files(files)
     approved_files = []

@@ -18,9 +18,8 @@ This implements the GenCode Studio FRONTEND-FIRST workflow:
 """
 import asyncio
 import traceback
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from app.core.constants import WorkflowStep, WSMessageType
 from app.core.types import ChatMessage, StepResult
@@ -406,8 +405,8 @@ VITE_API_URL=http://localhost:8001/api
         if project_path.exists() and "tmp_scaffold" in str(project_path):
              try:
                  shutil.rmtree(project_path)
-             except:
-                 pass
+             except Exception as e:
+                 log("WORKFLOW", f"Cleanup failed (non-fatal): {e}")
         
         # Don't proceed if scaffolding failed
         await WorkflowStateManager.stop_workflow(project_id)

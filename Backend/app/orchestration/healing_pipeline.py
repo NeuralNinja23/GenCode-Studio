@@ -131,7 +131,7 @@ class HealingPipeline:
                 log("HEAL", f"🧠 Attention selected strategy: '{strategy_id}'")
                 log("HEAL", f"   ⚙️ Params: {strategy_params}")
                 if result.get("evolved"):
-                    log("HEAL", f"   🧬 Strategy parameters evolved from learning")
+                    log("HEAL", "   🧬 Strategy parameters evolved from learning")
             except Exception as e:
                 log("HEAL", f"⚠️ Strategy selection failed: {e}")
 
@@ -352,7 +352,7 @@ class {model_name}(Document):
         if test_file.exists():
             content = test_file.read_text(encoding="utf-8")
             if re.search(r'async\s+def\s+test_', content) or re.search(r'def\s+test_', content):
-                log("HEAL", f"✅ Valid test file already exists - skipping test generation")
+                log("HEAL", "✅ Valid test file already exists - skipping test generation")
                 return
         
         test_content = f'''# backend/tests/test_api.py
@@ -425,7 +425,7 @@ async def test_get_{entity}_not_found(client):
         return options
 
     # -------------------------------------------------------------
-    def heal_all(self, failed_steps: list) -> dict:
+    async def heal_all(self, failed_steps: list) -> dict:
         """
         Attempt to heal all failed steps in priority order.
         
@@ -438,7 +438,7 @@ async def test_get_{entity}_not_found(client):
         ordered_steps = self.error_router.get_repair_order(failed_steps)
         
         for step in ordered_steps:
-            result = self.attempt_heal(step)
+            result = await self.attempt_heal(step)
             results[step] = {
                 "healed": result is not None,
                 "method": "self_healed" if result == "SELF_HEALED" else "fallback" if result else "failed",

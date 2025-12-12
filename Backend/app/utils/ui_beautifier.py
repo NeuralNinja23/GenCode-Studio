@@ -6,8 +6,7 @@ This is a provider-agnostic utility that applies consistent styling patterns
 to agent-generated frontend code.
 """
 import re
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 def beautify_frontend_files(files: List[Dict[str, str]]) -> List[Dict[str, str]]:

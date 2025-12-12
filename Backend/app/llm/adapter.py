@@ -7,7 +7,7 @@ NOTE: No fallback logic - if rate limited after 3 attempts, raises RateLimitErro
 V2 Enhancement: Stop sequences to prevent truncation.
 """
 import asyncio
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from app.core.config import settings
 from app.core.exceptions import LLMError, RateLimitError
 
@@ -175,7 +175,7 @@ class LLMAdapter:
             raise LLMError(provider, f"Unknown provider: {provider}")
         
         call_func = provider_map[provider]
-        last_error = None
+
         
         for attempt in range(self.max_retries):
             try:
@@ -193,7 +193,6 @@ class LLMAdapter:
                 
                 return response
             except Exception as e:
-                last_error = e
                 error_str = str(e).lower()
                 
                 # Rate limit - wait and retry

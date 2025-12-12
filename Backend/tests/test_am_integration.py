@@ -4,8 +4,7 @@ Integration tests for ArborMind (AM) system.
 Verifies interactions between Router, ErrorRouter, and settings.
 """
 import pytest
-import os
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, AsyncMock
 import sys
 from pathlib import Path
 

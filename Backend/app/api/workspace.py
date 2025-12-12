@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
 
 from app.core.config import settings
 

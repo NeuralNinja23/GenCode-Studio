@@ -5,7 +5,7 @@ Step 1: Marcus analyzes user intent.
 This matches the legacy workflows.py step_analysis logic exactly.
 """
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, List, Tuple
 
 from app.core.types import ChatMessage, StepResult
 from app.core.constants import WorkflowStep

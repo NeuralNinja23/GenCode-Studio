@@ -14,18 +14,15 @@ import asyncio
 import json
 import os
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
 from app.core.logging import log
-from app.core.types import ChatMessage
 from app.core.constants import TEST_FILE_MIN_TOKENS
 from app.llm.prompts.derek import DEREK_PROMPT
 from app.llm.prompts.luna import LUNA_PROMPT
-from app.llm.prompts.victoria import VICTORIA_PROMPT
 from app.llm import call_llm  # ✅ Use unified LLM interface
 
 # NOTE: Cost tracking now handled by BudgetManager in orchestrator
@@ -71,8 +68,11 @@ async def _llm_generate_tests(
     """
     provider = provider or settings.llm.default_provider
     model = model or settings.llm.default_model
-    if system_prompt: system_prompt = system_prompt
-    else: system_prompt = DEREK_PROMPT if agent_name == "Derek" else LUNA_PROMPT
+    
+    if system_prompt:
+        system_prompt = system_prompt
+    else:
+        system_prompt = DEREK_PROMPT if agent_name == "Derek" else LUNA_PROMPT
 
 
     # Collect lightweight context (file list + a few file contents)
@@ -376,7 +376,6 @@ async def marcus_call_sub_agent(
         from app.llm.prompt_management import (
             CORE_RULES,
             build_context,
-            get_relevant_files,
         )
 
         provider = settings.llm.default_provider
@@ -436,7 +435,7 @@ async def marcus_call_sub_agent(
                 
                 log("ATTENTION", f"🧠 Context Mode: {mode_result['selected']} (limit: {max_files}, expand: {expand_context})")
                 if mode_result.get("evolved"):
-                    log("ATTENTION", f"   🧬 Mode evolved from learning history")
+                    log("ATTENTION", "   🧬 Mode evolved from learning history")
 
                 # 2. Select Files using dynamic limit
                 # If expand_context is True, we might want to ensure we're looking at ALL files, 

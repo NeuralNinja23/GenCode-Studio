@@ -4,7 +4,7 @@ Integration Manager logic ported from legacy agents/integration.py.
 Handles feature flags, configuration, and environment validation.
 """
 import os
-from typing import Dict, List, Optional, Any, TypedDict, Literal
+from typing import Dict, Optional, Any, TypedDict
 
 # Feature flags - Define locally instead of importing
 ENABLE_PERSISTENT_MEMORY = os.getenv("ENABLE_PERSISTENT_MEMORY", "false").lower() == "true"

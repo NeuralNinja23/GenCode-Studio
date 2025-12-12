@@ -5,13 +5,11 @@ Verify that GitHub pre-training data is present and E-AM works.
 import asyncio
 import sys
 from pathlib import Path
-from typing import Dict, Any
 
 # Add Backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "Backend"))
 
 from app.core.config import settings
-from app.core.logging import log
 
 async def verify():
     print("════════════════════════════════════════════════════════")
@@ -21,7 +19,7 @@ async def verify():
     # 1. Check VVectorStore for GitHub data
     try:
         from app.learning.v_vector_store import get_v_vector_store
-        store = get_v_vector_store()
+        get_v_vector_store()
         
         # We can't query by source directly easily without SQL, 
         # but we can try to search for something we know is in the pretraining data
@@ -52,7 +50,7 @@ async def verify():
     # 2. Test E-AM Explorer
     print("\n2. Testing E-AM Explorer (inject_foreign_patterns)...")
     try:
-        from app.attention.explorer import inject_foreign_patterns, get_archetype_hints_for_error
+        from app.arbormind.explorer import inject_foreign_patterns
         
         # Enable E-AM safely for this test
         settings.am.enable_eam = True

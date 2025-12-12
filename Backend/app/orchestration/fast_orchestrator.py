@@ -10,27 +10,25 @@ Hybrid Adaptive FAST v2 Orchestrator
 - Integrated fallback + healing for critical steps
 """
 import asyncio
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, List, Optional, Any
 
 from app.core.constants import WorkflowStep, WSMessageType
 from app.core.exceptions import RateLimitError
-from app.core.types import StepResult, ChatMessage
+from app.core.types import ChatMessage
 from app.core.config import settings
 from app.core.logging import log
 
 from .task_graph import TaskGraph
 from .step_contracts import StepContracts
-from .critical_step_barriers import CriticalStepBarriers
 from .artifact_contracts import default_contracts
 from .llm_output_integrity import LLMOutputIntegrity
 from .structural_compiler import StructuralCompiler
 from .fallback_router_agent import FallbackRouterAgent
 from .fallback_api_agent import FallbackAPIAgent
 from .checkpoint import CheckpointManagerV2
-from .budget_manager import BudgetManager, get_budget_manager
+from .budget_manager import get_budget_manager
 
 # Centralized entity discovery for dynamic fallback
 from app.utils.entity_discovery import discover_primary_entity
@@ -229,7 +227,7 @@ class FASTOrchestratorV2:
                     if not self._validate_critical_files(step):
                         log("FAST-V2", f"⚠️ {step} skipped - critical files missing")
                         # Try to heal before skipping
-                        if not self._attempt_healing(step):
+                        if not await self._attempt_healing(step):
                             self.failed_steps.append(step)
                             self.step_results[step] = {"status": "failed", "reason": "critical_files_missing"}
                             log("FAST-V2", f"🛑 Stopping - critical files missing for {step}")
@@ -273,7 +271,7 @@ class FASTOrchestratorV2:
                         if not validation_passed:
                             log("FAST-V2", f"⚠️ {step} filesystem validation failed. Triggering healing...")
                             
-                            if self._attempt_healing(step):
+                            if await self._attempt_healing(step):
                                 log("FAST-V2", f"✅ {step} healed successfully")
                             else:
                                 log("FAST-V2", f"❌ {step} healing failed (Unrecoverable)")
@@ -475,7 +473,7 @@ class FASTOrchestratorV2:
             router_path = self.project_path / "backend" / "app" / "routers" / f"{primary_plural}.py"
             
             if not models_path.exists():
-                log("FAST-V2", f"   ❌ models.py does not exist")
+                log("FAST-V2", "   ❌ models.py does not exist")
                 return False
             
             # CRITICAL: Check that model class is actually DEFINED (not in comments!)
@@ -499,7 +497,7 @@ class FASTOrchestratorV2:
             if not has_document_class(models_content, model_class_name):
                 # Also check for any Document class (in case entity name differs)
                 if not has_document_class(models_content):
-                    log("FAST-V2", f"   ❌ models.py exists but no Document class found")
+                    log("FAST-V2", "   ❌ models.py exists but no Document class found")
                     return False
                 
             # Fallback: check ALL routers if specific one missing
@@ -507,7 +505,7 @@ class FASTOrchestratorV2:
                 routers_dir = self.project_path / "backend" / "app" / "routers"
                 if routers_dir.exists() and any(f.suffix == ".py" and f.stem != "__init__" for f in routers_dir.iterdir()):
                     return True # Found some router, good enough
-                log("FAST-V2", f"   ❌ No router files found")
+                log("FAST-V2", "   ❌ No router files found")
                 return False
                 
             content = router_path.read_text(encoding="utf-8")
@@ -530,7 +528,7 @@ class FASTOrchestratorV2:
         
         return True
 
-    def _attempt_healing(self, step: str) -> bool:
+    async def _attempt_healing(self, step: str) -> bool:
         """
         Attempt to heal a failed step using the healing pipeline.
         
@@ -538,8 +536,8 @@ class FASTOrchestratorV2:
         """
         log("FAST-V2", f"🔧 Attempting healing for {step}...")
         
-        # Use the V2 healing pipeline
-        result = self.healer.attempt_heal(step)
+        # Use the V2 healing pipeline (async)
+        result = await self.healer.attempt_heal(step)
         
         if result:
             log("FAST-V2", f"   ✅ Healing succeeded for {step}")

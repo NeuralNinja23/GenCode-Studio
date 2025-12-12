@@ -3,7 +3,7 @@
 File persistence with safety checks.
 """
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from app.core.constants import PROTECTED_FILES
 from app.core.logging import log

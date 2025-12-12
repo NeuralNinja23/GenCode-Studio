@@ -7,7 +7,6 @@ NOT comprehensive - designed to catch major regressions quickly.
 import pytest
 from pathlib import Path
 import tempfile
-import shutil
 
 
 @pytest.mark.asyncio
@@ -252,7 +251,6 @@ async def test_exception_handling_improvement():
     
     Ensures our fix to bare exceptions is working.
     """
-    import json
     from app.supervision.supervisor import marcus_supervise
     
     # This test just verifies the function is importable

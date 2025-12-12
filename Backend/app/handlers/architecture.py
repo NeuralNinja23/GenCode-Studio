@@ -5,7 +5,7 @@ Step 2: Victoria creates architecture plan with Marcus supervision.
 This matches the legacy workflows.py step_architecture logic exactly.
 """
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, List
 
 from app.core.types import ChatMessage, StepResult
 from app.core.constants import WorkflowStep
@@ -15,7 +15,7 @@ from app.core.logging import log
 from app.orchestration.state import WorkflowStateManager
 from app.supervision import supervised_agent_call
 from app.persistence import persist_agent_output
-from app.utils.parser import normalize_llm_output
+from app.persistence.validator import validate_file_output
 
 
 # Constants from legacy
@@ -23,7 +23,7 @@ MAX_FILES_PER_STEP = 10
 MAX_FILE_LINES = 400
 
 
-from app.persistence.validator import validate_file_output
+
 
 
 
@@ -151,7 +151,8 @@ CRITICAL OUTPUT RULES:
                 arch_path = project_path / "architecture.md"
                 if arch_path.exists():
                     md = arch_path.read_text(encoding="utf-8")
-                    import re, json
+                    import re
+                    import json
 
                     # Try multiple patterns to find UI Tokens JSON
                     json_match = None
@@ -196,28 +197,28 @@ CRITICAL OUTPUT RULES:
                             log("ARCHITECTURE", f"Wrote design tokens to {tokens_path}")
 
                             # Write theme.ts (simple typed wrapper)
-                            theme_ts = f"""// Auto-generated from architecture.md UI Tokens
+                            theme_ts = """// Auto-generated from architecture.md UI Tokens
 import tokensJson from "./tokens.json";
 
-export const tokens = tokensJson as {{
+export const tokens = tokensJson as {
   vibe: string;
-  classes: {{
+  classes: {
     pageBg: string;
     card: string;
     primaryButton: string;
     secondaryButton?: string;
     mutedText?: string;
     [key: string]: string | undefined;
-  }};
-}};
+  };
+};
 
-export const ui = {{
+export const ui = {
   pageRoot: tokens.classes.pageBg,
   card: tokens.classes.card,
   primaryButton: tokens.classes.primaryButton,
   secondaryButton: tokens.classes.secondaryButton ?? tokens.classes.primaryButton,
   mutedText: tokens.classes.mutedText ?? "",
-}};
+};
 """
                             theme_path = design_dir / "theme.ts"
                             theme_path.write_text(theme_ts, encoding="utf-8")
@@ -299,28 +300,28 @@ export const ui = {{
                         log("ARCHITECTURE", f"✅ Wrote FALLBACK design tokens to {tokens_path}")
                         
                         # Write theme.ts
-                        theme_ts = f"""// Auto-generated FALLBACK UI Tokens (Victoria didn't generate them)
+                        theme_ts = """// Auto-generated FALLBACK UI Tokens (Victoria didn't generate them)
 import tokensJson from "./tokens.json";
 
-export const tokens = tokensJson as {{
+export const tokens = tokensJson as {
   vibe: string;
-  classes: {{
+  classes: {
     pageBg: string;
     card: string;
     primaryButton: string;
     secondaryButton?: string;
     mutedText?: string;
     [key: string]: string | undefined;
-  }};
-}};
+  };
+};
 
-export const ui = {{
+export const ui = {
   pageRoot: tokens.classes.pageBg,
   card: tokens.classes.card,
   primaryButton: tokens.classes.primaryButton,
   secondaryButton: tokens.classes.secondaryButton ?? tokens.classes.primaryButton,
   mutedText: tokens.classes.mutedText ?? "",
-}};
+};
 """
                         theme_path = design_dir / "theme.ts"
                         theme_path.write_text(theme_ts, encoding="utf-8")

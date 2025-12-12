@@ -3,7 +3,6 @@
 Google Gemini provider implementation.
 """
 import aiohttp
-import asyncio
 from typing import Optional
 from app.core.config import settings
 

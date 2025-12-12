@@ -71,26 +71,30 @@ def discover_primary_entity(project_path: Path, suppress_warning: bool = False) 
 
 
 def _extract_from_contracts(path: Path) -> Tuple[Optional[str], Optional[str]]:
-    if not path.exists(): return (None, None)
+    if not path.exists():
+        return (None, None)
     try:
         content = path.read_text(encoding="utf-8")
         match = re.search(r'(?:GET|POST|PUT|DELETE|PATCH)\s+/api/(\w+)', content, re.IGNORECASE)
         if match:
             plural = match.group(1).lower()
             return (_singularize(plural), _singularize(plural).capitalize())
-    except Exception: pass
+    except Exception:
+        pass
     return (None, None)
 
 
 def _extract_from_architecture(path: Path) -> Tuple[Optional[str], Optional[str]]:
-    if not path.exists(): return (None, None)
+    if not path.exists():
+        return (None, None)
     try:
         content = path.read_text(encoding="utf-8")
         match = re.search(r'(?:Primary\s+)?(?:Entity|Model|Resource):\s*["\']?(\w+)["\']?', content, re.IGNORECASE)
         if match:
             name = match.group(1)
             return (name.lower(), name.capitalize())
-    except Exception: pass
+    except Exception:
+        pass
     return (None, None)
 
 
@@ -99,7 +103,8 @@ def _extract_from_models(path: Path) -> Tuple[Optional[str], Optional[str]]:
     
     IMPORTANT: Only matches ACTUAL class definitions, not commented examples!
     """
-    if not path.exists(): return (None, None)
+    if not path.exists():
+        return (None, None)
     
     try:
         content = path.read_text(encoding="utf-8")
@@ -128,7 +133,8 @@ def _extract_from_models(path: Path) -> Tuple[Optional[str], Optional[str]]:
 
 
 def _extract_from_mock(path: Path) -> Tuple[Optional[str], Optional[str]]:
-    if not path.exists(): return (None, None)
+    if not path.exists():
+        return (None, None)
     try:
         content = path.read_text(encoding="utf-8")
         match = re.search(r'export\s+(?:const|let|var)\s+(?:mock)?(\w+)\s*=\s*\[', content, re.IGNORECASE)
@@ -136,23 +142,27 @@ def _extract_from_mock(path: Path) -> Tuple[Optional[str], Optional[str]]:
             name = match.group(1).lower()
             name = re.sub(r'(?:data|list|items|array)$', '', name, flags=re.IGNORECASE)
             return (_singularize(name), _singularize(name).capitalize())
-    except Exception: pass
+    except Exception:
+        pass
     return (None, None)
 
 
 def _extract_from_routers(routers_dir: Path) -> Tuple[Optional[str], Optional[str]]:
-    if not routers_dir.exists(): return (None, None)
+    if not routers_dir.exists():
+        return (None, None)
     try:
         for f in routers_dir.glob("*.py"):
             if f.stem not in ["__init__", "base", "utils", "health"]:
                 plural = f.stem.lower()
                 return (_singularize(plural), _singularize(plural).capitalize())
-    except Exception: pass
+    except Exception:
+        pass
     return (None, None)
 
 
 def _extract_from_user_request(path: Path) -> Tuple[Optional[str], Optional[str]]:
-    if not path.exists(): return (None, None)
+    if not path.exists():
+        return (None, None)
     try:
         content = path.read_text(encoding="utf-8").lower()
         patterns = [
@@ -165,15 +175,19 @@ def _extract_from_user_request(path: Path) -> Tuple[Optional[str], Optional[str]
                 name = match.group(1)
                 if name not in ["the", "a", "an", "my", "your", "web", "full", "stack"]:
                     return (_singularize(name), _singularize(name).capitalize())
-    except Exception: pass
+    except Exception:
+        pass
     return (None, None)
 
 
 def _singularize(word: str) -> str:
     word = word.lower().strip()
-    if word.endswith("ies") and len(word) > 3: return word[:-3] + "y"
-    if word.endswith("es") and len(word) > 2: return word[:-1]
-    if word.endswith("s") and len(word) > 1: return word[:-1]
+    if word.endswith("ies") and len(word) > 3:
+        return word[:-3] + "y"
+    if word.endswith("es") and len(word) > 2:
+        return word[:-1]
+    if word.endswith("s") and len(word) > 1:
+        return word[:-1]
     return word
 
 # Additional Helpers
@@ -229,8 +243,11 @@ def discover_routers(project_path: Path) -> List[Tuple[str, str]]:
     return routers
 
 def get_entity_plural(entity_name: str) -> str:
-    if not entity_name: return ""
+    if not entity_name:
+        return ""
     entity = entity_name.lower()
-    if entity.endswith("y"): return entity[:-1] + "ies"
-    if entity.endswith("s"): return entity + "es"
+    if entity.endswith("y"):
+        return entity[:-1] + "ies"
+    if entity.endswith("s"):
+        return entity + "es"
     return entity + "s"

@@ -1,3 +1,3 @@
-from .project import Project
-from .workflow import WorkflowStepRecord
-from .snapshot import Snapshot
+from .project import Project as Project
+from .workflow import WorkflowStepRecord as WorkflowStepRecord
+from .snapshot import Snapshot as Snapshot

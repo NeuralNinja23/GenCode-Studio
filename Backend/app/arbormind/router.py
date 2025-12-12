@@ -12,12 +12,15 @@ ARBORMIND (AM) OPERATORS:
 - E-AM (Exploratory): Inject foreign patterns when stuck
 - T-AM (Transformational): Mutate constraints when fundamentally blocked
 """
-import math
 import numpy as np
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any
 from enum import Enum
 import aiohttp
 import asyncio
+from collections import OrderedDict
+import time
+import json
+from pathlib import Path
 from app.core.config import settings
 from app.core.logging import log
 
@@ -115,10 +118,6 @@ UI_VIBES = [
 # ═══════════════════════════════════════════════════════
 
 # FIX #7: Cache with Persistent Storage (Phase 4.1)
-from collections import OrderedDict
-import time
-import json
-from pathlib import Path
 
 _embedding_cache: OrderedDict[str, tuple[List[float], float]] = OrderedDict()
 _CACHE_MAX_SIZE = 5000  # Increased size
@@ -376,9 +375,6 @@ def scaled_dot_product_attention(
             - Attention output of shape (n_queries, d_v)
             - Attention weights of shape (n_queries, n_keys)
     """
-    # Get the dimension of keys for scaling
-    d_k = K.shape[-1]
-    
     # Scale factor for Unit Vectors (OpenAI/Gemini embeddings are normalized).
     # Standard 1/sqrt(d_k) makes scores too small (~0.02) leading to flat attention.
     # We multiply by 20.0 to sharpen the distribution (Temperature ~ 0.05).
@@ -642,22 +638,21 @@ class ArborMindRouter:
             description_embeddings = await asyncio.gather(*tasks)
             
             K = np.vstack([np.array(emb, dtype=np.float32) for emb in description_embeddings])
-            V = K  # Values are the same as Keys in this context (identity)
             
         except Exception as e:
             log("ATTENTION_ROUTER", f"⚠️ Failed to embed options: {e}")
             return self._fallback_response(evolved_options, "Option embedding failure")
 
-        # 3. Apply Creative Attention (C-AM)
+        # 3. Apply ArborMind Attention (C-AM)
         # -------------------------------------------------------------
-        # Use creative_attention which supports:
+        # Use arbormind_attention which supports:
         # - Standard mode (sharp routing)
         # - Combinational mode (blending) based on entropy
         
         # We need V as list of dicts for blending, but here V matches K for attention scores
         # The blending happens later (Step 6), but we need the weights and ENTROPY now.
         
-        # Prepare V-values for creative_attention if available (used for mode decision implicitly)
+        # Prepare V-values for arbormind_attention if available (used for mode decision implicitly)
         V_dicts = [opt.get("value", {}) for opt in evolved_options]
         
         
@@ -666,8 +661,8 @@ class ArborMindRouter:
         if context_type in ["behavior_synthesis", "creative_generation"]:
             use_combinational = True
             
-        # Call Creative Attention
-        att_result = creative_attention(
+        # Call ArborMind Attention
+        att_result = arbormind_attention(
             Q, K, V_dicts, 
             mode="combinational" if use_combinational else "standard"
         )
@@ -686,7 +681,7 @@ class ArborMindRouter:
              # If we want true blending, we need soft weights.
              if not use_combinational:
                   # Rerun with soft scale
-                  att_result = creative_attention(Q, K, V_dicts, mode="combinational")
+                  att_result = arbormind_attention(Q, K, V_dicts, mode="combinational")
                   weights = att_result["weights"]
                   log("ATTENTION_ROUTER", f"✨ Auto-switched to Combinational Mode (Entropy: {entropy:.2f})")
 
@@ -737,7 +732,8 @@ class ArborMindRouter:
                 
                 for i, opt in enumerate(evolved_options):
                     val = opt.get("value", {}).get(key)
-                    if val is None: continue
+                    if val is None:
+                        continue
                     
                     w = float(weights[i])
                     

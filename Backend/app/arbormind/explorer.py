@@ -132,7 +132,7 @@ async def _search_foreign_patterns(
             )
         
         # Fallback: Get anti-patterns and successful patterns
-        anti_patterns = store.get_anti_patterns_for_context(
+        store.get_anti_patterns_for_context(
             context_type="repair_strategy",
             archetype=exclude_archetype,
             limit=limit

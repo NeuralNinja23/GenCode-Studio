@@ -7,11 +7,10 @@ so agents can avoid repeating the same mistakes in future projects.
 
 This acts as a "long-term anti-pattern memory".
 """
-import json
 import sqlite3
 import hashlib
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Optional, List
 from datetime import datetime, timezone
 from dataclasses import dataclass
 
@@ -92,7 +91,6 @@ class FailureStore:
         """
         # Generate ID based on the nature of the error (deduplication)
         # We handle similarity by hashing the error description + code snippet signature
-        snippet_sig = code_snippet[:100] + code_snippet[-100:] if len(code_snippet) > 200 else code_snippet
         fail_key = f"{agent}:{step}:{error_type}:{description[:50]}"
         failure_id = hashlib.sha256(fail_key.encode()).hexdigest()
         

@@ -22,9 +22,8 @@ The evolution process:
            ↓
     Next decision benefits from learning
 """
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-import asyncio
 
 from app.core.logging import log
 from app.learning.v_vector_store import (
@@ -435,7 +434,8 @@ class ArborMindEvolution:
         try:
             pattern_store = get_pattern_store()
             pattern_stats = pattern_store.get_stats()
-        except:
+        except Exception as e:
+            log("EVOLUTION", f"Failed to get pattern stats: {e}")
             pattern_stats = {}
         
         return {

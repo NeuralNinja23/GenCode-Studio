@@ -15,10 +15,8 @@ Uses:
 1. LLM regeneration with strict prompts (first attempt)
 2. Template-based fallback (last resort)
 """
-import os
-import re
 from pathlib import Path
-from typing import Optional, Callable, Tuple, List, Dict
+from typing import Optional, Callable, Tuple, Dict
 
 
 from app.core.logging import log

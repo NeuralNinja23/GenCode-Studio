@@ -3,18 +3,15 @@
 GenCode Studio Backend - Clean Architecture
 """
 import os
-import sys
 import uvicorn
 from contextlib import asynccontextmanager
-from pathlib import Path
-from datetime import datetime, timezone
 
 
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse
 
 # Rate limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -22,13 +19,26 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from app.core.config import settings
+from app.lib.websocket import ConnectionManager
+from app.workflow import resume_workflow
+from app.lib.monitoring import register_monitoring
+from app.api import (
+    health,
+    projects,
+    workspace,
+    agents,
+    sandbox,
+    deployment,
+    providers,
+    tracking,
+)
+
 from dotenv import load_dotenv
 load_dotenv()
 
 # Import from new modular structure
-from app.core.config import settings
-from app.lib.websocket import ConnectionManager
-from app.workflow import run_workflow, resume_workflow
+
 
 # Set environment for hot reload
 os.environ["WATCHFILES_IGNORE_PATHS"] = "workspaces"
@@ -85,7 +95,7 @@ app = FastAPI(
 app.state.manager = manager
 
 # Monitoring
-from app.lib.monitoring import register_monitoring
+
 register_monitoring(app)
 
 # CORS - FIX #9: Use environment variable for allowed origins
@@ -152,16 +162,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
 print("[Routes] Loading API routes...")
 
 # Import and register routes
-from app.api import (
-    health,
-    projects,
-    workspace,
-    agents,
-    sandbox,
-    deployment,
-    providers,
-    tracking,
-)
+
 
 app.include_router(health.router)
 app.include_router(projects.router)

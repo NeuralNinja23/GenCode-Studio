@@ -10,8 +10,7 @@ GenCode Studio pattern:
 - Check: padding, alignment, color contrast, component usage, empty states
 """
 from pathlib import Path
-from typing import Any, Dict, List
-import asyncio
+from typing import Any, List
 
 from app.core.types import ChatMessage, StepResult
 from app.core.constants import WorkflowStep
@@ -19,8 +18,6 @@ from app.core.exceptions import RateLimitError
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.core.logging import log
 from app.tools import run_tool
-from app.llm import call_llm
-from app.llm.prompts import MARCUS_PROMPT
 from app.orchestration.state import WorkflowStateManager
 
 

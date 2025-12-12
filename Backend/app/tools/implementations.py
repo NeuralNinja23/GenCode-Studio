@@ -21,7 +21,6 @@ import ast
 import json
 import asyncio
 import subprocess
-from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -36,16 +35,14 @@ from app.sandbox import SandboxManager, SandboxConfig  # type: ignore[import]
 from app.config import WORKSPACES_DIR
 from app.lib.patch_writer import apply_patch as apply_unified_patch
 from app.lib.patch_engine import PatchEngine
+from app.core.logging import log
 # =====================================================================
 # Global Sandbox Singleton
 # =====================================================================
 SANDBOX: SandboxManager = SandboxManager()
 
 
-# =====================================================================
-# Logging helper (single definition!)
-# =====================================================================
-from app.core.logging import log
+
 
 
 # =====================================================================
@@ -581,7 +578,6 @@ async def tool_sandbox_exec(args: Dict[str, Any]) -> Dict[str, Any]:
         service = args.get("service", "backend")
         command = args.get("command")
         # We accept wait_healthy but start_sandbox handles the actual waiting
-        wait_healthy = bool(args.get("wait_healthy", True))
         force_rebuild = bool(args.get("force_rebuild", False))
         
         if not project_id:

@@ -8,7 +8,6 @@ Prevents partial file writes that could corrupt the project.
 """
 import os
 from typing import Optional
-from pathlib import Path
 
 from app.core.logging import log
 

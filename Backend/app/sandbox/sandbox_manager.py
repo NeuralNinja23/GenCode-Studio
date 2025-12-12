@@ -372,9 +372,8 @@ class SandboxManager:
         """
         backend_dir = project_path / "backend"
         frontend_dir = project_path / "frontend"
+        
 
-        requirements_txt = backend_dir / "requirements.txt"
-        requirements_lock = backend_dir / "requirements.lock"
 
         required_files = {
             "backend/Dockerfile": backend_dir / "Dockerfile",
@@ -404,7 +403,7 @@ class SandboxManager:
 
         try:
             # FIX ASYNC-001: This is called once at startup, keeping sync for simplicity
-            result = subprocess.run(
+            subprocess.run(
                 ["docker", "compose", "version"],
                 capture_output=True,
                 check=True,
@@ -597,7 +596,7 @@ class SandboxManager:
                     return f"http://localhost:{port}"
             
             # Default frontend port if not found in ports
-            return f"http://localhost:5174"
+            return "http://localhost:5174"
             
         except Exception as e:
             print(f"[SANDBOX] Error getting preview URL: {e}")

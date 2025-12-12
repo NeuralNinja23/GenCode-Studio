@@ -17,13 +17,14 @@ from app.tools import run_tool
 from app.utils.parser import normalize_llm_output
 from app.orchestration.state import WorkflowStateManager
 from app.arbormind import compute_ui_vibe_routing
+from app.persistence.validator import validate_file_output
 
 
 # Constants from legacy
 MAX_FILES_PER_STEP = 20
 
 
-from app.persistence.validator import validate_file_output
+
 
 
 
@@ -207,7 +208,7 @@ async def step_refine(
         # 4. Ask Derek to generate the fix (Patches or Full Files)
         backend_hint = ""
         if is_backend_change:
-            backend_hint = f"""
+            backend_hint = """
 This refine request appears to be BACKEND/BUSINESS-LOGIC related.
 
 You MUST:
@@ -255,7 +256,7 @@ You MUST:
         2. "patch": "Unified Diff String"
         """
 
-        log("REFINE", f"Derek is generating code changes...", project_id=project_id)
+        log("REFINE", "Derek is generating code changes...", project_id=project_id)
         
         tool_result = await run_tool(
             name="subagentcaller",
@@ -291,7 +292,7 @@ You MUST:
             )
             if patch_res.get("success"):
                 changes_made = patch_res.get("files_patched", 1)
-                log("REFINE", f"Applied patch successfully", project_id=project_id)
+                log("REFINE", "Applied patch successfully", project_id=project_id)
             else:
                 log("REFINE", f"Patch failed: {patch_res.get('error')}", project_id=project_id)
 

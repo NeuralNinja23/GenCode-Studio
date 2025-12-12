@@ -12,11 +12,11 @@ from app.core.types import ChatMessage, StepResult
 from app.core.constants import WorkflowStep
 from app.handlers.base import broadcast_status
 from app.core.logging import log
-from app.testing.self_healing import SelfHealingTests, create_robust_smoke_test, create_matching_smoke_test
+from app.testing.self_healing import SelfHealingTests, create_matching_smoke_test
 from app.tools import run_tool
 from app.llm.prompts.luna import LUNA_TESTING_INSTRUCTIONS
-from app.utils.parser import normalize_llm_output
-from app.supervision import marcus_supervise
+from app.persistence.validator import validate_file_output
+from app.core.constants import PROTECTED_SANDBOX_FILES
 
 
 # Constants from legacy
@@ -24,12 +24,12 @@ MAX_FILES_PER_STEP = 10
 MAX_FILE_LINES = 400
 
 
-from app.persistence.validator import validate_file_output
+
 
 
 
 # Protected sandbox files - imported from centralized constants
-from app.core.constants import PROTECTED_SANDBOX_FILES
+
 
 # REMOVED: Restrictive allowed prefixes - agents can write to any file except protected ones
 
@@ -137,7 +137,6 @@ async def _generate_frontend_tests_from_template(
     from app.handlers.base import broadcast_agent_log
     
     tests_dir = project_path / "frontend" / "tests"
-    test_file = tests_dir / "e2e.spec.js"
     template_file = tests_dir / "e2e.spec.js.template"
     
     # ALWAYS generate tests from template - Luna creates project-specific tests
@@ -270,36 +269,36 @@ async def _fallback_generate_frontend_tests(
     tests_dir = project_path / "frontend" / "tests"
     tests_dir.mkdir(parents=True, exist_ok=True)
     
-    test_content = f'''// frontend/tests/e2e.spec.js
+    test_content = '''// frontend/tests/e2e.spec.js
 /**
  * E2E Tests - Auto-generated fallback
  * Generated when Luna failed to create tests.
  */
 
-import {{ test, expect }} from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
-test('page loads without crashing', async ({{ page }}) => {{
+test('page loads without crashing', async ({ page }) => {
   await page.goto('http://localhost:5174/');
   await expect(page).toHaveTitle(/.*/);
-}});
+});
 
-test('shows loading, error, or content state', async ({{ page }}) => {{
+test('shows loading, error, or content state', async ({ page }) => {
   await page.goto('http://localhost:5174/');
   await expect(
     page.locator('[data-testid="loading-indicator"]')
       .or(page.locator('[data-testid="error-message"]'))
       .or(page.locator('[data-testid="page-root"]'))
       .or(page.locator('h1, h2').first())
-  ).toBeVisible({{ timeout: 15000 }});
-}});
+  ).toBeVisible({ timeout: 15000 });
+});
 
-test('main heading is visible', async ({{ page }}) => {{
+test('main heading is visible', async ({ page }) => {
   await page.goto('http://localhost:5174/');
   await page.waitForLoadState('networkidle');
   
   const heading = page.locator('h1, h2').first();
-  await expect(heading).toBeVisible({{ timeout: 10000 }});
-}});
+  await expect(heading).toBeVisible({ timeout: 10000 });
+});
 '''
 
     test_file = tests_dir / "e2e.spec.js"
@@ -511,7 +510,8 @@ async def step_testing_frontend(
                     try:
                         content = pf.read_text(encoding="utf-8")
                         context_parts.append(f"--- {pf.relative_to(project_path.parent)} ---\n{content[:2000]}")
-                    except Exception: pass
+                    except Exception:
+                        pass
             
             # Also check components directory for key components
             components_dir = project_path / "frontend/src/components"
@@ -795,11 +795,9 @@ async def step_testing_frontend(
                         )
                         raise Exception(error_msg)
                 
-                log("TESTING", f"❌ Build FAILED - skipping tests, will retry with build error")
+                log("TESTING", "❌ Build FAILED - skipping tests, will retry with build error")
                 last_stdout = build_check_stdout
                 last_stderr = build_check_stderr
-                tests_passed = False
-                build_passed = False
                 # Skip test run, go straight to retry
                 continue
         except Exception as e:
