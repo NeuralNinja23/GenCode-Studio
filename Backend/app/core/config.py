@@ -107,12 +107,6 @@ class Settings:
     port: int = field(default_factory=lambda: int(os.getenv("PORT", 8000)))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")
     
-    # Backward compatibility alias
-    @property
-    def uot(self):
-        """Backward compatibility alias for am settings."""
-        return self.am
-    
     def ensure_directories(self):
         """Ensure required directories exist."""
         self.paths.workspaces_dir.mkdir(parents=True, exist_ok=True)

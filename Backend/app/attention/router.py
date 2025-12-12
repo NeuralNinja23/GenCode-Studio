@@ -33,9 +33,6 @@ class AMMode(Enum):
     EXPLORATORY = "exploratory"      # E-AM: Foreign pattern injection
     TRANSFORMATIONAL = "transformational"  # T-AM: Constraint mutation
 
-# Backward compatibility alias
-UoTMode = AMMode
-
 # AM Scale Constants
 DEFAULT_SCALE_STANDARD = 20.0       # Sharp decisions (winner-takes-all)
 DEFAULT_SCALE_COMBINATIONAL = 2.0   # Soft decisions (multi-source blending)
@@ -412,9 +409,6 @@ def _softmax_am(x: np.ndarray, axis: int = -1) -> np.ndarray:
     e = np.exp(x - x_max)
     return e / np.sum(e, axis=axis, keepdims=True)
 
-# Backward compatibility alias
-_softmax_uot = _softmax_am
-
 
 def creative_attention(
     Q: np.ndarray,
@@ -539,7 +533,7 @@ def should_use_combinational_mode(entropy: float) -> bool:
     High entropy indicates the query is relevant to multiple domains,
     suggesting that blending multiple archetypes would be beneficial.
     """
-    threshold = getattr(settings, "uot", None) and settings.uot.entropy_high or ENTROPY_HIGH_THRESHOLD
+    threshold = getattr(settings, "am", None) and settings.am.entropy_high or ENTROPY_HIGH_THRESHOLD
     return entropy > threshold
 
 
