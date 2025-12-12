@@ -19,7 +19,7 @@ class TestAMIntegration:
     @pytest.fixture
     def mock_explorer(self):
         """Mock the explorer module to avoid DB calls."""
-        with patch("app.attention.explorer.inject_foreign_patterns", new_callable=AsyncMock) as mock:
+        with patch("app.arbormind.explorer.arbormind_explore", new_callable=AsyncMock) as mock:
             yield mock
 
     @pytest.mark.asyncio
@@ -30,7 +30,7 @@ class TestAMIntegration:
         router = ErrorRouter()
         
         # 1. Standard Mode (Retry 0)
-        with patch("app.attention.route_query", new_callable=AsyncMock) as mock_route:
+        with patch("app.arbormind.arbormind_route", new_callable=AsyncMock) as mock_route:
             mock_route.return_value = {
                 "selected": "code_fix", 
                 "value": {"edits": 1}, 
@@ -50,7 +50,7 @@ class TestAMIntegration:
         }
         
         # We need to mock route_query for the standard fallback part of E-AM
-        with patch("app.attention.route_query", new_callable=AsyncMock) as mock_route:
+        with patch("app.arbormind.arbormind_route", new_callable=AsyncMock) as mock_route:
             mock_route.return_value = {
                 "selected": "code_fix", 
                 "value": {"edits": 1}, 
@@ -87,7 +87,7 @@ class TestAMIntegration:
 
     def test_settings_propagation(self):
         """Verify settings affect logic checks."""
-        from app.attention.router import should_use_combinational_mode
+        from app.arbormind.router import should_use_combinational_mode
         
         # Default is 1.5
         assert should_use_combinational_mode(2.0) is True

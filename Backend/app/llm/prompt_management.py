@@ -420,11 +420,11 @@ async def get_adaptive_file_context(
     global _last_context_decision_id
     
     try:
-        from app.attention import route_query
+        from app.arbormind import arbormind_route
         
         # Route to determine context mode
         context_query = f"Task: {task_description[:200]}. Step: {step_name}"
-        result = await route_query(
+        result = await arbormind_route(
             context_query,
             FILE_CONTEXT_MODES,
             context_type="file_context",
@@ -511,7 +511,7 @@ def report_context_outcome(
     global _last_context_decision_id
     
     try:
-        from app.attention import report_routing_outcome
+        from app.arbormind import report_routing_outcome
         
         did = decision_id or _last_context_decision_id
         if not did:

@@ -131,11 +131,11 @@ class ErrorRouter:
 
     async def _standard_route(self, error_log: str, archetype: str) -> dict:
         """Standard attention-based routing."""
-        from app.attention import route_query
+        from app.arbormind import arbormind_route
         
         strategies = self._get_repair_strategies()
         
-        result = await route_query(
+        result = await arbormind_route(
             error_log[:500], 
             strategies,
             context_type="repair_strategy",
@@ -163,9 +163,9 @@ class ErrorRouter:
     async def _exploratory_route(self, error_log: str, archetype: str) -> dict:
         """E-AM: Inject foreign patterns from other archetypes."""
         try:
-            from app.attention.explorer import inject_foreign_patterns
+            from app.arbormind.explorer import arbormind_explore
             
-            foreign = await inject_foreign_patterns(archetype, error_log)
+            foreign = await arbormind_explore(archetype, error_log)
             
             if foreign.get("patterns"):
                 # Blend standard strategy with foreign insights
@@ -373,7 +373,7 @@ class ErrorRouter:
         future repair strategy selections.
         """
         try:
-            from app.attention import report_routing_outcome
+            from app.arbormind import report_routing_outcome
             
             did = decision_id or self._last_decision_id
             if not did:

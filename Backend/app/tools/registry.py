@@ -254,7 +254,7 @@ async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> 
     Select tools using V!=K Attention with strict Context constraints.
     """
     try:
-        from app.attention import route_query
+        from app.arbormind import arbormind_route
         
         # 1. Filter candidates based on step_name
         step_name = kwargs.get("step_name", "")
@@ -288,7 +288,7 @@ async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> 
         log("REGISTRY", f"🔍 Routing query '{query[:50]}...' across {len(candidates)} candidates for step '{step_name}'")
 
         # 3. Route Query
-        result = await route_query(
+        result = await arbormind_route(
             f"Select tools for: {query}", 
             candidates_with_noop, 
             top_k=top_k, 

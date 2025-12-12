@@ -1,8 +1,8 @@
-# app/attention/evolution.py
+# app/arbormind/evolution.py
 """
-Attention Evolution Layer
+ArborMind Evolution Layer
 -------------------------
-Integrates the V-Vector Learning Store with the Attention Router.
+Integrates the V-Vector Learning Store with the ArborMind Router.
 
 This is the bridge that makes the system SELF-EVOLVING:
 1. Before routing: Evolves options based on historical learning
@@ -14,7 +14,7 @@ The evolution process:
            ↓
     Evolved V-vectors (learning history)
            ↓
-    Router makes decision
+    ArborMind Router makes decision
            ↓
     Outcome recorded
            ↓
@@ -53,8 +53,10 @@ class EvolutionContext:
 # EVOLUTION HOOKS - Integrate with existing stores
 # ═══════════════════════════════════════════════════════
 
-class AttentionEvolution:
+class ArborMindEvolution:
     """
+    ArborMind Evolution Manager.
+    
     Manages the evolution of attention-based routing decisions.
     
     Integrates:
@@ -447,14 +449,14 @@ class AttentionEvolution:
 # Global Instance & Integration Helpers
 # ═══════════════════════════════════════════════════════
 
-_evolution_manager: Optional[AttentionEvolution] = None
+_evolution_manager: Optional[ArborMindEvolution] = None
 
 
-def get_evolution_manager() -> AttentionEvolution:
-    """Get the global evolution manager."""
+def get_evolution_manager() -> ArborMindEvolution:
+    """Get the global ArborMind evolution manager."""
     global _evolution_manager
     if _evolution_manager is None:
-        _evolution_manager = AttentionEvolution()
+        _evolution_manager = ArborMindEvolution()
     return _evolution_manager
 
 

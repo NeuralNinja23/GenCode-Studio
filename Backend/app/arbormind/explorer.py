@@ -1,4 +1,4 @@
-# app/attention/explorer.py
+# app/arbormind/explorer.py
 """
 E-AM: Exploratory ArborMind - Foreign Pattern Injection.
 
@@ -18,7 +18,7 @@ from app.core.logging import log
 from app.core.config import settings
 
 
-async def inject_foreign_patterns(
+async def arbormind_explore(
     archetype: str,
     error_text: str,
     limit: int = 3
@@ -49,7 +49,7 @@ async def inject_foreign_patterns(
     
     try:
         from app.learning.v_vector_store import get_v_vector_store
-        from app.attention.router import creative_attention, blend_values
+        from app.arbormind.router import arbormind_attention, arbormind_blend
         
         store = get_v_vector_store()
         
@@ -93,8 +93,8 @@ async def inject_foreign_patterns(
         
         # Compute creative attention (combinational mode for blending)
         K = np.array(embeddings)
-        att = creative_attention(query_embedding, K, values, mode="combinational")
-        blended = blend_values(att["weights"], values)
+        att = arbormind_attention(query_embedding, K, values, mode="combinational")
+        blended = arbormind_blend(att["weights"], values)
         
         source_archetypes = [s.get("archetype") for s in selected]
         
@@ -149,7 +149,7 @@ async def _search_foreign_patterns(
 async def _get_error_embedding(store, error_text: str) -> np.ndarray:
     """Get embedding for error text."""
     try:
-        from app.attention.router import get_embedding
+        from app.arbormind.router import get_embedding
         embedding = await get_embedding(error_text[:500])  # Limit length
         return np.array(embedding)
     except Exception:

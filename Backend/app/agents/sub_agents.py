@@ -399,7 +399,7 @@ async def marcus_call_sub_agent(
         selected_files = files
         if files and len(files) > 5:
             try:
-                from app.attention import route_query
+                from app.arbormind import arbormind_route
                 
                 # 1. Determine Context Mode (V!=K)
                 FILE_SELECTION_MODES = [
@@ -421,7 +421,7 @@ async def marcus_call_sub_agent(
                 ]
                 
                 # Get context configuration with self-evolution tracking
-                mode_result = await route_query(
+                mode_result = await arbormind_route(
                     query, 
                     FILE_SELECTION_MODES,
                     context_type="file_selection_mode",
@@ -460,7 +460,7 @@ async def marcus_call_sub_agent(
                 if len(candidates) <= max_files:
                     selected_files = candidates
                 else:
-                    result = await route_query(query, file_options, top_k=max_files)
+                    result = await arbormind_route(query, file_options, top_k=max_files)
                     
                     # Get the top ranked files
                     top_ids = [r["id"] for r in result["ranked"]]
@@ -628,7 +628,7 @@ async def marcus_call_sub_agent(
             # SELF-EVOLUTION: Report SUCCESS for attention decisions
             # ════════════════════════════════════════════════════════
             try:
-                from app.attention import report_routing_outcome
+                from app.arbormind import report_routing_outcome
                 
                 # File selection mode worked
                 if file_mode_decision_id:
@@ -668,7 +668,7 @@ async def marcus_call_sub_agent(
         # SELF-EVOLUTION: Report FAILURE for attention decisions
         # ════════════════════════════════════════════════════════
         try:
-            from app.attention import report_routing_outcome
+            from app.arbormind import report_routing_outcome
             
             quality = 3.0  # Low quality - output wasn't parseable
             

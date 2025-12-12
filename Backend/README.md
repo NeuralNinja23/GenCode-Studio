@@ -232,7 +232,14 @@ Two new modules enhance the system's intelligence and observability:
 
 ### Learning (`app/learning/`)
 *   **Pattern Store:** Stores and retrieves successful coding patterns to improve future generations (`pattern_store.py`).
+*   **V-Vector Store:** Self-evolving V-vectors for attention-based routing (`v_vector_store.py`).
 *   **Memory:** Manages long-term memory of project context.
+
+### ArborMind (`app/arbormind/`)
+The core intelligence layer for GenCode Studio:
+*   **ArborMindRouter:** Universal attention-based routing service (`router.py`).
+*   **ArborMindEvolution:** Self-evolution layer that learns from outcomes (`evolution.py`).
+*   **E-AM Explorer:** Foreign pattern injection for creative problem-solving (`explorer.py`).
 
 ---
 
@@ -278,6 +285,10 @@ Backend/
 │   ├── sandbox/                   # Docker Management
 │   ├── tracking/                  # 📊 Telemetry & Snapshots
 │   ├── learning/                  # 🧠 Pattern Store & Memory
+│   ├── arbormind/                 # 🌳 ArborMind - Intelligence Core
+│   │   ├── router.py              # Attention-based routing (V≠K)
+│   │   ├── evolution.py           # Self-evolving V-vectors
+│   │   └── explorer.py            # E-AM foreign pattern injection
 │   ├── tools/                     # Agent Tools
 │   └── lib/                       # Utilities (Websockets, Monitor)
 │

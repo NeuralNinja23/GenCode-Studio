@@ -715,7 +715,7 @@ async def supervised_agent_call(
                     # If we had a supervisor decision from a previous retry, report success
                     if attempt > 1 and 'last_supervisor_decision_id' in dir() and last_supervisor_decision_id:
                         try:
-                            from app.attention import report_routing_outcome
+                            from app.arbormind import report_routing_outcome
                             report_routing_outcome(
                                 last_supervisor_decision_id, 
                                 True, 
@@ -778,7 +778,7 @@ async def supervised_agent_call(
                 # ════════════════════════════════════════════════════════
                 try:
                     from app.orchestration.error_router import ErrorRouter
-                    from app.attention import report_routing_outcome
+                    from app.arbormind import report_routing_outcome
                     
                     # Use the advanced AM Router
                     error_router = ErrorRouter()

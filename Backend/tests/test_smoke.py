@@ -204,7 +204,7 @@ def test_attention_router_embeddings_fallback():
     Smoke test: Attention router handles missing API keys gracefully.
     
     """
-    from app.attention.router import _get_fallback_embedding
+    from app.arbormind.router import _get_fallback_embedding
     
     # Test fallback embedding
     embedding = _get_fallback_embedding("test query", dim=768)

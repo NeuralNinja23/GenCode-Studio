@@ -23,7 +23,7 @@ class TestErrorRouterEscalation:
     @pytest.mark.asyncio
     async def test_retry_0_uses_standard(self, error_router):
         """Retry 0 should use standard routing."""
-        with patch("app.attention.route_query", new_callable=AsyncMock) as mock_route:
+        with patch("app.arbormind.arbormind_route", new_callable=AsyncMock) as mock_route:
             mock_route.return_value = {
                 "selected": "syntax_fix",
                 "value": {"max_edits": 2},
@@ -43,7 +43,7 @@ class TestErrorRouterEscalation:
     @pytest.mark.asyncio
     async def test_retry_1_uses_standard(self, error_router):
         """Retry 1 should still use standard routing."""
-        with patch("app.attention.route_query", new_callable=AsyncMock) as mock_route:
+        with patch("app.arbormind.arbormind_route", new_callable=AsyncMock) as mock_route:
             mock_route.return_value = {
                 "selected": "logic_fix",
                 "value": {"max_edits": 5},
@@ -62,7 +62,7 @@ class TestErrorRouterEscalation:
     @pytest.mark.asyncio
     async def test_retry_2_triggers_eam(self, error_router):
         """Retry 2 should trigger E-AM (exploratory)."""
-        with patch("app.attention.route_query", new_callable=AsyncMock) as mock_route:
+        with patch("app.arbormind.arbormind_route", new_callable=AsyncMock) as mock_route:
             mock_route.return_value = {
                 "selected": "logic_fix",
                 "value": {"max_edits": 5},
@@ -71,7 +71,7 @@ class TestErrorRouterEscalation:
             }
             
             # Mock explorer to return foreign patterns
-            with patch("app.attention.explorer.inject_foreign_patterns", new_callable=AsyncMock) as mock_explore:
+            with patch("app.arbormind.explorer.arbormind_explore", new_callable=AsyncMock) as mock_explore:
                 mock_explore.return_value = {
                     "patterns": [{"archetype": "gaming", "value": {"max_edits": 8}}],
                     "blended_value": {"max_edits": 6},

@@ -1,13 +1,13 @@
-# app/attention/router.py
+# app/arbormind/router.py
 """
-Attention-based routing for project classification using scaled dot-product attention.
+ArborMind Router - Attention-based routing for intelligent decision making.
 
-This module implements the actual attention mechanism from transformer architecture:
+This module implements the ArborMind attention mechanism:
     Attention(Q,K,V) = softmax(QK^T / sqrt(d_k)) * V
 
 to route user requests to appropriate project archetypes and UI vibes.
 
-ARBORMIND (AM) EXTENSION:
+ARBORMIND (AM) OPERATORS:
 - C-AM (Combinational): Blend multiple archetypes using soft attention
 - E-AM (Exploratory): Inject foreign patterns when stuck
 - T-AM (Transformational): Mutate constraints when fundamentally blocked
@@ -410,7 +410,7 @@ def _softmax_am(x: np.ndarray, axis: int = -1) -> np.ndarray:
     return e / np.sum(e, axis=axis, keepdims=True)
 
 
-def creative_attention(
+def arbormind_attention(
     Q: np.ndarray,
     K: np.ndarray,
     V: List[Dict[str, Any]] = None,
@@ -472,12 +472,12 @@ def creative_attention(
     
     # If V-values provided, compute blended output
     if V is not None:
-        result["blended_value"] = blend_values(weights, V)
+        result["blended_value"] = arbormind_blend(weights, V)
     
     return result
 
 
-def blend_values(weights: np.ndarray, values: List[Dict[str, Any]]) -> Dict[str, Any]:
+def arbormind_blend(weights: np.ndarray, values: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Domain-general V-value synthesis for AM.
     
@@ -545,16 +545,16 @@ def should_use_combinational_mode(entropy: float) -> bool:
 # UNIVERSAL ATTENTION ROUTER (CORE SERVICE)
 # ═══════════════════════════════════════════════════════
 
-class AttentionRouter:
+class ArborMindRouter:
     """
-    Universal Service for Attention-Based Decision Making.
+    ArborMind Router - Universal Attention-Based Decision Making Service.
     
     Implements the "Attention is All You Need" mechanism:
         Attention(Q,K,V) = softmax(QK^T / sqrt(d_k)) * V
     
     to route ANY query to the best matching options.
     
-    SELF-EVOLVING: Now integrates with the Evolution Layer to:
+    SELF-EVOLVING: Integrates with the ArborMind Evolution Layer to:
     1. Apply learned V-vector adjustments before routing
     2. Track decisions for future learning
     """
@@ -567,10 +567,10 @@ class AttentionRouter:
         """Lazy load evolution manager to avoid circular imports."""
         if self._evolution_manager is None and _evolution_enabled:
             try:
-                from app.attention.evolution import get_evolution_manager
+                from app.arbormind.evolution import get_evolution_manager
                 self._evolution_manager = get_evolution_manager()
             except ImportError:
-                log("ATTENTION_ROUTER", "⚠️ Evolution module not available")
+                log("ARBORMIND", "⚠️ Evolution module not available")
         return self._evolution_manager
 
     async def route(
@@ -822,7 +822,7 @@ class AttentionRouter:
 
 
 # Global Instance
-_global_router = AttentionRouter()
+_global_router = ArborMindRouter()
 
 
 # ═══════════════════════════════════════════════════════
@@ -860,8 +860,8 @@ async def compute_ui_vibe_routing(user_request: str) -> Dict:
     }
 
 
-# Helper for external usage
-async def route_query(
+# ArborMind canonical function
+async def arbormind_route(
     query: str, 
     options: List[Dict], 
     top_k: int = 5,
@@ -869,7 +869,10 @@ async def route_query(
     archetype: str = "unknown"
 ) -> Dict:
     """
-    Public helper to use the router easily.
+    ArborMind Route - Primary routing function.
+    
+    Routes a query to the best matching options using attention-based
+    semantic matching and self-evolving V-vectors.
     
     Args:
         query: The query to route
@@ -888,4 +891,3 @@ async def route_query(
         context_type=context_type,
         archetype=archetype
     )
-

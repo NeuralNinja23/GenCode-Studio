@@ -11,9 +11,9 @@ from pathlib import Path
 # Add app to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.attention.router import (
-    creative_attention,
-    blend_values,
+from app.arbormind.router import (
+    arbormind_attention,
+    arbormind_blend,
     should_use_combinational_mode,
     DEFAULT_SCALE_STANDARD,
     DEFAULT_SCALE_COMBINATIONAL,
@@ -33,7 +33,7 @@ class TestCreativeAttention:
             [0.0, 1.0, 0.0],   # No match
         ])
         
-        result = creative_attention(Q, K, mode="standard")
+        result = arbormind_attention(Q, K, mode="standard")
         
         # Standard mode should heavily favor the first option
         assert result["weights"][0] > 0.9, "Standard mode should make sharp decisions"
@@ -49,7 +49,7 @@ class TestCreativeAttention:
             [0.5, 0.5, 0.3],   # Also similar
         ])
         
-        result = creative_attention(Q, K, mode="combinational")
+        result = arbormind_attention(Q, K, mode="combinational")
         
         # Combinational mode should distribute weights more evenly
         max_weight = np.max(result["weights"])
@@ -65,11 +65,11 @@ class TestCreativeAttention:
             [0.0, 1.0, 0.0],
             [0.0, 0.0, 1.0],
         ])
-        result_sharp = creative_attention(Q_sharp, K, mode="standard")
+        result_sharp = arbormind_attention(Q_sharp, K, mode="standard")
         
         # Ambiguous Q that matches multiple K
         Q_ambig = np.array([0.6, 0.6, 0.5])
-        result_ambig = creative_attention(Q_ambig, K, mode="standard")
+        result_ambig = arbormind_attention(Q_ambig, K, mode="standard")
         
         # Sharp decision should have lower entropy
         assert result_sharp["entropy"] < result_ambig["entropy"]
@@ -86,7 +86,7 @@ class TestCreativeAttention:
             {"max_files": 5, "strict": False},
         ]
         
-        result = creative_attention(Q, K, V, mode="combinational")
+        result = arbormind_attention(Q, K, V, mode="combinational")
         
         assert "blended_value" in result
         assert "max_files" in result["blended_value"]
@@ -103,7 +103,7 @@ class TestBlendValues:
             {"max_files": 4, "priority": 0.4},
         ]
         
-        result = blend_values(weights, values)
+        result = arbormind_blend(weights, values)
         
         # 0.7 * 10 + 0.3 * 4 = 8.2
         assert abs(result["max_files"] - 8.2) < 0.01
@@ -118,7 +118,7 @@ class TestBlendValues:
             {"mode": "slow", "type": "B"},
         ]
         
-        result = blend_values(weights, values)
+        result = arbormind_blend(weights, values)
         
         # Winner (index 1) should provide string values
         assert result["mode"] == "slow"
@@ -132,7 +132,7 @@ class TestBlendValues:
             {"verify": False, "strict": True},
         ]
         
-        result = blend_values(weights, values)
+        result = arbormind_blend(weights, values)
         
         assert result["verify"] == True
         assert result["strict"] == False
@@ -145,7 +145,7 @@ class TestBlendValues:
             {"b": 4, "c": 6},  # Missing 'a', has extra 'c'
         ]
         
-        result = blend_values(weights, values)
+        result = arbormind_blend(weights, values)
         
         assert "a" in result
         assert "b" in result
@@ -153,7 +153,7 @@ class TestBlendValues:
     
     def test_empty_values_list(self):
         """Empty values list should return empty dict."""
-        result = blend_values(np.array([]), [])
+        result = arbormind_blend(np.array([]), [])
         assert result == {}
 
 

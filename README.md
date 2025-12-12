@@ -221,8 +221,8 @@ Unlike traditional RAG systems where `V = K`, GenCode Studio uses **V ≠ K** ar
 **Result:** The system synthesizes *weighted configurations* that blend behaviors when ambiguous, but commit decisively when clear.
 
 ```python
-# Example: Attention synthesizes tool configuration
-result = await route_query("I need to fix a React component bug", tool_options)
+# Example: ArborMind synthesizes tool configuration
+result = await arbormind_route("I need to fix a React component bug", tool_options)
 # → Returns: {mode: "strict", max_edits: 2, apply_diff: true}
 ```
 
@@ -341,9 +341,10 @@ GenCode-Studio/
 │   ├── 📁 app/
 │   │   ├── 📁 agents/            # Marcus, Derek, Victoria, Luna
 │   │   ├── 📁 api/               # REST API endpoints
-│   │   ├── 📁 attention/         # V≠K Attention Router
-│   │   │   ├── router.py         # Core routing logic
-│   │   │   └── evolution.py      # Self-evolving V-vectors
+│   │   ├── 📁 arbormind/         # 🌳 ArborMind Intelligence Core
+│   │   │   ├── router.py         # Attention-based routing (V≠K)
+│   │   │   ├── evolution.py      # Self-evolving V-vectors
+│   │   │   └── explorer.py       # E-AM foreign pattern injection
 │   │   ├── 📁 core/              # Config, constants, logging
 │   │   ├── 📁 handlers/          # Workflow step implementations
 │   │   ├── 📁 learning/          # Pattern, Failure, V-Vector stores
@@ -370,7 +371,7 @@ GenCode-Studio/
 
 ---
 
-## 🎨 Attention-Based Routing
+## 🎨 ArborMind Attention Routing
 
 GenCode Studio classifies requests into **archetypes** and **vibes** for intelligent code generation:
 
@@ -527,9 +528,9 @@ WORKFLOW_CONFIG = {
 }
 ```
 
-### Attention Router Tuning
+### ArborMind Router Tuning
 
-Located in `Backend/app/attention/router.py`:
+Located in `Backend/app/arbormind/router.py`:
 
 ```python
 ATTENTION_CONFIG = {

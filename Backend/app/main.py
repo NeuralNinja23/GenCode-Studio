@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
     
     # FIX #18: Close HTTP session used for embeddings
     try:
-        from app.attention.router import close_http_session
+        from app.arbormind.router import close_http_session
         await close_http_session()
     except Exception as e:
         print(f"[SHUTDOWN] HTTP session cleanup error: {e}")

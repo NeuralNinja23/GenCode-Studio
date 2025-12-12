@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from unittest.mock import AsyncMock, patch
-from app.attention import AttentionRouter
+from app.arbormind import ArborMindRouter
 
 # Mock embedding function to avoid API calls
 async def mock_get_embedding(text):
@@ -19,14 +19,14 @@ async def mock_get_embedding(text):
 @pytest.mark.asyncio
 async def test_attention_routing_exact_match():
     """Test standard routing where V=K (One clear winner)."""
-    router = AttentionRouter()
+    router = ArborMindRouter()
     
     options = [
         {"id": "opt_a", "description": "Option A", "value": {"speed": 100}},
         {"id": "opt_b", "description": "Option B", "value": {"speed": 0}}
     ]
     
-    with patch("app.attention.router.get_embedding", side_effect=mock_get_embedding):
+    with patch("app.arbormind.router.get_embedding", side_effect=mock_get_embedding):
         result = await router.route("Query A", options)
         
     assert result["selected"] == "opt_a"
@@ -37,7 +37,7 @@ async def test_attention_routing_exact_match():
 @pytest.mark.asyncio
 async def test_attention_value_synthesis():
     """Test V!=K parameter synthesis (Blending)."""
-    router = AttentionRouter()
+    router = ArborMindRouter()
     
     options = [
         {"id": "opt_a", "description": "Option A", "value": {"param": 10.0}},
@@ -50,7 +50,7 @@ async def test_attention_value_synthesis():
     # Scores are equal. Softmax should be 0.5, 0.5.
     # Blended param: 0.5*10 + 0.5*20 = 15.0
     
-    with patch("app.attention.router.get_embedding", side_effect=mock_get_embedding):
+    with patch("app.arbormind.router.get_embedding", side_effect=mock_get_embedding):
         result = await router.route("Query Mix", options)
         
     synthesized_param = result["value"]["param"]
