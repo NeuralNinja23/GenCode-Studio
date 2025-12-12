@@ -7,10 +7,10 @@ This module implements the actual attention mechanism from transformer architect
 
 to route user requests to appropriate project archetypes and UI vibes.
 
-UNIVERSE OF THOUGHT (UoT) EXTENSION:
-- C-UoT (Combinational): Blend multiple archetypes using soft attention
-- E-UoT (Exploratory): Inject foreign patterns when stuck
-- T-UoT (Transformational): Mutate constraints when fundamentally blocked
+ARBORMIND (AM) EXTENSION:
+- C-AM (Combinational): Blend multiple archetypes using soft attention
+- E-AM (Exploratory): Inject foreign patterns when stuck
+- T-AM (Transformational): Mutate constraints when fundamentally blocked
 """
 import math
 import numpy as np
@@ -23,22 +23,25 @@ from app.core.logging import log
 
 
 # ═══════════════════════════════════════════════════════
-# UoT CONFIGURATION - Universe of Thought Operators
+# AM CONFIGURATION - ArborMind Operators
 # ═══════════════════════════════════════════════════════
 
-class UoTMode(Enum):
-    """Universe of Thought operating modes."""
+class AMMode(Enum):
+    """ArborMind operating modes."""
     STANDARD = "standard"          # Sharp routing (winner-takes-all)
-    COMBINATIONAL = "combinational"  # C-UoT: Multi-source blending
-    EXPLORATORY = "exploratory"      # E-UoT: Foreign pattern injection
-    TRANSFORMATIONAL = "transformational"  # T-UoT: Constraint mutation
+    COMBINATIONAL = "combinational"  # C-AM: Multi-source blending
+    EXPLORATORY = "exploratory"      # E-AM: Foreign pattern injection
+    TRANSFORMATIONAL = "transformational"  # T-AM: Constraint mutation
 
-# UoT Scale Constants
+# Backward compatibility alias
+UoTMode = AMMode
+
+# AM Scale Constants
 DEFAULT_SCALE_STANDARD = 20.0       # Sharp decisions (winner-takes-all)
 DEFAULT_SCALE_COMBINATIONAL = 2.0   # Soft decisions (multi-source blending)
 EPS = 1e-12                          # Epsilon for numerical stability
 
-# UoT Entropy Thresholds
+# AM Entropy Thresholds
 ENTROPY_HIGH_THRESHOLD = 1.5        # Above this = consider combinational mode
 ENTROPY_LOW_THRESHOLD = 0.5         # Below this = confident single selection
 
@@ -394,7 +397,7 @@ def scaled_dot_product_attention(
 
 
 # ═══════════════════════════════════════════════════════
-# UoT: CREATIVE ATTENTION (C-UoT FOUNDATION)
+# AM: CREATIVE ATTENTION (C-AM FOUNDATION)
 # ═══════════════════════════════════════════════════════
 
 def _l2_normalize(x: np.ndarray, axis: int = -1) -> np.ndarray:
@@ -403,11 +406,14 @@ def _l2_normalize(x: np.ndarray, axis: int = -1) -> np.ndarray:
     return x / np.maximum(norm, EPS)
 
 
-def _softmax_uot(x: np.ndarray, axis: int = -1) -> np.ndarray:
-    """Numerically stable softmax for UoT operations."""
+def _softmax_am(x: np.ndarray, axis: int = -1) -> np.ndarray:
+    """Numerically stable softmax for AM operations."""
     x_max = np.max(x, axis=axis, keepdims=True)
     e = np.exp(x - x_max)
     return e / np.sum(e, axis=axis, keepdims=True)
+
+# Backward compatibility alias
+_softmax_uot = _softmax_am
 
 
 def creative_attention(
@@ -419,7 +425,7 @@ def creative_attention(
     scale_combinational: float = DEFAULT_SCALE_COMBINATIONAL
 ) -> Dict[str, Any]:
     """
-    Universal Attention operator supporting UoT creative modes.
+    Universal Attention operator supporting AM creative modes.
     
     MODES:
     - "standard": Sharp decisions (winner-takes-all, temperature ~0.05)
@@ -456,9 +462,9 @@ def creative_attention(
     
     # Apply temperature scaling
     logits = scores * scale
-    weights = _softmax_uot(logits)
+    weights = _softmax_am(logits)
     
-    # Compute entropy (for UoT mode detection)
+    # Compute entropy (for AM mode detection)
     # High entropy = query relevant to multiple options = use combinational
     entropy = -np.sum(weights * np.log(weights + EPS))
     
@@ -479,7 +485,7 @@ def creative_attention(
 
 def blend_values(weights: np.ndarray, values: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Domain-general V-value synthesis for UoT.
+    Domain-general V-value synthesis for AM.
     
     Blends multiple value dictionaries based on attention weights.
     Handles:
@@ -648,7 +654,7 @@ class AttentionRouter:
             log("ATTENTION_ROUTER", f"⚠️ Failed to embed options: {e}")
             return self._fallback_response(evolved_options, "Option embedding failure")
 
-        # 3. Apply Creative Attention (C-UoT)
+        # 3. Apply Creative Attention (C-AM)
         # -------------------------------------------------------------
         # Use creative_attention which supports:
         # - Standard mode (sharp routing)
@@ -677,7 +683,7 @@ class AttentionRouter:
         
         # HYBRID SWITCH: If entropy is high and we are in standard mode, 
         # we might want to flag this or switch to combinational for the blending step.
-        if should_use_combinational_mode(entropy) and settings.uot.enable_cuot:
+        if should_use_combinational_mode(entropy) and settings.am.enable_cam:
              # If we were in standard, but entropy is high, the query is ambiguous/multifaceted.
              # We re-run in combinational mode OR just use the weights (if they are soft enough).
              # Standard mode scale=20 makes weights sharp (one-hot-ish).

@@ -1,6 +1,6 @@
 # app/orchestration/error_router.py
 """
-FAST v2 Error Router (Self-Evolving + UoT)
+FAST v2 Error Router (Self-Evolving + AM)
 
 Maps FAST v2 step failures to the correct repair action.
 Used by the healing pipeline to determine what to repair.
@@ -8,10 +8,10 @@ Used by the healing pipeline to determine what to repair.
 SELF-EVOLUTION: Repair strategy decisions are tracked and outcomes
 fed back to improve future routing decisions.
 
-UoT EXTENSION (Universe of Thought):
+AM EXTENSION (ArborMind):
 - Standard routing for first attempts
-- E-UoT (Exploratory) after 2+ retries: Inject foreign patterns
-- T-UoT (Transformational) after 3+ retries: Mutate constraints
+- E-AM (Exploratory) after 2+ retries: Inject foreign patterns
+- T-AM (Transformational) after 3+ retries: Mutate constraints
 """
 from typing import Dict, Optional, Any, List
 from app.core.logging import log
@@ -25,7 +25,7 @@ class ErrorRouter:
     When step X fails, this tells us what artifact needs repair.
     
     SELF-EVOLVING: Tracks repair decisions and learns from outcomes.
-    UoT-ENABLED: Escalates through creative reasoning modes on retry.
+    AM-ENABLED: Escalates through creative reasoning modes on retry.
     """
     
     # Map steps to artifact names for repair
@@ -76,18 +76,18 @@ class ErrorRouter:
         context: Dict[str, Any] = None
     ) -> dict:
         """
-        Use Attention + UoT to decide the best repair strategy.
+        Use Attention + AM to decide the best repair strategy.
         
         ESCALATION LADDER:
         - retries=0-1: Standard routing (sharp attention)
-        - retries=2: E-UoT (inject foreign patterns)
-        - retries=3+: T-UoT (mutate constraints)
+        - retries=2: E-AM (inject foreign patterns)
+        - retries=3+: T-AM (mutate constraints)
         
         Args:
             error_log: The error message to analyze
             archetype: Project archetype for context-aware evolution
-            retries: Current retry count (for UoT escalation)
-            max_retries: Maximum retries before T-UoT
+            retries: Current retry count (for AM escalation)
+            max_retries: Maximum retries before T-AM
             context: Additional context for decision making
         
         Returns:
@@ -100,33 +100,33 @@ class ErrorRouter:
         # ═══════════════════════════════════════════════════════
         # CONVERGENT PATH (Standard Routing)
         # ═══════════════════════════════════════════════════════
-        if retries < settings.uot.euot_retry_threshold:
+        if retries < settings.am.eam_retry_threshold:
             return await self._standard_route(error_log, archetype)
         
         # ═══════════════════════════════════════════════════════
-        # E-UoT PATH (Exploratory - Foreign Patterns)
+        # E-AM PATH (Exploratory - Foreign Patterns)
         # ═══════════════════════════════════════════════════════
-        if retries < settings.uot.tuot_retry_threshold:
-            if settings.uot.enable_euot:
-                log("UoT", f"🔄 Retry {retries}: Escalating to E-UoT (Exploratory)")
-                euot_result = await self._exploratory_route(error_log, archetype)
-                if euot_result.get("patterns"):
+        if retries < settings.am.tam_retry_threshold:
+            if settings.am.enable_eam:
+                log("AM", f"🔄 Retry {retries}: Escalating to E-AM (Exploratory)")
+                eam_result = await self._exploratory_route(error_log, archetype)
+                if eam_result.get("patterns"):
                     self._last_mode = "exploratory"
-                    return euot_result
+                    return eam_result
             
-            # Fallback to standard if E-UoT didn't find patterns
+            # Fallback to standard if E-AM didn't find patterns
             return await self._standard_route(error_log, archetype)
         
         # ═══════════════════════════════════════════════════════
-        # T-UoT PATH (Transformational - Constraint Mutation)
+        # T-AM PATH (Transformational - Constraint Mutation)
         # ═══════════════════════════════════════════════════════
-        if settings.uot.enable_tuot:
-            log("UoT", f"🔮 Retry {retries}: Escalating to T-UoT (Transformational)")
+        if settings.am.enable_tam:
+            log("AM", f"🔮 Retry {retries}: Escalating to T-AM (Transformational)")
             self._last_mode = "transformational"
             return await self._transformational_route(error_log, archetype, context)
         
-        # T-UoT disabled, fall back to standard
-        log("UoT", "⚠️ T-UoT disabled, using standard route")
+        # T-AM disabled, fall back to standard
+        log("AM", "⚠️ T-AM disabled, using standard route")
         return await self._standard_route(error_log, archetype)
 
     async def _standard_route(self, error_log: str, archetype: str) -> dict:
@@ -161,7 +161,7 @@ class ErrorRouter:
         return result
 
     async def _exploratory_route(self, error_log: str, archetype: str) -> dict:
-        """E-UoT: Inject foreign patterns from other archetypes."""
+        """E-AM: Inject foreign patterns from other archetypes."""
         try:
             from app.attention.explorer import inject_foreign_patterns
             
@@ -188,7 +188,7 @@ class ErrorRouter:
             return {"patterns": [], "mode": "exploratory"}
             
         except Exception as e:
-            log("E-UoT", f"⚠️ Exploratory routing failed: {e}")
+            log("E-AM", f"⚠️ Exploratory routing failed: {e}")
             return {"patterns": [], "mode": "exploratory", "error": str(e)}
 
     async def _transformational_route(
@@ -197,7 +197,7 @@ class ErrorRouter:
         archetype: str,
         context: Dict[str, Any]
     ) -> dict:
-        """T-UoT: Mutate constraints when fundamentally stuck."""
+        """T-AM: Mutate constraints when fundamentally stuck."""
         # Select mutation operator based on error type
         mutation_op = self._select_mutation_operator(error_log, context)
         mutation = self._build_mutation(mutation_op, error_log, context)
@@ -208,13 +208,13 @@ class ErrorRouter:
             "decision_id": self._last_decision_id,
             "mode": "transformational",
             "mutation": mutation,
-            "apply_mode": "sandbox" if settings.uot.tuot_require_sandbox else "direct",
-            "require_approval": settings.uot.tuot_require_approval,
+            "apply_mode": "sandbox" if settings.am.tam_require_sandbox else "direct",
+            "require_approval": settings.am.tam_require_approval,
         }
 
     def _select_mutation_operator(self, error_log: str, context: Dict) -> str:
         """
-        Select T-UoT mutation operator based on error analysis.
+        Select T-AM mutation operator based on error analysis.
         
         Operators:
         - DROP: Remove a constraint
@@ -276,7 +276,7 @@ class ErrorRouter:
             mutated_value["search_solutions"] = True
             mutation_desc = "Added: allow any imports, external libs, solution search"
         
-        log("T-UoT", f"🔮 Mutation [{operator}]: {mutation_desc}")
+        log("T-AM", f"🔮 Mutation [{operator}]: {mutation_desc}")
         
         return {
             "operator": operator,
@@ -379,7 +379,7 @@ class ErrorRouter:
             if not did:
                 return False
             
-            # Include UoT mode in details
+            # Include AM mode in details
             if self._last_mode != "standard":
                 details = f"[{self._last_mode.upper()}] {details}"
             
@@ -397,5 +397,5 @@ class ErrorRouter:
         return self._last_decision_id
     
     def get_last_mode(self) -> str:
-        """Get the UoT mode used in the last decision."""
+        """Get the AM mode used in the last decision."""
         return self._last_mode

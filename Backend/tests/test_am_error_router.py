@@ -1,7 +1,7 @@
-# tests/test_uot_error_router.py
+# tests/test_am_error_router.py
 """
-Unit tests for UoT-enhanced Error Router.
-Tests the escalation ladder: standard → E-UoT → T-UoT
+Unit tests for AM-enhanced Error Router.
+Tests the escalation ladder: standard → E-AM → T-AM
 """
 import pytest
 import sys
@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 class TestErrorRouterEscalation:
-    """Tests for the UoT escalation ladder in ErrorRouter."""
+    """Tests for the AM escalation ladder in ErrorRouter."""
     
     @pytest.fixture
     def error_router(self):
@@ -60,8 +60,8 @@ class TestErrorRouterEscalation:
             assert result["mode"] == "standard"
     
     @pytest.mark.asyncio
-    async def test_retry_2_triggers_euot(self, error_router):
-        """Retry 2 should trigger E-UoT (exploratory)."""
+    async def test_retry_2_triggers_eam(self, error_router):
+        """Retry 2 should trigger E-AM (exploratory)."""
         with patch("app.attention.route_query", new_callable=AsyncMock) as mock_route:
             mock_route.return_value = {
                 "selected": "logic_fix",
@@ -89,15 +89,15 @@ class TestErrorRouterEscalation:
                 assert "source_archetypes" in result or "patterns" in result
     
     @pytest.mark.asyncio
-    async def test_retry_3_triggers_tuot(self, error_router):
-        """Retry 3+ should trigger T-UoT (transformational) if enabled."""
+    async def test_retry_3_triggers_tam(self, error_router):
+        """Retry 3+ should trigger T-AM (transformational) if enabled."""
         with patch("app.core.config.settings") as mock_settings:
-            # Enable T-UoT for this test
-            mock_settings.uot.enable_tuot = True
-            mock_settings.uot.tuot_require_sandbox = True
-            mock_settings.uot.tuot_require_approval = True
-            mock_settings.uot.euot_retry_threshold = 2
-            mock_settings.uot.tuot_retry_threshold = 3
+            # Enable T-AM for this test
+            mock_settings.am.enable_tam = True
+            mock_settings.am.tam_require_sandbox = True
+            mock_settings.am.tam_require_approval = True
+            mock_settings.am.eam_retry_threshold = 2
+            mock_settings.am.tam_retry_threshold = 3
             
             result = await error_router.decide_repair_strategy(
                 "TimeoutError: operation timed out",
@@ -105,14 +105,14 @@ class TestErrorRouterEscalation:
                 retries=3
             )
             
-            # T-UoT should be enabled for this test
-            # If T-UoT is disabled in actual config, it will fall back to standard
-            if mock_settings.uot.enable_tuot:
+            # T-AM should be enabled for this test
+            # If T-AM is disabled in actual config, it will fall back to standard
+            if mock_settings.am.enable_tam:
                 assert result.get("mode") in ["transformational", "standard"]
 
 
 class TestMutationOperators:
-    """Tests for T-UoT mutation operator selection."""
+    """Tests for T-AM mutation operator selection."""
     
     @pytest.fixture
     def error_router(self):

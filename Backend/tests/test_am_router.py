@@ -1,7 +1,7 @@
-# tests/test_uot_router.py
+# tests/test_am_router.py
 """
-Unit tests for UoT (Universe of Thought) router functions.
-Tests C-UoT combinational blending, entropy scoring, and mode detection.
+Unit tests for AM (ArborMind) router functions.
+Tests C-AM combinational blending, entropy scoring, and mode detection.
 """
 import pytest
 import numpy as np
@@ -158,7 +158,7 @@ class TestBlendValues:
 
 
 class TestModeDetection:
-    """Tests for UoT mode detection."""
+    """Tests for AM mode detection."""
     
     def test_high_entropy_suggests_combinational(self):
         """High entropy should suggest combinational mode."""

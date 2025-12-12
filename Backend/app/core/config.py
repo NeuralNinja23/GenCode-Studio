@@ -64,32 +64,32 @@ class PathSettings:
 
 
 @dataclass
-class UoTSettings:
+class AMSettings:
     """
-    Universe of Thought (UoT) configuration.
+    ArborMind (AM) configuration.
     
     Controls the creative reasoning operators:
-    - C-UoT: Combinational (blend multiple archetypes)
-    - E-UoT: Exploratory (inject foreign patterns)
-    - T-UoT: Transformational (mutate constraints)
+    - C-AM: Combinational (blend multiple archetypes)
+    - E-AM: Exploratory (inject foreign patterns)
+    - T-AM: Transformational (mutate constraints)
     """
     # Feature Flags (Safety Layer)
-    enable_cuot: bool = field(default_factory=lambda: os.getenv("ENABLE_CUOT", "true").lower() == "true")
-    enable_euot: bool = field(default_factory=lambda: os.getenv("ENABLE_EUOT", "true").lower() == "true")
-    enable_tuot: bool = field(default_factory=lambda: os.getenv("ENABLE_TUOT", "false").lower() == "true")  # Sandbox only by default
+    enable_cam: bool = field(default_factory=lambda: os.getenv("ENABLE_CAM", "true").lower() == "true")
+    enable_eam: bool = field(default_factory=lambda: os.getenv("ENABLE_EAM", "true").lower() == "true")
+    enable_tam: bool = field(default_factory=lambda: os.getenv("ENABLE_TAM", "false").lower() == "true")  # Sandbox only by default
     
     # Rollout Percentages (0-100)
-    cuot_rollout_pct: int = field(default_factory=lambda: int(os.getenv("CUOT_ROLLOUT_PCT", "100")))
-    euot_rollout_pct: int = field(default_factory=lambda: int(os.getenv("EUOT_ROLLOUT_PCT", "100")))
-    tuot_rollout_pct: int = field(default_factory=lambda: int(os.getenv("TUOT_ROLLOUT_PCT", "0")))
+    cam_rollout_pct: int = field(default_factory=lambda: int(os.getenv("CAM_ROLLOUT_PCT", "100")))
+    eam_rollout_pct: int = field(default_factory=lambda: int(os.getenv("EAM_ROLLOUT_PCT", "100")))
+    tam_rollout_pct: int = field(default_factory=lambda: int(os.getenv("TAM_ROLLOUT_PCT", "0")))
     
     # Retry Thresholds for Escalation
-    euot_retry_threshold: int = 2   # Activate E-UoT after this many retries
-    tuot_retry_threshold: int = 3   # Activate T-UoT after this many retries
+    eam_retry_threshold: int = 2   # Activate E-AM after this many retries
+    tam_retry_threshold: int = 3   # Activate T-AM after this many retries
     
-    # T-UoT Safety
-    tuot_require_sandbox: bool = True  # Always run T-UoT mutations in sandbox first
-    tuot_require_approval: bool = True  # Require human approval for T-UoT writes
+    # T-AM Safety
+    tam_require_sandbox: bool = True  # Always run T-AM mutations in sandbox first
+    tam_require_approval: bool = True  # Require human approval for T-AM writes
     
     # Entropy Thresholds
     entropy_high: float = 1.5   # Above this = multi-domain query
@@ -103,9 +103,15 @@ class Settings:
     workflow: WorkflowSettings = field(default_factory=WorkflowSettings)
     sandbox: SandboxSettings = field(default_factory=SandboxSettings)
     paths: PathSettings = field(default_factory=PathSettings)
-    uot: UoTSettings = field(default_factory=UoTSettings)
+    am: AMSettings = field(default_factory=AMSettings)
     port: int = field(default_factory=lambda: int(os.getenv("PORT", 8000)))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")
+    
+    # Backward compatibility alias
+    @property
+    def uot(self):
+        """Backward compatibility alias for am settings."""
+        return self.am
     
     def ensure_directories(self):
         """Ensure required directories exist."""

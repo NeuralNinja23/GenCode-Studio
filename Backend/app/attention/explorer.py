@@ -1,6 +1,6 @@
 # app/attention/explorer.py
 """
-E-UoT: Exploratory Thought - Foreign Pattern Injection.
+E-AM: Exploratory ArborMind - Foreign Pattern Injection.
 
 When the system is stuck on a problem, this module pulls patterns
 from FOREIGN archetypes using the V-Vector store. This is the
@@ -24,7 +24,7 @@ async def inject_foreign_patterns(
     limit: int = 3
 ) -> Dict[str, Any]:
     """
-    E-UoT: Inject patterns from foreign archetypes.
+    E-AM: Inject patterns from foreign archetypes.
     
     When standard repair strategies fail, this function searches
     for similar error patterns in DIFFERENT archetypes and returns
@@ -42,9 +42,9 @@ async def inject_foreign_patterns(
             - blended_value: Synthesized config from foreign patterns
             - source_archetypes: Which archetypes contributed
     """
-    # Check if E-UoT is enabled
-    if not settings.uot.enable_euot:
-        log("E-UoT", "⚠️ E-UoT disabled in config")
+    # Check if E-AM is enabled
+    if not settings.am.enable_eam:
+        log("E-AM", "⚠️ E-AM disabled in config")
         return {"patterns": [], "blended_value": {}, "source_archetypes": []}
     
     try:
@@ -59,7 +59,7 @@ async def inject_foreign_patterns(
         )
         
         if not candidates:
-            log("E-UoT", f"No foreign patterns found for: {error_text[:50]}...")
+            log("E-AM", f"No foreign patterns found for: {error_text[:50]}...")
             return {"patterns": [], "blended_value": {}, "source_archetypes": []}
         
         # Deduplicate by archetype (keep highest scoring per archetype)
@@ -98,7 +98,7 @@ async def inject_foreign_patterns(
         
         source_archetypes = [s.get("archetype") for s in selected]
         
-        log("E-UoT", f"🔄 Injected {len(selected)} foreign patterns from: {source_archetypes}")
+        log("E-AM", f"🔄 Injected {len(selected)} foreign patterns from: {source_archetypes}")
         
         return {
             "patterns": selected,
@@ -109,7 +109,7 @@ async def inject_foreign_patterns(
         }
         
     except Exception as e:
-        log("E-UoT", f"⚠️ Error injecting foreign patterns: {e}")
+        log("E-AM", f"⚠️ Error injecting foreign patterns: {e}")
         return {"patterns": [], "blended_value": {}, "source_archetypes": [], "error": str(e)}
 
 
@@ -142,7 +142,7 @@ async def _search_foreign_patterns(
         return []
         
     except Exception as e:
-        log("E-UoT", f"⚠️ Pattern search failed: {e}")
+        log("E-AM", f"⚠️ Pattern search failed: {e}")
         return []
 
 

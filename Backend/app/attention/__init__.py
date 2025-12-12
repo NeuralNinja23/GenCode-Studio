@@ -5,18 +5,18 @@ The 'Attention is All You Need' engine for the application.
 
 Now includes:
 - Self-Evolution capabilities (learns from routing outcomes)
-- Universe of Thought (UoT) operators for creative reasoning
-  - C-UoT: Combinational (blend multiple archetypes)
-  - E-UoT: Exploratory (inject foreign patterns)
-  - T-UoT: Transformational (mutate constraints)
+- ArborMind (AM) operators for creative reasoning
+  - C-AM: Combinational (blend multiple archetypes)
+  - E-AM: Exploratory (inject foreign patterns)
+  - T-AM: Transformational (mutate constraints)
 """
 from .router import (
     route_query, 
     compute_archetype_routing, 
     compute_ui_vibe_routing, 
     AttentionRouter,
-    # UoT Functions
-    UoTMode,
+    # AM Functions
+    AMMode,
     creative_attention,
     blend_values,
     should_use_combinational_mode,
@@ -44,8 +44,8 @@ __all__ = [
     "compute_archetype_routing", 
     "compute_ui_vibe_routing", 
     "AttentionRouter",
-    # UoT (Universe of Thought)
-    "UoTMode",
+    # AM (ArborMind)
+    "AMMode",
     "creative_attention",
     "blend_values",
     "should_use_combinational_mode",
@@ -53,7 +53,7 @@ __all__ = [
     "ENTROPY_LOW_THRESHOLD",
     "DEFAULT_SCALE_STANDARD",
     "DEFAULT_SCALE_COMBINATIONAL",
-    # E-UoT Explorer
+    # E-AM Explorer
     "inject_foreign_patterns",
     "get_archetype_hints_for_error",
     # Evolution Layer

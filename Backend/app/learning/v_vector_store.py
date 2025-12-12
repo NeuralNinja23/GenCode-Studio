@@ -597,7 +597,7 @@ class VVectorStore:
     async def search_patterns(self, query: str, exclude_archetype: str, limit: int = 5) -> List[Dict]:
         """
         Search for successful patterns in foreign archetypes.
-        Used by E-UoT to find solutions from other domains.
+        Used by E-AM to find solutions from other domains.
         """
         results = []
         try:

@@ -1,6 +1,6 @@
-# scripts/verify_pretraining_and_euot.py
+# scripts/verify_pretraining_and_eam.py
 """
-Verify that GitHub pre-training data is present and E-UoT works.
+Verify that GitHub pre-training data is present and E-AM works.
 """
 import asyncio
 import sys
@@ -15,7 +15,7 @@ from app.core.logging import log
 
 async def verify():
     print("════════════════════════════════════════════════════════")
-    print("PRE-TRAINING & E-UoT VERIFICATION")
+    print("PRE-TRAINING & E-AM VERIFICATION")
     print("════════════════════════════════════════════════════════")
     
     # 1. Check VVectorStore for GitHub data
@@ -49,13 +49,13 @@ async def verify():
         print(f"❌ Failed to connect to VVectorStore: {e}")
         return
 
-    # 2. Test E-UoT Explorer
-    print("\n2. Testing E-UoT Explorer (inject_foreign_patterns)...")
+    # 2. Test E-AM Explorer
+    print("\n2. Testing E-AM Explorer (inject_foreign_patterns)...")
     try:
         from app.attention.explorer import inject_foreign_patterns, get_archetype_hints_for_error
         
-        # Enable E-UoT safely for this test
-        settings.uot.enable_euot = True
+        # Enable E-AM safely for this test
+        settings.am.enable_eam = True
         
         # Test Case 1: Recursion Error (should find gaming/algo patterns)
         print("\n   Test A: RecursionError in 'admin_dashboard'")
@@ -85,7 +85,7 @@ async def verify():
             print("   ⚠️  WARNING: No patterns found.")
             
     except Exception as e:
-        print(f"❌ E-UoT Explorer Test Failed: {e}")
+        print(f"❌ E-AM Explorer Test Failed: {e}")
         import traceback
         traceback.print_exc()
 

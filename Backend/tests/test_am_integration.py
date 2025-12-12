@@ -1,6 +1,6 @@
-# tests/test_uot_integration.py
+# tests/test_am_integration.py
 """
-Integration tests for Universe of Thought (UoT) system.
+Integration tests for ArborMind (AM) system.
 Verifies interactions between Router, ErrorRouter, and settings.
 """
 import pytest
@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.config import settings
 
-class TestUoTIntegration:
+class TestAMIntegration:
 
     @pytest.fixture
     def mock_explorer(self):
@@ -24,7 +24,7 @@ class TestUoTIntegration:
 
     @pytest.mark.asyncio
     async def test_full_error_escalation_flow(self, mock_explorer):
-        """Test the journey from Standard -> E-UoT -> T-UoT."""
+        """Test the journey from Standard -> E-AM -> T-AM."""
         from app.orchestration.error_router import ErrorRouter
         
         router = ErrorRouter()
@@ -42,14 +42,14 @@ class TestUoTIntegration:
             assert res1["mode"] == "standard"
             assert res1["decision_id"] == "d1"
 
-        # 2. E-UoT Mode (Retry 2)
+        # 2. E-AM Mode (Retry 2)
         mock_explorer.return_value = {
             "patterns": [{"archetype": "foreign", "value": {}}],
             "blended_value": {"edits": 5},
             "source_archetypes": ["foreign"]
         }
         
-        # We need to mock route_query for the standard fallback part of E-UoT
+        # We need to mock route_query for the standard fallback part of E-AM
         with patch("app.attention.route_query", new_callable=AsyncMock) as mock_route:
             mock_route.return_value = {
                 "selected": "code_fix", 
@@ -60,17 +60,17 @@ class TestUoTIntegration:
             res2 = await router.decide_repair_strategy(
                 "Error", 
                 "test_arch", 
-                retries=settings.uot.euot_retry_threshold
+                retries=settings.am.eam_retry_threshold
             )
             
             assert res2["mode"] == "exploratory"
             assert res2["patterns"] is not None
             assert mock_explorer.called
 
-        # 3. T-UoT Mode (Retry 3+)
-        # Ensure T-UoT is enabled
-        with patch.object(settings.uot, "enable_tuot", True):
-            with patch.object(settings.uot, "tuot_retry_threshold", 3):
+        # 3. T-AM Mode (Retry 3+)
+        # Ensure T-AM is enabled
+        with patch.object(settings.am, "enable_tam", True):
+            with patch.object(settings.am, "tam_retry_threshold", 3):
                 
                 res3 = await router.decide_repair_strategy(
                     "TimeoutError: process failed", 
@@ -94,7 +94,7 @@ class TestUoTIntegration:
         assert should_use_combinational_mode(1.0) is False
         
         # Change setting
-        with patch.object(settings.uot, "entropy_high", 0.8):
+        with patch.object(settings.am, "entropy_high", 0.8):
             # Now 1.0 should be True
             assert should_use_combinational_mode(1.0) is True
 

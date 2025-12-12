@@ -82,7 +82,7 @@ class HealingPipeline:
             step: The failed step name
             error_log: The error message or log trace
             archetype: Project archetype for self-evolution context
-            retries: Current retry count (for UoT escalation)
+            retries: Current retry count (for AM escalation)
         
         Returns:
             - "SELF_HEALED" if self-healing wrote files directly
@@ -96,12 +96,12 @@ class HealingPipeline:
             return None
 
         # ════════════════════════════════════════════════════════
-        # PHASE 3.2: Attention-Selected Repair Strategy (UoT-Enhanced)
+        # PHASE 3.2: Attention-Selected Repair Strategy (AM-Enhanced)
         # ════════════════════════════════════════════════════════
         strategy_id = "generic_fix"
         strategy_params = {}
         repair_decision_id = ""
-        uot_mode = "standard"
+        am_mode = "standard"
         
         if error_log:
             try:
@@ -109,23 +109,23 @@ class HealingPipeline:
                 result = await self.error_router.decide_repair_strategy(
                     error_log, 
                     archetype=archetype,
-                    retries=retries  # Pass retries for UoT escalation
+                    retries=retries  # Pass retries for AM escalation
                 )
                 strategy_id = result.get("selected", "generic_fix")
                 strategy_params = result.get("value", {})
                 repair_decision_id = result.get("decision_id", "")
-                uot_mode = result.get("mode", "standard")
+                am_mode = result.get("mode", "standard")
                 
                 # Store for outcome reporting
                 self._last_repair_decision_id = repair_decision_id
                 self._last_archetype = archetype
                 
-                # Log UoT mode if not standard
-                if uot_mode != "standard":
-                    log("HEAL", f"🧠 UoT Mode: {uot_mode.upper()}")
-                    if uot_mode == "exploratory" and result.get("source_archetypes"):
+                # Log AM mode if not standard
+                if am_mode != "standard":
+                    log("HEAL", f"🧠 AM Mode: {am_mode.upper()}")
+                    if am_mode == "exploratory" and result.get("source_archetypes"):
                         log("HEAL", f"   📚 Foreign patterns from: {result['source_archetypes']}")
-                    if uot_mode == "transformational" and result.get("mutation"):
+                    if am_mode == "transformational" and result.get("mutation"):
                         log("HEAL", f"   🔮 Mutation: {result['mutation'].get('description', 'N/A')}")
                 
                 log("HEAL", f"🧠 Attention selected strategy: '{strategy_id}'")

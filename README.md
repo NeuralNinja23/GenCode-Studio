@@ -45,7 +45,7 @@ A team of specialized AI agents, each with distinct expertise:
 </td>
 <td width="50%" valign="top">
 
-### 🌳 Universe of Thought (UoT)
+### 🌳 ArborMind (AM)
 Next-generation orchestration with **self-evolving intelligence**:
 
 - **Hybrid Workflow Engine** — Sequential + parallel step execution
@@ -149,25 +149,25 @@ GenCode Studio orchestrates a complete software development lifecycle:
 
 ---
 
-## 🌳 Universe of Thought — System Diagram
+## 🌳 ArborMind — System Diagram
 
-The **Universe of Thought (UoT)** is GenCode Studio's next-generation orchestration engine, featuring self-evolving intelligence and attention-based routing.
+**ArborMind (AM)** is GenCode Studio's next-generation orchestration engine, featuring self-evolving intelligence and attention-based routing.
 
 ```mermaid
 flowchart TD
     UserRequest[User Request]
-    UoT[Universe of Trees Orchestrator]
+    AM[ArborMind Orchestrator]
 
-    UserRequest --> UoT
+    UserRequest --> AM
 
     subgraph TreeBranches
         direction TB
         BranchA[Branch A Hybrid Workflow]
         BranchB[Branch B Self Evolution]
         BranchC[Branch C Attention Exploration]
-        UoT --> BranchA
-        UoT --> BranchB
-        UoT --> BranchC
+        AM --> BranchA
+        AM --> BranchB
+        AM --> BranchC
     end
 
     subgraph HybridWorkflow [Hybrid Workflow Engine]

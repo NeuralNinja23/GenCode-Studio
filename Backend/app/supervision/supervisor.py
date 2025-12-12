@@ -774,13 +774,13 @@ async def supervised_agent_call(
                 issues = review.get("issues", [])
                 
                 # ════════════════════════════════════════════════════════
-                # PHASE 3.1: UoT-Driven Repair Strategy (C-UoT -> E-UoT -> T-UoT)
+                # PHASE 3.1: AM-Driven Repair Strategy (C-AM -> E-AM -> T-AM)
                 # ════════════════════════════════════════════════════════
                 try:
                     from app.orchestration.error_router import ErrorRouter
                     from app.attention import report_routing_outcome
                     
-                    # Use the advanced UoT Router
+                    # Use the advanced AM Router
                     error_router = ErrorRouter()
                     
                     # Synthesize error context
@@ -803,12 +803,12 @@ async def supervised_agent_call(
                     # Extract control parameters from the decision value
                     config = repair_decision.get("value", {})
                     
-                    # Apply UoT specific modes
+                    # Apply AM specific modes
                     if repair_decision.get("mode") == "exploratory":
                          # Inject foreign patterns into instructions
                          patterns = repair_decision.get("patterns", [])
                          if patterns:
-                             hint_text = "\n\n💡 FOREIGN PATTERN SUGGESTION (E-UoT):\n"
+                             hint_text = "\n\n💡 FOREIGN PATTERN SUGGESTION (E-AM):\n"
                              for p in patterns:
                                  hint_text += f"- From {p.get('archetype')}: {p.get('description', '')}\n"
                              current_instructions += hint_text
@@ -819,7 +819,7 @@ async def supervised_agent_call(
                          mutation = repair_decision.get("mutation", {})
                          desc = mutation.get("description", "")
                          if desc:
-                             current_instructions += f"\n\n🔮 CONSTRAINT MUTATION (T-UoT):\n{desc}\n(You are authorized to bypass previous constraints)"
+                             current_instructions += f"\n\n🔮 CONSTRAINT MUTATION (T-AM):\n{desc}\n(You are authorized to bypass previous constraints)"
                              log("SUPERVISION", f"   Applied constraint mutation: {desc}")
                     
                     # Standard control flags
@@ -854,7 +854,7 @@ async def supervised_agent_call(
                         errors_from_previous = []
 
                 except Exception as e:
-                    log("SUPERVISION", f"⚠️ UoT routing failed: {e}, falling back to standard retry", project_id=project_id)
+                    log("SUPERVISION", f"⚠️ AM routing failed: {e}, falling back to standard retry", project_id=project_id)
                     force_healer = False
                     last_supervisor_decision_id = ""
 
