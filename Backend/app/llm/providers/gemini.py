@@ -105,6 +105,20 @@ async def call(
                 if not parts:
                     raise Exception("No parts in response")
                 
-                return parts[0].get("text", "")
+                text_content = parts[0].get("text", "")
+                
+                # V3: Extract usage metadata for accurate cost tracking
+                usage_metadata = data.get("usageMetadata", {})
+                usage = {
+                    "input": usage_metadata.get("promptTokenCount", 0),
+                    "output": usage_metadata.get("candidatesTokenCount", 0),
+                    "total": usage_metadata.get("totalTokenCount", 0),
+                }
+                
+                # Return dict with both text and usage
+                return {
+                    "text": text_content,
+                    "usage": usage,
+                }
             except (KeyError, IndexError) as e:
                 raise Exception(f"Failed to parse Gemini response: {e}")

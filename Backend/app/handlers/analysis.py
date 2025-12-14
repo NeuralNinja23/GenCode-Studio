@@ -13,86 +13,26 @@ from app.core.exceptions import RateLimitError
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.core.logging import log
 from app.orchestration.state import WorkflowStateManager
-from app.llm import call_llm
+from app.llm import call_llm_with_usage
 from app.llm.prompts import MARCUS_PROMPT
 from app.utils.parser import normalize_llm_output
 from app.arbormind import (
     compute_archetype_routing,
     compute_ui_vibe_routing,
 )
-
-
-# FIX #12: Extract entity patterns to constant - used in both main flow and fallback
-ENTITY_PATTERNS: List[Tuple[str, List[str]]] = [
-    ("bug", ["bug tracking", "bug tracker", "issue tracker"]),
-    ("note", ["notes app", "note taking", "notepad"]),
-    ("task", ["task management", "task manager", "todo", "to-do"]),
-    ("product", ["e-commerce", "store", "shop", "marketplace"]),
-    ("post", ["blog", "blogging"]),
-    ("article", ["article", "cms", "content management"]),
-    ("query", ["database", "chat with database", "sql"]),
-    ("recipe", ["recipe", "cooking", "food"]),
-    ("expense", ["expense", "budget", "finance tracker"]),
-    ("contact", ["contact", "crm", "customer relationship"]),
-    ("event", ["event", "calendar", "scheduling"]),
-    ("message", ["chat", "messaging", "communication"]),
-    ("file", ["file manager", "storage", "upload"]),
-    ("ticket", ["ticketing", "support ticket", "help desk", "customer support"]),
-    ("order", ["order management", "orders", "fulfillment"]),
-    ("invoice", ["invoice", "billing", "payment"]),
-    ("project", ["project management", "projects"]),
-    ("user", ["user management", "users", "authentication"]),
-]
+# Centralized entity extraction
+from app.utils.entity_discovery import extract_entity_from_request
 
 
 def _detect_primary_entity(user_request: str) -> str:
     """
-    Detect primary entity from user request using dynamic pattern matching.
+    Detect primary entity from user request.
     
-    Issue #8 Fix: Uses multiple strategies for robust entity extraction:
-    1. Known entity patterns (e.g., "ticketing tool" → "ticket")
-    2. Dynamic extraction from "X tracker/manager/tool" patterns
-    3. Fallback to default "item"
+    This is a wrapper around the centralized extract_entity_from_request
+    that adds a default fallback of "item".
     """
-    import re
-    request_lower = user_request.lower()
-    
-    # Strategy 1: Check known entity patterns first
-    for entity, keywords in ENTITY_PATTERNS:
-        if any(kw in request_lower for kw in keywords):
-            return entity
-    
-    # Strategy 2: Dynamic extraction - "X tracker/manager/system/tool/dashboard/app"
-    # Pattern: word + (tracker|manager|system|tool|dashboard|app)
-    match = re.search(r'(\w+)\s*(?:tracker|manager|management|system|tool|dashboard|app|application)', request_lower)
-    if match:
-        word = match.group(1)
-        # Skip common non-entity words
-        if word not in ["the", "a", "an", "my", "your", "our", "this", "that", "web", "full", "stack", "simple", "basic", "modern", "new"]:
-            # Singularize if plural (basic heuristic)
-            if word.endswith("ing"):
-                # "ticketing" → "ticket", "tracking" → "track"
-                word = word[:-3] if word.endswith("ting") else word[:-3]
-            elif word.endswith("s") and len(word) > 3:
-                word = word[:-1]
-            return word
-    
-    # Strategy 3: Look for "manage/track/create/build X" pattern
-    match = re.search(r'(?:manage|track|create|build|store|list)\s+(?:a\s+)?(?:list\s+of\s+)?(\w+)', request_lower)
-    if match:
-        word = match.group(1)
-        if word not in ["the", "a", "an", "my", "your", "our", "items", "data", "things"]:
-            # Singularize
-            if word.endswith("s") and len(word) > 3:
-                word = word[:-1]
-            return word
-    
-    # Strategy 4: Look for nouns after "with" (e.g., "with ticket list, filters")
-    match = re.search(r'with[:\s]+(\w+)\s*(?:list|management|tracking)', request_lower)
-    if match:
-        return match.group(1)
-    
-    return "item"  # Final fallback
+    entity = extract_entity_from_request(user_request)
+    return entity if entity else "item"
 
 
 
@@ -128,6 +68,9 @@ async def step_analysis(
         f"Turn {current_turn}/{max_turns}: Marcus analyzing requirements...",
         current_turn, max_turns
     )
+    
+    # V3: Track token usage for cost reporting
+    step_token_usage = None
     
     intent_prompt = f"""Analyze this user request and extract key information.
 
@@ -183,13 +126,18 @@ NO explanations. ONLY JSON."""
         from app.orchestration.token_policy import get_tokens_for_step
         analysis_tokens = get_tokens_for_step(WorkflowStep.ANALYSIS, is_retry=False)
         
-        raw = await call_llm(
+        llm_result = await call_llm_with_usage(
             prompt=intent_prompt,
             system_prompt=MARCUS_PROMPT,
             provider=provider,
             model=model,
             max_tokens=analysis_tokens,
         )
+        
+        # V3: Extract text and usage
+        raw = llm_result.get("text", "")
+        step_token_usage = llm_result.get("usage", {"input": 0, "output": 0})
+        log("TOKENS", f"📊 Analysis usage: {step_token_usage.get('input', 0):,} in / {step_token_usage.get('output', 0):,} out")
         
         try:
             intent = normalize_llm_output(raw)
@@ -312,4 +260,5 @@ NO explanations. ONLY JSON."""
     return StepResult(
         nextstep=WorkflowStep.ARCHITECTURE,
         turn=current_turn + 1,
+        token_usage=step_token_usage,  # V3
     )

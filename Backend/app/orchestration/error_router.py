@@ -16,6 +16,7 @@ AM EXTENSION (ArborMind):
 from typing import Dict, Optional, Any, List
 from app.core.logging import log
 from app.core.config import settings
+from app.orchestration.artifact_types import Artifact
 
 
 class ErrorRouter:
@@ -28,21 +29,21 @@ class ErrorRouter:
     AM-ENABLED: Escalates through creative reasoning modes on retry.
     """
     
-    # Map steps to artifact names for repair
+    # Map steps to artifact names for repair (using centralized Artifact enum)
     STEP_TO_ARTIFACT = {
-        "backend_implementation": "backend_vertical",
-        "BACKEND_IMPLEMENTATION": "backend_vertical",
-        "system_integration": "backend_main",
-        "SYSTEM_INTEGRATION": "backend_main",
-        "frontend_integration": "frontend_api",
-        "FRONTEND_INTEGRATION": "frontend_api",
+        "backend_implementation": Artifact.BACKEND_VERTICAL,
+        "BACKEND_IMPLEMENTATION": Artifact.BACKEND_VERTICAL,
+        "system_integration": Artifact.BACKEND_MAIN,
+        "SYSTEM_INTEGRATION": Artifact.BACKEND_MAIN,
+        "frontend_integration": Artifact.FRONTEND_API,
+        "FRONTEND_INTEGRATION": Artifact.FRONTEND_API,
     }
     
     # Priority order for repair (lower = higher priority)
     REPAIR_PRIORITY = {
-        "backend_vertical": 1,
-        "backend_main": 2,
-        "frontend_api": 3,
+        Artifact.BACKEND_VERTICAL: 1,
+        Artifact.BACKEND_MAIN: 2,
+        Artifact.FRONTEND_API: 3,
     }
     
     # Store last decision_id for outcome reporting
@@ -50,9 +51,9 @@ class ErrorRouter:
     _last_archetype: str = "unknown"
     _last_mode: str = "standard"
 
-    def route(self, step: str) -> str:
+    def route(self, step: str) -> Artifact:
         """Get the artifact name to repair for a failed step."""
-        return self.STEP_TO_ARTIFACT.get(step, "noop")
+        return self.STEP_TO_ARTIFACT.get(step, Artifact.NOOP)
 
     def is_repairable(self, step: str) -> bool:
         """Check if a step can be repaired."""
@@ -131,7 +132,7 @@ class ErrorRouter:
 
     async def _standard_route(self, error_log: str, archetype: str) -> dict:
         """Standard attention-based routing."""
-        from app.arbormind import arbormind_route
+        from app.arbormind.router import arbormind_route
         
         strategies = self._get_repair_strategies()
         
@@ -373,7 +374,7 @@ class ErrorRouter:
         future repair strategy selections.
         """
         try:
-            from app.arbormind import report_routing_outcome
+            from app.arbormind.router import report_routing_outcome
             
             did = decision_id or self._last_decision_id
             if not did:

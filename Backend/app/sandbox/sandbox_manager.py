@@ -111,6 +111,19 @@ class SandboxManager:
                 print("[SANDBOX] Validation failed:", validation["error"])
                 return validation
 
+            # Bug Fix #3: Validate that main.py has actual routes (not just scaffold)
+            main_py = project_path / "backend" / "app" / "main.py"
+            if main_py.exists():
+                content = main_py.read_text(encoding="utf-8")
+                # Check if router imports exist (not just the marker comment)
+                has_router_imports = "from app.routers import" in content
+                has_router_register = "app.include_router(" in content
+                
+                if not has_router_imports and not has_router_register:
+                    print("[SANDBOX] ⚠️ main.py has no routes wired yet (scaffold only)")
+                    # This is a WARNING, not an error. Allow starting for health check.
+                    # But log it so we can diagnose if tests fail later.
+
             print(f"[SANDBOX] Starting containers for {project_id} (Services: {services or 'ALL'})")
 
             # Build command: docker compose up -d --build [service1 service2 ...]
@@ -315,10 +328,7 @@ class SandboxManager:
         full_cmd = f'{base} -f "{compose_file}" {command}'
 
         try:
-            # DEBUG: Diagnose Windows Event Loop Issue
-            loop_type = str(type(asyncio.get_running_loop()))
-            print(f"[SANDBOX DEBUG] Event Loop: {loop_type}")
-            print(f"[SANDBOX DEBUG] Executing: {full_cmd}")
+            # Execute docker compose command in a thread (Windows compatibility)
 
             # FIX ASYNC-001: Bypass asyncio subprocess limitations on Windows by using threads
             # This works regardless of Selector vs Proactor event loop
@@ -602,3 +612,33 @@ class SandboxManager:
             print(f"[SANDBOX] Error getting preview URL: {e}")
             traceback.print_exc()
             return None
+
+    async def get_backend_url(self, project_id: str) -> Optional[str]:
+        """Get the backend API URL for a running sandbox (dynamic port detection)."""
+        try:
+            if project_id not in self.active_sandboxes:
+                return None
+            
+            info = self.active_sandboxes[project_id]
+            containers = info.get("containers", {})
+            
+            # Check for backend container
+            backend = containers.get("backend", {})
+            ports = backend.get("ports", "")
+            
+            # Parse ports string like "0.0.0.0:32783->8001/tcp"
+            if ports:
+                import re
+                match = re.search(r"0\.0\.0\.0:(\d+)->", ports)
+                if match:
+                    port = match.group(1)
+                    return f"http://localhost:{port}"
+            
+            # Default backend port if not found in ports
+            return "http://localhost:8001"
+            
+        except Exception as e:
+            print(f"[SANDBOX] Error getting backend URL: {e}")
+            traceback.print_exc()
+            return None
+

@@ -22,6 +22,8 @@ from app.persistence import persist_agent_output
 from app.persistence.validator import validate_file_output
 from app.orchestration.utils import pluralize
 from app.utils.entity_discovery import discover_primary_entity
+from app.handlers.archetype_guidance import get_full_archetype_context, get_archetype_patterns_from_store
+from app.utils.component_copier import copy_used_components
 
 
 # Centralized entity discovery for dynamic fallback
@@ -54,6 +56,8 @@ async def step_frontend_mock(
     This creates the immediate "aha moment" for users - they see a working
     UI before any backend is built. All data is mocked in mock.js.
     """
+    # V3: Track token usage for cost reporting
+    step_token_usage = None
     await broadcast_status(
         manager,
         project_id,
@@ -96,6 +100,24 @@ async def step_frontend_mock(
     primary_entity_plural = pluralize(primary_entity)
     domain = intent.get("domain", "general")
     
+    # ═══════════════════════════════════════════════════════
+    # ARCHETYPE-AWARE GENERATION (Key for diverse UI patterns)
+    # ═══════════════════════════════════════════════════════
+    archetype_routing = intent.get("archetypeRouting", {})
+    detected_archetype = archetype_routing.get("top", "admin_dashboard") if isinstance(archetype_routing, dict) else "admin_dashboard"
+    
+    # Get archetype-specific UI guidance
+    archetype_guidance = get_full_archetype_context(
+        archetype=detected_archetype,
+        entity=primary_entity,
+        domain=domain
+    )
+    
+    # Get learned patterns from Pattern Store (pre-training integration)
+    pattern_hints = get_archetype_patterns_from_store(detected_archetype, "frontend_mock")
+    
+    log("FRONTEND_MOCK", f"🎨 Generating UI for archetype: {detected_archetype}")
+    
     # Extract app title from user request
     app_title = user_request.split(".")[0][:50] if "." in user_request else user_request[:50]
 
@@ -111,8 +133,13 @@ Do NOT create generic "Item" pages. Create pages SPECIFIC to:
 - **Primary Entity**: {primary_entity_capitalized}
 - **All Entities**: {', '.join(entities_list)}
 - **Domain**: {domain}
+- **Archetype**: {detected_archetype}
 
 USER REQUEST: {user_request}
+
+{archetype_guidance}
+
+{pattern_hints}
 
 ARCHITECTURE REFERENCE:
 {architecture[:2000]}
@@ -166,41 +193,42 @@ REFERENCE playwright.config.js (Use as template):
 📁 FILES TO GENERATE (Use ACTUAL entity names!)
 ═══════════════════════════════════════════════════════
 
-Generate these 7 files with PROJECT-SPECIFIC names:
+⚠️ IMPORTANT: DO NOT generate package.json or playwright.config.js!
+These files are PRE-SEEDED with all required dependencies (Radix UI, Shadcn, etc).
+Only generate the SOURCE FILES listed below:
+
+Generate these 5 files with PROJECT-SPECIFIC names:
 
 1. **frontend/src/data/mock.js**
    - Export: `mock{primary_entity_capitalized}s` (not mockItems!)
    - Include 4-5 realistic {primary_entity} objects
    - Add fields relevant to {domain}: title, content, status, etc.
 
-2. **frontend/package.json** (CRITICAL)
-   - Generate based on the REFERENCE package.json above.
-   - You MUST include all dependencies from the reference (shadcn/ui, etc).
-   - Update "name" to "{primary_entity}-app".
-
-3. **frontend/playwright.config.js**
-   - Generate based on the REFERENCE config above.
-   - Ensure `webServer` points to `npm run dev` and port 5174.
-
-4. **frontend/src/pages/{primary_entity_capitalized}sPage.jsx**
+2. **frontend/src/pages/{primary_entity_capitalized}sPage.jsx**
    - This is the MAIN page for managing {primary_entity_plural}
    - Show list of {primary_entity_plural} with CRUD operations
    - Use shadcn Card, Button, Input components
 
-5. **frontend/src/pages/Home.jsx** 
+3. **frontend/src/pages/Home.jsx** 
    - Title: "{app_title}" (NOT "My Application"!)
    - Show dashboard with {primary_entity} statistics
    - Recent {primary_entity_plural} list
    - Quick action buttons
 
-6. **frontend/src/components/{primary_entity_capitalized}Card.jsx**
+4. **frontend/src/components/{primary_entity_capitalized}Card.jsx**
    - Reusable card component for displaying a single {primary_entity}
    - Show relevant fields (title, description, status, etc.)
    - Edit and Delete buttons
 
-7. **frontend/src/App.jsx**
+5. **frontend/src/App.jsx**
    - Import and render Home page
    - Can add react-router later
+
+❌ DO NOT GENERATE:
+- frontend/package.json (ALREADY SEEDED with all deps!)
+- frontend/playwright.config.js (ALREADY SEEDED!)
+- frontend/vite.config.js (ALREADY SEEDED!)
+- frontend/tailwind.config.js (ALREADY SEEDED!)
 
 ═══════════════════════════════════════════════════════
 📊 MOCK DATA EXAMPLE (src/data/mock.js)
@@ -335,16 +363,14 @@ Example structure:
 ```
 
 ═══════════════════════════════════════════════════════
-📤 OUTPUT FORMAT
+📤 OUTPUT FORMAT (5 SOURCE FILES ONLY)
 ═══════════════════════════════════════════════════════
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with these 5 files (NO package.json!):
 {{
   "thinking": "Explain your design for {app_title} and how you're customizing for {primary_entity_plural}...",
   "files": [
     {{ "path": "frontend/src/data/mock.js", "content": "..." }},
-    {{ "path": "frontend/package.json", "content": "..." }},
-    {{ "path": "frontend/playwright.config.js", "content": "..." }},
     {{ "path": "frontend/src/pages/{primary_entity_capitalized}sPage.jsx", "content": "..." }},
     {{ "path": "frontend/src/pages/Home.jsx", "content": "..." }},
     {{ "path": "frontend/src/components/{primary_entity_capitalized}Card.jsx", "content": "..." }},
@@ -369,6 +395,9 @@ Generate the CUSTOMIZED frontend for "{app_title}" now!
             max_retries=2,
         )
         
+        # V3: Extract token usage for cost tracking
+        step_token_usage = result.get("token_usage")
+        
         parsed = result.get("output", {})
         if "files" in parsed and parsed["files"]:
             validated = validate_file_output(
@@ -387,6 +416,15 @@ Generate the CUSTOMIZED frontend for "{app_title}" now!
                 "FRONTEND_MOCK",
                 f"Derek generated {files_written} frontend files with mock data ({status})",
             )
+            
+            # =========================================================================
+            # 📦 JUST-IN-TIME COMPONENT COPYING (Only copy what's needed)
+            # =========================================================================
+            try:
+                copied_count = copy_used_components(project_path)
+                log("FRONTEND_MOCK", f"📦 Copied {copied_count} Shadcn components based on imports")
+            except Exception as e:
+                log("FRONTEND_MOCK", f"⚠️ Component copying failed (non-fatal): {e}")
         
         chat_history.append({"role": "assistant", "content": str(parsed)})
 
@@ -447,5 +485,6 @@ Generate the CUSTOMIZED frontend for "{app_title}" now!
     return StepResult(
         nextstep=WorkflowStep.SCREENSHOT_VERIFY,  # Visual QA before contracts
         turn=current_turn + 1,
+        token_usage=step_token_usage,  # V3
     )
 

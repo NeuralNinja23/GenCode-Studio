@@ -32,7 +32,7 @@ from app.core.types import GeneratedFile  # noqa: F401 (kept for type compatibil
 
 # Sandbox system (Python-native, no HTTP)
 from app.sandbox import SandboxManager, SandboxConfig  # type: ignore[import]
-from app.config import WORKSPACES_DIR
+from app.utils.path_utils import get_project_path
 from app.lib.patch_writer import apply_patch as apply_unified_patch
 from app.lib.patch_engine import PatchEngine
 from app.core.logging import log
@@ -208,6 +208,9 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
             is_retry=is_retry,  # Retry flag for differential context
             errors=errors,  # Errors from previous attempt
         )
+        
+        # V3: Extract token usage for cost tracking
+        token_usage = result.get("token_usage", {"input": 0, "output": 0})
 
         def normalize_files_schema(obj: Any) -> Optional[Dict[str, Any]]:
             """Normalize arbitrary dict into {'files': [...]}, if possible."""
@@ -244,6 +247,7 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
                     "output": normalized,
                     "agent": sub_agent,
                     "source": "normalized_direct",
+                    "token_usage": token_usage,  # V3: Propagate usage
                 }
 
         # 2) Try issues[0].raw
@@ -260,6 +264,7 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
                             "output": normalized,
                             "agent": sub_agent,
                             "source": "salvaged_from_issues",
+                            "token_usage": token_usage,  # V3: Propagate usage
                         }
                 except Exception:
                     pass
@@ -277,6 +282,7 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
                         "output": normalized,
                         "agent": sub_agent,
                         "source": "normalized_raw_generation",
+                        "token_usage": token_usage,  # V3: Propagate usage
                     }
             except Exception:
                 parsed = None
@@ -288,6 +294,7 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
             "full_result": result,
             "agent": sub_agent,
             "source": "fallback",
+            "token_usage": token_usage,  # V3: Propagate usage
         }
 
     except Exception as e:
@@ -296,6 +303,7 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
             "success": False,
             "error": str(e),
             "traceback": traceback.format_exc(),
+            "token_usage": {"input": 0, "output": 0},  # V3: Zero usage on error
         }
 
 
@@ -567,7 +575,7 @@ async def tool_sandbox_exec(args: Dict[str, Any]) -> Dict[str, Any]:
     - project_id: str (required)
     - command: str (required)
     - service: str (optional, default: "backend")
-    - project_path: str (optional override; otherwise deduced from WORKSPACES_DIR / project_id)
+    - project_path: str (optional override; otherwise uses get_project_path(project_id))
     - wait_healthy: bool (optional, default: True)
     - max_health_retries: int (optional, default: 30)
     - force_rebuild: bool (optional, default: False) - if True, stop and restart sandbox to pick up code changes
@@ -586,14 +594,14 @@ async def tool_sandbox_exec(args: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": "Missing command"}
         
         # -----------------------------------------------------------
-        # Resolve project_path (either explicit or from WORKSPACES_DIR)
+        # Resolve project_path (either explicit or from centralized utility)
         # -----------------------------------------------------------
         
         project_path_arg = args.get("project_path")
         if project_path_arg:
             project_path = Path(project_path_arg).resolve()
         else:
-            project_path = (WORKSPACES_DIR / project_id).resolve()
+            project_path = get_project_path(project_id).resolve()
         
         if not project_path.exists():
             return {
@@ -615,10 +623,21 @@ async def tool_sandbox_exec(args: Dict[str, Any]) -> Dict[str, Any]:
         # -----------------------------------------------------------
         # Force Rebuild: Stop and restart sandbox to pick up code changes
         # This is critical when routers are wired AFTER initial build
+        # Bug Fix #2: Added file sync delay to prevent race condition
         # -----------------------------------------------------------
         if force_rebuild and status_ok and current_state == "running":
-            log("SANDBOX_EXEC", f"🔄 Force rebuild requested for {project_id}, stopping sandbox...")
+            log("SANDBOX_EXEC", f"🔄 Force rebuild requested for {project_id}, syncing files...")
+            
+            # Bug Fix #2: Touch main.py to force filesystem sync before rebuild
+            main_py = project_path / "backend" / "app" / "main.py"
+            if main_py.exists():
+                main_py.touch()
+            await asyncio.sleep(2)  # Wait for filesystem (Windows needs time)
+            
+            log("SANDBOX_EXEC", "🔄 Stopping sandbox for rebuild...")
             await SANDBOX.stop_sandbox(project_id)
+            await asyncio.sleep(1)  # Brief pause after stop
+            
             # Mark as not running so we go through the full create+start flow
             current_state = "stopped"
             status_ok = True  # Sandbox still exists in metadata
@@ -1175,7 +1194,7 @@ TOOL_FUNCTION_MAP: Dict[str, Any] = {
 }
 
 
-async def run_tool(name: str, args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def _run_tool_impl(name: str, args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     args = args or {}
     normalized = (name or "").strip().lower()
 

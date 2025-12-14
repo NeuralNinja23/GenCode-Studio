@@ -19,7 +19,7 @@ from app.core.exceptions import RateLimitError
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.core.logging import log
 from app.orchestration.state import WorkflowStateManager
-from app.llm import call_llm
+from app.llm import call_llm_with_usage
 from app.llm.prompts import MARCUS_PROMPT
 from app.persistence import persist_agent_output
 from app.utils.parser import normalize_llm_output
@@ -29,50 +29,7 @@ from app.persistence.validator import validate_file_output
 from app.orchestration.utils import pluralize
 
 # Centralized entity discovery for dynamic fallback
-from app.utils.entity_discovery import discover_primary_entity
-
-
-def _extract_entity_from_request(user_request: str) -> str:
-    """
-    Dynamically extract a potential entity name from the user request.
-    """
-    import re
-    
-    if not user_request:
-        return None
-    
-    request_lower = user_request.lower()
-    patterns = [
-        r'(?:manage|track|create|build|store|list)\s+(\w+)',
-        r'(\w+)\s+(?:app|application|manager|tracker|system)',
-        r'(?:a|an)\s+(\w+)\s+(?:management|tracking|listing)',
-    ]
-    
-    skip_words = {'the', 'a', 'an', 'my', 'your', 'web', 'full', 'stack', 'simple', 'basic', 'new'}
-    
-    def singularize(word: str) -> str:
-        """Simple singularization that handles common patterns."""
-        word = word.lower().strip()
-        if word.endswith('ies') and len(word) > 4:
-            return word[:-3] + 'y'
-        if word.endswith('sses'):
-            return word[:-2]
-        if word.endswith('ches') or word.endswith('shes'):
-            return word[:-2]
-        if word.endswith('xes') or word.endswith('zes'):
-            return word[:-2]
-        if word.endswith('s') and len(word) > 2 and not word.endswith('ss'):
-            return word[:-1]
-        return word
-    
-    for pattern in patterns:
-        match = re.search(pattern, request_lower)
-        if match:
-            candidate = match.group(1)
-            if candidate not in skip_words and len(candidate) > 2:
-                return singularize(candidate)
-    
-    return None
+from app.utils.entity_discovery import discover_primary_entity, extract_entity_from_request as _extract_entity_from_request
 
 
 
@@ -109,6 +66,9 @@ async def step_contracts(
         f"Turn {current_turn}/{max_turns}: Marcus creating API contracts (based on frontend mock)...",
         current_turn, max_turns
     )
+    
+    # V3: Track token usage for cost reporting
+    step_token_usage = None
     
     # Get intent context
     intent = await WorkflowStateManager.get_intent(project_id) or {}
@@ -292,13 +252,18 @@ Return ONLY JSON:
         from app.orchestration.token_policy import get_tokens_for_step
         contracts_tokens = get_tokens_for_step(WorkflowStep.CONTRACTS, is_retry=False)
         
-        raw = await call_llm(
+        llm_result = await call_llm_with_usage(
             prompt=contracts_prompt,
             system_prompt=MARCUS_PROMPT,
             provider=provider,
             model=model,
             max_tokens=contracts_tokens,
         )
+        
+        # V3: Extract text and usage
+        raw = llm_result.get("text", "")
+        step_token_usage = llm_result.get("usage", {"input": 0, "output": 0})
+        log("TOKENS", f"📊 Contracts usage: {step_token_usage.get('input', 0):,} in / {step_token_usage.get('output', 0):,} out")
 
         parsed = normalize_llm_output(raw)
         
@@ -340,4 +305,5 @@ Return ONLY JSON:
     return StepResult(
         nextstep=WorkflowStep.BACKEND_IMPLEMENTATION,
         turn=current_turn + 1,
+        token_usage=step_token_usage,  # V3
     )

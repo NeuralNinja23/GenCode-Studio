@@ -25,13 +25,21 @@ from .step_contracts import StepContracts
 from .artifact_contracts import default_contracts
 from .llm_output_integrity import LLMOutputIntegrity
 from .structural_compiler import StructuralCompiler
-from .fallback_router_agent import FallbackRouterAgent
+from app.orchestration.fallback_router_agent import FallbackRouterAgent
 from .fallback_api_agent import FallbackAPIAgent
 from .checkpoint import CheckpointManagerV2
 from .budget_manager import get_budget_manager
 
 # Centralized entity discovery for dynamic fallback
 from app.utils.entity_discovery import discover_primary_entity
+
+# Pipeline metrics for honest tracking
+from app.arbormind.metrics_collector import (
+    start_pipeline_run,
+    complete_pipeline_run,
+    start_step,
+    complete_step,
+)
 
 
 # Map V2 step names to WorkflowStep constants
@@ -121,6 +129,10 @@ class FASTOrchestratorV2:
         self.completed_steps: List[str] = []
         self.failed_steps: List[str] = []
         self.step_results: Dict[str, dict] = {}
+        
+        # Pipeline metrics tracking
+        self.run_id: Optional[str] = None
+        self.archetype: str = "unknown"
 
     async def run(self) -> None:
         """
@@ -142,10 +154,19 @@ class FASTOrchestratorV2:
             step_testing_frontend,
             step_preview_final,
         )
+        from app.handlers.entity_planning import step_entity_planning  # Multi-entity support
+        from app.handlers.backend_models import step_backend_models  # Multi-entity models
         from app.orchestration.utils import broadcast_to_project
+        from app.orchestration.state import CURRENT_MANAGERS
+        
+        # CRITICAL: Register manager so _broadcast_agent_thinking can find it
+        # This was missing, causing Derek/Luna/Victoria's broadcasts to fail silently
+        CURRENT_MANAGERS[self.project_id] = self.manager
 
         HANDLERS = {
             "analysis": step_analysis,
+            "entity_planning": step_entity_planning,  # NEW: Multi-entity support
+            "backend_models": step_backend_models,  # NEW: Multi-entity models
             "architecture": step_architecture,
             "frontend_mock": step_frontend_mock,
             "screenshot_verify": step_screenshot_verify,
@@ -164,6 +185,17 @@ class FASTOrchestratorV2:
         # V2 FEATURE: Start budget tracking for this run
         self.budget.start_run()
         self.budget.log_status("[FAST-V2]")
+        
+        # 📊 METRICS: Start pipeline run tracking
+        try:
+            self.run_id = start_pipeline_run(
+                project_id=self.project_id,
+                archetype=self.archetype,
+                user_request=self.user_request[:500]
+            )
+        except Exception as e:
+            log("METRICS", f"⚠️ Failed to start pipeline metrics: {e}")
+            self.run_id = None
 
         await broadcast_to_project(
             self.manager,
@@ -244,6 +276,14 @@ class FASTOrchestratorV2:
                 try:
                     log("FAST-V2", f"▶️ Executing: {step}")
                     step_start = datetime.now()
+                    
+                    # 📊 METRICS: Start step tracking
+                    step_order = self.graph.get_steps().index(step) if step in self.graph.get_steps() else 0
+                    if self.run_id:
+                        try:
+                            start_step(self.run_id, step, step_order)
+                        except Exception as me:
+                            log("METRICS", f"⚠️ Failed to start step metrics: {me}")
 
                     result = await handler(
                         project_id=self.project_id,
@@ -258,6 +298,35 @@ class FASTOrchestratorV2:
                     )
 
                     duration = (datetime.now() - step_start).total_seconds()
+
+                    # ════════════════════════════════════════════════════════
+                    # V2 FIX: CHECK STEP RESULT STATUS BEFORE VALIDATION
+                    # ════════════════════════════════════════════════════════
+                    # Some steps (like system_integration) return error status directly
+                    result_status = getattr(result, 'status', None)
+                    if result_status == "error":
+                        error_data = getattr(result, 'data', {}) or {}
+                        error_msg = error_data.get('error', 'Step returned error status')
+                        log("FAST-V2", f"❌ {step} returned error: {error_msg}")
+                        self.failed_steps.append(step)
+                        self.step_results[step] = {"status": "failed", "reason": error_msg}
+                        
+                        # Record metrics
+                        if self.run_id:
+                            try:
+                                complete_step(
+                                    run_id=self.run_id,
+                                    step_name=step,
+                                    success=False,
+                                    attempts=1,
+                                    error_type="step_error",
+                                    error_detail=error_msg
+                                )
+                            except Exception as me:
+                                log("METRICS", f"⚠️ Failed to record step error: {me}")
+                        
+                        log("FAST-V2", f"🛑 Stopping - step {step} failed")
+                        break
 
                     # ════════════════════════════════════════════════════════
                     # V2 FEATURE #4: POST-STEP VALIDATION FOR CRITICAL STEPS  
@@ -286,14 +355,25 @@ class FASTOrchestratorV2:
                     self._save_checkpoint(step)
                     
                     # ════════════════════════════════════════════════════════
-                    # V2 FEATURE #6: REGISTER BUDGET USAGE
+                    # V3 FEATURE: REGISTER BUDGET USAGE (ACTUAL TOKEN TRACKING)
                     # ════════════════════════════════════════════════════════
-                    # Extract token usage from result if available
+                    # Priority order:
+                    # 1. result.token_usage (from LLM response - most accurate)
+                    # 2. result.data.get("token_usage") (fallback from data dict)
+                    # 3. Step policy estimates (last resort)
                     input_tokens = 0
                     output_tokens = 0
+                    
+                    # V3: Check new dedicated token_usage field first
                     if hasattr(result, 'token_usage') and result.token_usage:
                         input_tokens = result.token_usage.get('input', 0)
                         output_tokens = result.token_usage.get('output', 0)
+                    # Check data dict for token_usage
+                    elif hasattr(result, 'data') and result.data and result.data.get('token_usage'):
+                        usage = result.data.get('token_usage', {})
+                        input_tokens = usage.get('input', 0)
+                        output_tokens = usage.get('output', 0)
+                    # Legacy format check
                     elif hasattr(result, 'usage') and result.usage:
                         input_tokens = getattr(result.usage, 'prompt_tokens', 0)
                         output_tokens = getattr(result.usage, 'completion_tokens', 0)
@@ -303,6 +383,7 @@ class FASTOrchestratorV2:
                         policy = self.budget.get_step_policy(step)
                         input_tokens = policy.est_input_tokens
                         output_tokens = policy.est_output_tokens
+                        log("FAST-V2", f"⚠️ No actual usage - using estimates: {input_tokens:,} in / {output_tokens:,} out")
                     
                     self.budget.register_usage(
                         input_tokens=input_tokens,
@@ -321,8 +402,21 @@ class FASTOrchestratorV2:
                         "budget": self.budget.get_usage_summary(),
                     }
                     
+                    # 📊 METRICS: Record step success
+                    if self.run_id:
+                        try:
+                            complete_step(
+                                run_id=self.run_id,
+                                step_name=step,
+                                success=True,
+                                attempts=1,
+                                llm_calls=1  # Approximate
+                            )
+                        except Exception as me:
+                            log("METRICS", f"⚠️ Failed to record step success: {me}")
+                    
                     # V2 FEATURE #7: Record to cross-step context
-                    self._record_step_context(step, result)
+                    await self._record_step_context(step, result)
                     
                     self.current_turn += 1
 
@@ -342,6 +436,22 @@ class FASTOrchestratorV2:
                     self.failed_steps.append(step)
                     self.step_results[step] = {"status": "error", "error": str(e)}
                     
+                    # 📊 METRICS: Record step failure
+                    if self.run_id:
+                        try:
+                            # Determine error type from exception
+                            error_type = type(e).__name__
+                            complete_step(
+                                run_id=self.run_id,
+                                step_name=step,
+                                success=False,
+                                attempts=1,
+                                error_type=error_type,
+                                error_message=str(e)[:500]
+                            )
+                        except Exception as me:
+                            log("METRICS", f"⚠️ Failed to record step failure: {me}")
+                    
                     # ════════════════════════════════════════════════════════
                     # STOP ON FAILURE (As requested: do not auto-heal crashes)
                     # ════════════════════════════════════════════════════════
@@ -356,10 +466,27 @@ class FASTOrchestratorV2:
             # ════════════════════════════════════════════════════════
             total_duration = (datetime.now() - start_time).total_seconds()
             success = len(self.failed_steps) == 0
+            # For failures, report the FIRST failed step, not the last completed step
+            if self.failed_steps:
+                final_step = self.failed_steps[0]  # The step that caused the failure
+            else:
+                final_step = self.completed_steps[-1] if self.completed_steps else "unknown"
 
             log("FAST-V2", f"{'✅' if success else '⚠️'} FAST V2 completed in {total_duration:.1f}s")
             log("FAST-V2", f"   Completed: {len(self.completed_steps)}/{len(self.graph.get_steps())}")
             log("FAST-V2", f"   Failed: {self.failed_steps}")
+            
+            # 📊 METRICS: Complete pipeline run tracking
+            if self.run_id:
+                try:
+                    complete_pipeline_run(
+                        run_id=self.run_id,
+                        success=success,
+                        final_step=final_step,
+                        error_message=str(self.step_results.get(final_step, {}).get("error", "")) if not success else ""
+                    )
+                except Exception as me:
+                    log("METRICS", f"⚠️ Failed to complete pipeline metrics: {me}")
             
             # V2 FEATURE: Final budget summary
             self.budget.log_status("[FAST-V2]")
@@ -382,6 +509,20 @@ class FASTOrchestratorV2:
 
         except Exception as e:
             log("FAST-V2", f"❌ Workflow failed: {e}")
+            
+            # 📊 METRICS: Record pipeline failure
+            if self.run_id:
+                try:
+                    final_step = self.completed_steps[-1] if self.completed_steps else "startup"
+                    complete_pipeline_run(
+                        run_id=self.run_id,
+                        success=False,
+                        final_step=final_step,
+                        error_message=str(e)[:1000]
+                    )
+                except Exception as me:
+                    log("METRICS", f"⚠️ Failed to record pipeline failure: {me}")
+            
             await broadcast_to_project(
                 self.manager,
                 self.project_id,
@@ -391,6 +532,10 @@ class FASTOrchestratorV2:
                     "error": str(e),
                 },
             )
+        
+        finally:
+            # Cleanup manager registration to prevent memory leaks
+            CURRENT_MANAGERS.pop(self.project_id, None)
 
     def _validate_critical_files(self, step: str) -> bool:
         """
@@ -581,7 +726,7 @@ class FASTOrchestratorV2:
         except Exception as e:
             log("FAST-V2", f"   ⚠️ Checkpoint failed: {e}")
 
-    def _record_step_context(self, step: str, result: Any):
+    async def _record_step_context(self, step: str, result: Any):
         """
         V2 Feature: Record step completion to cross-step context.
         
@@ -596,6 +741,17 @@ class FASTOrchestratorV2:
                 if hasattr(result, 'entities'):
                     self.cross_ctx.set_entities(result.entities)
                     summary = {"entities": result.entities}
+                
+                # 📊 METRICS: Capture archetype for pipeline tracking
+                try:
+                    from app.orchestration.state import WorkflowStateManager
+                    intent = await WorkflowStateManager.get_intent(self.project_id)
+                    if intent:
+                        archetype_routing = intent.get("archetypeRouting", {})
+                        self.archetype = archetype_routing.get("top", "unknown")
+                        log("FAST-V2", f"   📊 Captured archetype: {self.archetype}")
+                except Exception as ae:
+                    log("METRICS", f"⚠️ Failed to capture archetype: {ae}")
             
             elif step == "architecture":
                 # Extract architecture summary

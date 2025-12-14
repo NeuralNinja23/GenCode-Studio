@@ -297,9 +297,12 @@ def check_duplicate_attributes(code: str, filename: str) -> List[str]:
     return issues
 
 
-def validate_file(path: str, content: str) -> ValidationResult:
+def validate_syntax(path: str, content: str) -> ValidationResult:
     """
-    Validate a file based on its extension.
+    Validate file syntax based on its extension.
+    
+    NOTE: This is syntax-only validation. For comprehensive validation
+    with import checks, use CodeValidator.validate_file().
     """
     path_lower = path.lower()
     
@@ -331,7 +334,7 @@ def validate_files_batch(files: List[Dict[str, str]]) -> Tuple[List[Dict], List[
         path = file_entry.get("path", "")
         content = file_entry.get("content", "")
         
-        result = validate_file(path, content)
+        result = validate_syntax(path, content)
         
         if result.valid:
             if result.warnings:

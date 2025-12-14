@@ -55,6 +55,7 @@ class StepResult:
     pause: bool = False
     status: str = "ok"
     data: Dict[str, Any] = field(default_factory=dict)
+    token_usage: Optional[Dict[str, int]] = None  # V3: {"input": int, "output": int}
 
 
 # Quality metrics

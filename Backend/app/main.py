@@ -23,6 +23,7 @@ from app.core.config import settings
 from app.lib.websocket import ConnectionManager
 from app.workflow import resume_workflow
 from app.lib.monitoring import register_monitoring
+from app.core.logging import log
 from app.api import (
     health,
     projects,
@@ -44,11 +45,12 @@ load_dotenv()
 os.environ["WATCHFILES_IGNORE_PATHS"] = "workspaces"
 
 # Print environment status
-print("🔑 Environment check:")
-print(f"  GEMINI_API_KEY loaded: {bool(settings.llm.gemini_api_key)}")
-print(f"  OPENAI_API_KEY loaded: {bool(settings.llm.openai_api_key)}")
-print(f"  Default provider: {settings.llm.default_provider}")
-print(f"  Default model: {settings.llm.default_model}")
+log("Main", "🔑 Environment check:", data={
+    "GEMINI_API_KEY loaded": bool(settings.llm.gemini_api_key),
+    "OPENAI_API_KEY loaded": bool(settings.llm.openai_api_key),
+    "Default provider": settings.llm.default_provider,
+    "Default model": settings.llm.default_model
+})
 
 # Connection manager instance
 manager = ConnectionManager()
@@ -61,7 +63,7 @@ manager = ConnectionManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown."""
-    print("🚀 GenCode Studio starting...")
+    log("Main", "🚀 GenCode Studio starting...")
     
     # Ensure workspaces directory exists
     settings.paths.workspaces_dir.mkdir(parents=True, exist_ok=True)
@@ -70,9 +72,14 @@ async def lifespan(app: FastAPI):
     from app.db import connect_db, disconnect_db
     await connect_db()
     
+    # Initialize ArborMind metrics database
+    from app.arbormind.metrics_collector import init_metrics_db
+    init_metrics_db()
+    log("Main", "📊 ArborMind metrics database initialized")
+    
     yield
     
-    print("🔌 Shutting down...")
+    log("Main", "🔌 Shutting down...")
     await disconnect_db()
     
     # FIX #18: Close HTTP session used for embeddings
@@ -80,7 +87,7 @@ async def lifespan(app: FastAPI):
         from app.arbormind.router import close_http_session
         await close_http_session()
     except Exception as e:
-        print(f"[SHUTDOWN] HTTP session cleanup error: {e}")
+        log("Main", f"HTTP session cleanup error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +111,7 @@ cors_origins_str = os.getenv("CORS_ORIGINS", "*")
 cors_origins = cors_origins_str.split(",") if cors_origins_str != "*" else ["*"]
 
 if cors_origins == ["*"] and not settings.debug:
-    print("⚠️ [CORS] Warning: Using allow_origins=['*'] - consider setting CORS_ORIGINS in production")
+    log("Main", "⚠️ [CORS] Warning: Using allow_origins=['*'] - consider setting CORS_ORIGINS in production")
 
 app.add_middleware(
     CORSMiddleware,
@@ -122,7 +129,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[rate_limit])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
-print(f"🛡️ [SECURITY] Rate limiting enabled: {rate_limit}")
+log("Main", f"🛡️ [SECURITY] Rate limiting enabled: {rate_limit}")
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +148,7 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
                 message = data.get("message")
 
                 if msg_project_id == project_id and message:
-                    print(f'[WS] Received input for {project_id}: "{message[:50]}..."')
+                    log("WebSocket", f'Received input for {project_id}: "{message[:50]}..."')
                     await resume_workflow(
                         project_id, 
                         message, 
@@ -152,14 +159,14 @@ async def websocket_endpoint(websocket: WebSocket, project_id: str):
     except WebSocketDisconnect:
         await manager.disconnect(websocket, project_id)
     except Exception as e:
-        print(f"[WS] Error: {e}")
+        log("WebSocket", f"Error: {e}")
 
 
 # ---------------------------------------------------------------------------
 # API ROUTES
 # ---------------------------------------------------------------------------
 
-print("[Routes] Loading API routes...")
+log("Main", "[Routes] Loading API routes...")
 
 # Import and register routes
 
@@ -179,7 +186,7 @@ app.include_router(tracking.router)
 # ---------------------------------------------------------------------------
 
 if settings.paths.frontend_dist.exists():
-    print(f"📁 Serving frontend from: {settings.paths.frontend_dist}")
+    log("Main", f"📁 Serving frontend from: {settings.paths.frontend_dist}")
     
     assets_path = settings.paths.frontend_dist / "assets"
     if assets_path.exists():
@@ -192,7 +199,7 @@ if settings.paths.frontend_dist.exists():
             return FileResponse(file_path)
         return FileResponse(settings.paths.frontend_dist / "index.html")
 else:
-    print(f"⚠️ Frontend not found at {settings.paths.frontend_dist}")
+    log("Main", f"⚠️ Frontend not found at {settings.paths.frontend_dist}")
 
 
 # ---------------------------------------------------------------------------

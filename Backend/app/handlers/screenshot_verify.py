@@ -47,6 +47,9 @@ async def step_screenshot_verify(
     
     If issues found, we can optionally have Derek fix them before proceeding.
     """
+    # V3: Track token usage for cost reporting
+    step_token_usage = None
+    
     await broadcast_status(
         manager,
         project_id,
@@ -277,6 +280,9 @@ Be CONSTRUCTIVE: explain WHY something is an issue and HOW to fix it.
             max_retries=1,
         )
         
+        # V3: Extract token usage for cost tracking
+        step_token_usage = result.get("token_usage")
+        
         parsed = result.get("output", {})
         
         # Write the visual_qa_issues.md file
@@ -365,5 +371,6 @@ Be CONSTRUCTIVE: explain WHY something is an issue and HOW to fix it.
             "screenshot_captured": screenshot_success,
             "issues_found": issues_count,
             "issues": design_issues[:10] if 'design_issues' in locals() else []
-        }
+        },
+        token_usage=step_token_usage,  # V3
     )

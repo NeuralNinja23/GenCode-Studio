@@ -33,50 +33,7 @@ MAX_FILE_LINES = 400
 
 
 # Centralized entity discovery for dynamic fallback
-
-
-
-def _extract_entity_from_request(user_request: str) -> str:
-    """
-    Dynamically extract a potential entity name from the user request.
-    """
-    import re
-    
-    if not user_request:
-        return None
-    
-    request_lower = user_request.lower()
-    patterns = [
-        r'(?:manage|track|create|build|store|list)\s+(\w+)',
-        r'(\w+)\s+(?:app|application|manager|tracker|system)',
-        r'(?:a|an)\s+(\w+)\s+(?:management|tracking|listing)',
-    ]
-    
-    skip_words = {'the', 'a', 'an', 'my', 'your', 'web', 'full', 'stack', 'simple', 'basic', 'new'}
-    
-    def singularize(word: str) -> str:
-        """Simple singularization that handles common patterns."""
-        word = word.lower().strip()
-        if word.endswith('ies') and len(word) > 4:
-            return word[:-3] + 'y'
-        if word.endswith('sses'):
-            return word[:-2]
-        if word.endswith('ches') or word.endswith('shes'):
-            return word[:-2]
-        if word.endswith('xes') or word.endswith('zes'):
-            return word[:-2]
-        if word.endswith('s') and len(word) > 2 and not word.endswith('ss'):
-            return word[:-1]
-        return word
-    
-    for pattern in patterns:
-        match = re.search(pattern, request_lower)
-        if match:
-            candidate = match.group(1)
-            if candidate not in skip_words and len(candidate) > 2:
-                return singularize(candidate)
-    
-    return None
+from app.utils.entity_discovery import extract_entity_from_request as _extract_entity_from_request
 
 
 
@@ -182,6 +139,8 @@ async def step_frontend_integration(
     2. Replace mock imports with API calls in each page
     3. Add loading/error states
     """
+    # V3: Track token usage for cost reporting
+    step_token_usage = None
     await broadcast_status(
         manager,
         project_id,
@@ -388,6 +347,9 @@ Generate the updated frontend files with real API calls now!
             max_retries=2,
         )
         
+        # V3: Extract token usage for cost tracking
+        step_token_usage = result.get("token_usage")
+        
         parsed = result.get("output", {})
         if "files" in parsed and parsed["files"]:
             validated = validate_file_output(
@@ -427,4 +389,5 @@ Generate the updated frontend files with real API calls now!
     return StepResult(
         nextstep=WorkflowStep.TESTING_FRONTEND,
         turn=current_turn + 1,
+        token_usage=step_token_usage,  # V3
     )

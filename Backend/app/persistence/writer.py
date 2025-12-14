@@ -56,8 +56,8 @@ async def persist_agent_output(
         # Persistence-Level Hard Stop
         # Enforce AST validation before any file hits disk
         try:
-             from app.validation.syntax_validator import validate_file
-             validation_result = validate_file(normalized, content)
+             from app.validation.syntax_validator import validate_syntax
+             validation_result = validate_syntax(normalized, content)
              
              if not validation_result.valid:
                   # CRITICAL: Do not write broken files. 

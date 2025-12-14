@@ -149,7 +149,7 @@ async def tiered_review(
     Returns:
         Tuple of (approved_files, review_summary)
     """
-    from app.validation import validate_file
+    from app.validation import validate_syntax
     
     classified = classify_files(files)
     approved_files = []
@@ -182,7 +182,7 @@ async def tiered_review(
             path = f.get("path", "")
             content = f.get("content", "")
             
-            result = validate_file(path, content)
+            result = validate_syntax(path, content)
             if result.valid:
                 approved_files.append(f)
                 review_results["preflight_only"] += 1
@@ -202,7 +202,7 @@ async def tiered_review(
             path = f.get("path", "")
             content = f.get("content", "")
             
-            result = validate_file(path, content)
+            result = validate_syntax(path, content)
             if result.valid:
                 approved_files.append(f)
                 review_results["preflight_only"] += 1

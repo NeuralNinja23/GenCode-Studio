@@ -1,29 +1,15 @@
 # app/orchestration/healing_pipeline.py
 """
-FAST v2 Healing Pipeline (Self-Evolving)
+HealingPipeline - High-level healing orchestrator
 
-Coordinates the self-healing process:
-1. Error attribution (which artifact failed?)
-2. Self-healing attempt (LLM regeneration)
-3. Fallback to templates (last resort)
+Coordinates self-healing: error -> strategy -> repair -> evolution
+Delegates actual repairs to SelfHealingManager and fallback agents.
 
-SELF-EVOLUTION: Tracks repair strategy decisions and learns from
-outcomes to improve future healing attempts.
-
-Usage:
-    healer = HealingPipeline(project_path, llm_caller)
-    
-    if step_failed:
-        result = healer.attempt_heal(step_name)
-        if result == "SELF_HEALED":
-            # Files were written directly
-        elif result:
-            # result contains the generated code
-        else:
-            # Healing failed
+Refactored: Uses centralized entity discovery and FallbackModelAgent.
 """
+
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict, Tuple
 import re
 
 from app.core.logging import log
@@ -31,328 +17,193 @@ from app.orchestration.error_router import ErrorRouter
 from app.orchestration.self_healing_manager import SelfHealingManager
 from app.orchestration.fallback_router_agent import FallbackRouterAgent
 from app.orchestration.fallback_api_agent import FallbackAPIAgent
+from app.orchestration.fallback_model_agent import FallbackModelAgent
 
-# CENTRALIZED ENTITY DISCOVERY (replaces duplicated method)
+# T-AM Integration for constraint mutation
+from app.arbormind.t_am_operators import build_default_tam_operators
+from app.arbormind.v_value_schema import VValue
+
+# CENTRALIZED ENTITY DISCOVERY (fallback only)
 from app.utils.entity_discovery import discover_primary_entity, get_entity_plural
 
 
 class HealingPipeline:
-    """
-    Coordinates:
-    - error mapping (step → artifact)
-    - self-healing attempts
-    - fallback agents
-    - retry logic
-    """
+    """Coordinates self-healing: error → strategy → repair → evolution"""
     
-    def __init__(
-        self, 
-        project_path: Path,
-        llm_caller: Optional[Callable[[str], str]] = None,
-    ):
+    def __init__(self, project_path: Path, llm_caller: Optional[Callable[[str, str], str]] = None):
         self.project_path = project_path
         self.llm_caller = llm_caller
-        
         self.error_router = ErrorRouter()
-        self.healing_manager = SelfHealingManager(
-            project_path=project_path,
-            llm_caller=llm_caller,
-        )
-        
-        # Fallback agents for direct template generation
+        self.healing_manager = SelfHealingManager(project_path, llm_caller)
+        self.tam_ops = build_default_tam_operators()
         self.fallback_router = FallbackRouterAgent()
         self.fallback_api = FallbackAPIAgent()
-        
-        # Self-evolution tracking
-        self._last_repair_decision_id = ""
-        self._last_archetype = "unknown"
-
-    # -------------------------------------------------------------
-    async def attempt_heal(
-        self, 
-        step: str, 
-        error_log: str = "",
-        archetype: str = "unknown",
-        retries: int = 0
-    ) -> Optional[str]:
-        """
-        Attempt to heal a failed step.
-        
-        Args:
-            step: The failed step name
-            error_log: The error message or log trace
-            archetype: Project archetype for self-evolution context
-            retries: Current retry count (for AM escalation)
-        
-        Returns:
-            - "SELF_HEALED" if self-healing wrote files directly
-            - Generated code string if fallback agent succeeded
-            - None if all healing options failed
-        """
+        self.fallback_model = FallbackModelAgent()
+        self.last_repair_decision_id = None
+        self.last_archetype = "unknown"
+    
+    async def attempt_heal(self, step: str, error_log: str = "", archetype: str = "unknown", retries: int = 0) -> Optional[str]:
+        """Attempt to heal failed step. Returns SELF_HEALED or generated code."""
         artifact = self.error_router.route(step)
-
         if artifact == "noop":
-            log("HEAL", f"⚠️ No repair route for step: {step}")
+            log("HEAL", f"⚠️ No repair route for step {step}")
             return None
-
-        # ════════════════════════════════════════════════════════
-        # PHASE 3.2: Attention-Selected Repair Strategy (AM-Enhanced)
-        # ════════════════════════════════════════════════════════
+        
+        # 🎯 SELF-EVOLUTION: ErrorRouter + T-AM
         strategy_id = "generic_fix"
         strategy_params = {}
         repair_decision_id = ""
-        am_mode = "standard"
         
-        if error_log:
-            try:
-                # Returns dict with 'selected', 'value', 'decision_id', and 'mode'
-                result = await self.error_router.decide_repair_strategy(
-                    error_log, 
-                    archetype=archetype,
-                    retries=retries  # Pass retries for AM escalation
-                )
-                strategy_id = result.get("selected", "generic_fix")
-                strategy_params = result.get("value", {})
-                repair_decision_id = result.get("decision_id", "")
-                am_mode = result.get("mode", "standard")
-                
-                # Store for outcome reporting
-                self._last_repair_decision_id = repair_decision_id
-                self._last_archetype = archetype
-                
-                # Log AM mode if not standard
-                if am_mode != "standard":
-                    log("HEAL", f"🧠 AM Mode: {am_mode.upper()}")
-                    if am_mode == "exploratory" and result.get("source_archetypes"):
-                        log("HEAL", f"   📚 Foreign patterns from: {result['source_archetypes']}")
-                    if am_mode == "transformational" and result.get("mutation"):
-                        log("HEAL", f"   🔮 Mutation: {result['mutation'].get('description', 'N/A')}")
-                
-                log("HEAL", f"🧠 Attention selected strategy: '{strategy_id}'")
-                log("HEAL", f"   ⚙️ Params: {strategy_params}")
-                if result.get("evolved"):
-                    log("HEAL", "   🧬 Strategy parameters evolved from learning")
-            except Exception as e:
-                log("HEAL", f"⚠️ Strategy selection failed: {e}")
-
-        log("HEAL", f"🔧 Attempting to heal {step} → {artifact} (Strategy: {strategy_id})")
-
-        # Attempt explicit self-healing first
         try:
-            # Pass synthesized parameters to repair manager
-            healed = self.healing_manager.repair(
-                artifact, 
-                strategy_id=strategy_id, 
-                params=strategy_params
-            )
+            result = await self.error_router.decide_repair_strategy(error_log, archetype=archetype, retries=retries)
+            strategy_id = result.get("selected", "generic_fix")
+            strategy_params = result.get("value", {})
+            repair_decision_id = result.get("decision_id", "")
+            am_mode = result.get("mode", "standard")
+            
+            self.last_repair_decision_id = repair_decision_id
+            self.last_archetype = archetype
+            
+            if am_mode != "standard":
+                log("HEAL", f"🤖 AM Mode {am_mode.upper()}")
+                if am_mode == "exploratory" and result.get("source_archetypes"):
+                    log("HEAL", f"   📚 Foreign patterns from: {result['source_archetypes']}")
+                if am_mode == "transformational" and result.get("mutation"):
+                    log("HEAL", f"   🔮 Mutation: {result['mutation'].get('description', 'N/A')}")
+            
+            log("HEAL", f"🧠 Attention selected strategy: '{strategy_id}'")
+            log("HEAL", f"   ⚙️ Params: {strategy_params}")
+            if result.get("evolved"):
+                log("HEAL", "   🧬 Strategy parameters evolved from learning")
+                
+        except Exception as e:
+            log("HEAL", f"⚠️ Strategy selection failed: {e}")
+        
+        # 🎯 T-AM: Mutate strategy after failures
+        if retries >= 2:
+            strategy_params = self._maybe_mutate_config_after_failures(strategy_params, retries)
+        
+        log("HEAL", f"🔧 Attempting to heal {step} → {artifact} (Strategy: {strategy_id})")
+        
+        # 🩹 Attempt explicit self-healing FIRST
+        try:
+            healed = self.healing_manager.repair(artifact, strategy_id=strategy_id, params=strategy_params)
         except TypeError:
-             # Fallback if repair doesn't support params yet
-             healed = self.healing_manager.repair(artifact)
-             
+            # Backward compat: repair() doesn't support params yet
+            healed = self.healing_manager.repair(artifact)
+        
         if healed:
             log("HEAL", f"✅ Self-healing succeeded for {artifact}")
-            
-            # SELF-EVOLUTION: Report success
-            self._report_healing_outcome(
-                repair_decision_id,
-                success=True,
-                quality_score=8.0,
-                details=f"Self-healing succeeded for {artifact} using {strategy_id}"
-            )
-            
+            self._report_healing_outcome(repair_decision_id, success=True, quality_score=8.0, 
+                                        details=f"Self-healing succeeded for {artifact} using {strategy_id}")
             return "SELF_HEALED"
-            
-        # ... fallback logic continues ...
-
+        
         log("HEAL", f"⚠️ Self-healing failed for {artifact}, trying fallback agent")
-
-        # Final fallback - direct template
+        
+        # 🛠️ FALLBACK: DYNAMIC entity from mock.js → contracts → generic
         fallback_code = self._fallback(step)
         if fallback_code:
             log("HEAL", f"✅ Fallback agent succeeded for {step}")
-            
-            # SELF-EVOLUTION: Report partial success (fallback worked but self-healing didn't)
-            self._report_healing_outcome(
-                repair_decision_id,
-                success=True,
-                quality_score=6.0,
-                details=f"Fallback succeeded for {step} after self-healing failed"
-            )
-            
+            self._report_healing_outcome(repair_decision_id, success=True, quality_score=6.0,
+                                        details=f"Fallback succeeded for {step} after self-healing failed")
             return fallback_code
-
+        
         log("HEAL", f"❌ All healing options exhausted for {step}")
-        
-        # SELF-EVOLUTION: Report failure
-        self._report_healing_outcome(
-            repair_decision_id,
-            success=False,
-            quality_score=2.0,
-            details=f"All healing options failed for {step}"
-        )
-        
+        self._report_healing_outcome(repair_decision_id, success=False, quality_score=2.0,
+                                    details=f"All healing options failed for {step}")
         return None
     
-    def _report_healing_outcome(
-        self,
-        decision_id: str,
-        success: bool,
-        quality_score: float,
-        details: str
-    ) -> None:
-        """
-        Report the outcome of a healing attempt for self-evolution.
-        """
-        if not decision_id:
-            return
-        
-        try:
-            self.error_router.report_repair_outcome(
-                decision_id=decision_id,
-                success=success,
-                quality_score=quality_score,
-                details=details
-            )
-        except Exception as e:
-            log("HEAL", f"⚠️ Failed to report healing outcome: {e}")
-
-    # -------------------------------------------------------------
+    # NOTE: Entity discovery methods (_get_primary_entity_safe, _extract_entity_from_mock, 
+    # _max_entity_by_frequency) were removed. Now using centralized discover_primary_entity()
+    # from app.utils.entity_discovery. This eliminates duplication and ensures consistency.
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # FALLBACK GENERATION
+    # ═════════════════════════════════════════════════════════════════════════
+    
     def _fallback(self, step: str) -> Optional[str]:
-        """Use step-specific fallback agent with DYNAMIC entity names."""
+        """Fallback generation using centralized entity discovery."""
         step_lower = step.lower()
         
         if "router" in step_lower or "implementation" in step_lower or "backend_vertical" in step_lower:
-            # DYNAMIC: Discover primary entity using centralized utility
+            # Use centralized entity discovery
             entity_name, model_name = discover_primary_entity(self.project_path)
             if not entity_name:
                 log("HEAL", "❌ Cannot generate fallback - no entity found!")
                 return None
-            entity_plural = get_entity_plural(entity_name)
             
-            # ════════════════════════════════════════════════════════════
-            # FIX: Create models.py FIRST (router imports from it!)
-            # Check if model is actually DEFINED, not just if file exists!
-            # ════════════════════════════════════════════════════════════
+            entity_plural = get_entity_plural(entity_name)
+            log("HEAL", f"🎯 FALLBACK: {entity_name} → {entity_plural}")
+            
+            # Models - check if model class is ACTUALLY defined
             models_path = self.project_path / "backend" / "app" / "models.py"
             needs_model = True
             if models_path.exists():
-                # Check if the model class is actually defined (not in comments!)
-                content = models_path.read_text(encoding="utf-8")
-                # Process line-by-line to skip comments
+                content = models_path.read_text(encoding='utf-8')
                 for line in content.splitlines():
                     stripped = line.lstrip()
                     if not stripped or stripped.startswith('#'):
                         continue
-                    if re.match(rf'class\s+{model_name}\s*\(\s*Document\s*\)', stripped):
+                    if re.match(rf'class\s+{model_name}\s*\(', stripped):
                         needs_model = False
                         log("HEAL", f"✅ Model {model_name} already exists in models.py")
                         break
-                if needs_model:
-                    log("HEAL", f"⚠️ models.py exists but {model_name} class not found - will generate")
             
             if needs_model:
-                model_code = f'''# backend/app/models.py
-"""
-{model_name} Model - Fallback Template
-Generated by HealingPipeline when LLM failed.
-"""
-from datetime import datetime, timezone
-from typing import Optional
-from beanie import Document
-from pydantic import Field
-
-
-class {model_name}(Document):
-    """Main entity model."""
-    title: str = Field(..., description="Title of the {entity_name}")
-    content: str = Field(default="", description="Content/description")
-    status: str = Field(default="Draft", description="Status: Draft, Active, Completed")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: Optional[datetime] = None
-    
-    class Settings:
-        name = "{entity_plural}"
-        
-    class Config:
-        json_schema_extra = {{
-            "example": {{
-                "title": "Sample {model_name}",
-                "content": "Example content",
-                "status": "Draft"
-            }}
-        }}
-'''
+                model_code = self.fallback_model.generate_for_entity(entity_name, model_name)
                 models_path.parent.mkdir(parents=True, exist_ok=True)
-                models_path.write_text(model_code, encoding="utf-8")
-                log("HEAL", f"📋 Fallback model written: models.py ({len(model_code)} chars)")
+                models_path.write_text(model_code, encoding='utf-8')
+                log("HEAL", f"📋 Fallback model written: {model_name} ({len(model_code)} chars)")
             
-            # Issue #2 Fix: Check if valid router already exists before overwriting!
+            # Router - check if valid router already exists
             router_path = self.project_path / "backend" / "app" / "routers" / f"{entity_plural}.py"
-            
             if router_path.exists():
-                existing_content = router_path.read_text(encoding="utf-8")
-                # Check if it's a valid router (has APIRouter definition)
-                if re.search(r'router\s*=\s*APIRouter\s*\(', existing_content):
-                    log("HEAL", f"✅ Valid router {entity_plural}.py already exists ({len(existing_content)} chars) - skipping fallback")
-                    return existing_content  # Return existing code, don't overwrite!
-                else:
-                    log("HEAL", f"⚠️ Router {entity_plural}.py exists but invalid - will overwrite")
+                existing_content = router_path.read_text(encoding='utf-8')
+                if re.search(r'router\s*=\s*APIRouter', existing_content):
+                    log("HEAL", f"✅ Valid router {entity_plural}.py already exists - skipping")
+                    return existing_content
             
-            # Only write fallback if router doesn't exist or is invalid
-            code = self.fallback_router.generate_for_entity(entity_name, model_name)
+            router_code = self.fallback_router.generate_for_entity(entity_name, model_name)
             router_path.parent.mkdir(parents=True, exist_ok=True)
-            router_path.write_text(code, encoding="utf-8")
-            log("HEAL", f"📋 Fallback router written: {entity_plural}.py ({len(code)} chars)")
+            router_path.write_text(router_code, encoding='utf-8')
+            log("HEAL", f"📋 Fallback router written: {entity_plural}.py ({len(router_code)} chars)")
             
-            # ════════════════════════════════════════════════════════════
-            # Option B: Also generate fallback test file
-            # This ensures pytest doesn't fail with "no tests ran"
-            # ════════════════════════════════════════════════════════════
             self._generate_fallback_tests(entity_name, entity_plural)
-            
-            return code
-
-        if "integration" in step_lower or "api" in step_lower:
-            # DYNAMIC: Discover primary entity using centralized utility
+            return router_code
+        
+        elif "integration" in step_lower or "api" in step_lower:
+            # Use centralized entity discovery
             entity_name, model_name = discover_primary_entity(self.project_path)
             if not entity_name:
                 log("HEAL", "❌ Cannot generate API fallback - no entity found!")
                 return None
-            entity_plural = get_entity_plural(entity_name)
             
-            code = self.fallback_api.generate_for_entity(entity_name, entity_plural)
-            # Write directly
+            entity_plural = get_entity_plural(entity_name)
+            api_code = self.fallback_api.generate_for_entity(entity_name, entity_plural)
             api_path = self.project_path / "frontend" / "src" / "lib" / "api.js"
             api_path.parent.mkdir(parents=True, exist_ok=True)
-            api_path.write_text(code, encoding="utf-8")
-            log("HEAL", f"📋 Fallback API client written for {entity_plural} ({len(code)} chars)")
-            return code
-
-        log("HEAL", f"⚠️ No fallback agent for {step}")
+            api_path.write_text(api_code, encoding='utf-8')
+            log("HEAL", f"📋 Fallback API client written for {entity_plural} ({len(api_code)} chars)")
+            return api_code
+        
+        log("HEAL", f"⚠️ No fallback agent for step: {step}")
         return None
     
-    # NOTE: Removed duplicated _discover_primary_entity() method (82 lines).
-    # Now using centralized app.utils.entity_discovery.discover_primary_entity() instead.
-    # This ensures consistent discovery logic across the entire codebase.
+    # NOTE: _generate_fallback_model was removed - now using FallbackModelAgent
+    # This consolidates model generation into a single source of truth
 
-    # -------------------------------------------------------------
+    
     def _generate_fallback_tests(self, entity: str, entity_plural: str) -> None:
-        """
-        Generate a fallback test file when healing creates model/router.
-        
-        This ensures pytest doesn't fail with "no tests ran" when healing
-        generates backend files but no test file exists.
-        """
+        """Generate fallback test_api.py to prevent 'no tests ran'."""
         tests_dir = self.project_path / "backend" / "tests"
         tests_dir.mkdir(parents=True, exist_ok=True)
-        
         test_file = tests_dir / "test_api.py"
         
-        # Don't overwrite existing valid tests
+        # Don't overwrite valid tests
         if test_file.exists():
-            content = test_file.read_text(encoding="utf-8")
-            if re.search(r'async\s+def\s+test_', content) or re.search(r'def\s+test_', content):
-                log("HEAL", "✅ Valid test file already exists - skipping test generation")
+            content = test_file.read_text(encoding='utf-8')
+            if re.search(r'async\s+def\s+test_|def\s+test_', content):
+                log("HEAL", "✅ Valid test file already exists - skipping")
                 return
         
         test_content = f'''# backend/tests/test_api.py
@@ -387,8 +238,8 @@ async def test_list_{entity_plural}(client):
 async def test_create_{entity}(client):
     """Test creating a {entity}."""
     {entity}_data = {{
-        "title": fake.sentence(),
-        "content": fake.paragraph(),
+        "name": fake.sentence(),
+        "description": fake.paragraph(),
     }}
     response = await client.post("/api/{entity_plural}", json={entity}_data)
     assert response.status_code in [200, 201]
@@ -403,45 +254,68 @@ async def test_get_{entity}_not_found(client):
 '''
 
         try:
-            test_file.write_text(test_content, encoding="utf-8")
+            test_file.write_text(test_content, encoding='utf-8')
             log("HEAL", f"📋 Fallback test file written: test_api.py ({len(test_content)} chars)")
         except Exception as e:
             log("HEAL", f"⚠️ Failed to write fallback test file: {e}")
-
-    # -------------------------------------------------------------
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # T-AM & SELF-EVOLUTION
+    # ════════════════════════════════════════════════════════════════════════
+    
+    def _maybe_mutate_config_after_failures(self, config: Dict, failure_count: int) -> Dict:
+        """T-AM: Mutate strategy config after repeated failures."""
+        if failure_count < 2:
+            return config
+        
+        try:
+            v = VValue.from_dict(config)
+            tam = self.tam_ops["INVERT_STRICT_MODE"]
+            mutated = tam.apply(v)
+            log("HEAL", f"🔮 T-AM mutation after {failure_count} failures: {tam.name}")
+            return mutated.to_dict()
+        except Exception as e:
+            log("HEAL", f"⚠️ T-AM mutation failed: {e}")
+            return config
+    
+    def _report_healing_outcome(self, decision_id: str, success: bool, quality_score: float, details: str) -> None:
+        """Report outcome for self-evolution."""
+        if not decision_id:
+            return
+        try:
+            self.error_router.report_repair_outcome(
+                decision_id=decision_id,
+                success=success,
+                quality_score=quality_score,
+                details=details
+            )
+        except Exception as e:
+            log("HEAL", f"⚠️ Failed to report healing outcome: {e}")
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # PUBLIC API
+    # ════════════════════════════════════════════════════════════════════════
+    
     def can_heal(self, step: str) -> bool:
         """Check if a step can be healed."""
         return self.error_router.is_repairable(step)
-
-    # -------------------------------------------------------------
+    
     def get_healing_options(self, step: str) -> list:
         """Get available healing options for a step."""
         options = []
-        
         if self.error_router.is_repairable(step):
             options.append("self_healing")
             options.append("fallback_template")
-        
         return options
-
-    # -------------------------------------------------------------
+    
     async def heal_all(self, failed_steps: list) -> dict:
-        """
-        Attempt to heal all failed steps in priority order.
-        
-        Returns:
-            Dict of {step: result} for each step
-        """
-        results = {}
-        
-        # Sort by repair priority
+        """Heal all failed steps in priority order."""
         ordered_steps = self.error_router.get_repair_order(failed_steps)
-        
+        results = {}
         for step in ordered_steps:
-            result = await self.attempt_heal(step)
+            result = await self.attempt_heal(step, "", self.last_archetype)
             results[step] = {
                 "healed": result is not None,
-                "method": "self_healed" if result == "SELF_HEALED" else "fallback" if result else "failed",
+                "method": "self_healed" if result == "SELF_HEALED" else ("fallback" if result else "failed"),
             }
-        
         return results

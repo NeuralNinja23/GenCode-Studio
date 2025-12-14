@@ -32,7 +32,7 @@ class WorkflowSettings:
     max_file_lines: int = 400
     supervision_retries: int = 3
     quality_gate_threshold: int = 5
-    default_max_tokens: int = 8000
+    default_max_tokens: int = 16000
     # FIX #15: Centralize magic number from engine.py
     max_chat_history: int = 10
 
@@ -76,7 +76,7 @@ class AMSettings:
     # Feature Flags (Safety Layer)
     enable_cam: bool = field(default_factory=lambda: os.getenv("ENABLE_CAM", "true").lower() == "true")
     enable_eam: bool = field(default_factory=lambda: os.getenv("ENABLE_EAM", "true").lower() == "true")
-    enable_tam: bool = field(default_factory=lambda: os.getenv("ENABLE_TAM", "false").lower() == "true")  # Sandbox only by default
+    enable_tam: bool = field(default_factory=lambda: os.getenv("ENABLE_TAM", "true").lower() == "true")  # Sandbox only by default
     
     # Rollout Percentages (0-100)
     cam_rollout_pct: int = field(default_factory=lambda: int(os.getenv("CAM_ROLLOUT_PCT", "100")))
@@ -97,12 +97,35 @@ class AMSettings:
 
 
 @dataclass
+class HealingSettings:
+    """
+    Self-healing system configuration.
+    
+    Controls healing behavior, validation, and LLM usage.
+    """
+    # Feature Flags
+    allow_llm: bool = field(default_factory=lambda: os.getenv("HEAL_ALLOW_LLM", "true").lower() == "true")  # Allow LLM-generated healing
+    validate_llm_output: bool = field(default_factory=lambda: os.getenv("HEAL_VALIDATE_LLM", "true").lower() == "true")  # Validate LLM output
+    force_fallback: bool = field(default_factory=lambda: os.getenv("HEAL_FORCE_FALLBACK", "false").lower() == "true")  # Always use fallback templates
+    
+    # Validation Settings
+    require_query_annotations: bool = True  # Require Query() on pagination params
+    require_pagination_params: bool = True  # Require page/limit params
+    require_router_imports: bool = True     # Require proper FastAPI imports
+    
+    # Retry Settings
+    max_healing_attempts: int = 3           # Max healing attempts per failure
+    max_service_restart_attempts: int = 2   # Max service restart attempts
+
+
+@dataclass
 class Settings:
     """Main application settings."""
     llm: LLMSettings = field(default_factory=LLMSettings)
     workflow: WorkflowSettings = field(default_factory=WorkflowSettings)
     sandbox: SandboxSettings = field(default_factory=SandboxSettings)
     paths: PathSettings = field(default_factory=PathSettings)
+    healing: HealingSettings = field(default_factory=HealingSettings)
     am: AMSettings = field(default_factory=AMSettings)
     port: int = field(default_factory=lambda: int(os.getenv("PORT", 8000)))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")

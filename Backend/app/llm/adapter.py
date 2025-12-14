@@ -5,11 +5,17 @@ Unified LLM adapter - single interface for all providers.
 NOTE: No fallback logic - if rate limited after 3 attempts, raises RateLimitError to stop workflow.
 
 V2 Enhancement: Stop sequences to prevent truncation.
+V3 Enhancement: Token usage tracking for accurate cost reporting.
 """
 import asyncio
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Union
 from app.core.config import settings
 from app.core.exceptions import LLMError, RateLimitError
+from app.core.logging import log
+
+
+# Type for LLM response with usage data
+LLMResponse = Dict[str, Any]  # {"text": str, "usage": {"input": int, "output": int}}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -114,7 +120,8 @@ class LLMAdapter:
         max_tokens: int = 8000,
         stop_sequences: Optional[List[str]] = None,
         step_name: str = "",  # V2: For step-specific stop sequences
-    ) -> str:
+        return_usage: bool = False,  # V3: Return usage metadata for cost tracking
+    ) -> Union[str, LLMResponse]:
         """
         Call an LLM provider with automatic retry.
         
@@ -127,9 +134,11 @@ class LLMAdapter:
             max_tokens: Maximum response tokens
             stop_sequences: V2 - sequences that signal completion (prevents truncation)
             step_name: V2 - workflow step name for auto-selecting appropriate stop sequences
+            return_usage: V3 - if True, return dict with text AND usage metadata
             
         Returns:
-            The LLM response text
+            If return_usage=False: The LLM response text (str)
+            If return_usage=True: Dict with {"text": str, "usage": {"input": int, "output": int}}
             
         Raises:
             LLMError: If provider fails after all retries
@@ -141,14 +150,26 @@ class LLMAdapter:
         if stop_sequences is None:
             if step_name:
                 stop_sequences = get_stop_sequences_for_step(step_name)
-                print(f"[LLM] Using stop sequences for {step_name}: {stop_sequences[:2]}...")
+                log("LLM", f"Using stop sequences for {step_name}: {stop_sequences[:2]}...")
             else:
                 stop_sequences = get_stop_sequences()
         
         # Call provider directly - no fallback
-        return await self._call_provider(
+        result = await self._call_provider(
             provider, model, prompt, system_prompt, temperature, max_tokens, stop_sequences
         )
+        
+        # V3: Handle new dict response format from providers
+        if isinstance(result, dict):
+            if return_usage:
+                return result  # Return full dict with text and usage
+            else:
+                return result.get("text", "")  # Backward compatible: return just text
+        else:
+            # Legacy string response (from other providers)
+            if return_usage:
+                return {"text": result, "usage": {"input": 0, "output": 0}}
+            return result
     
     async def _call_provider(
         self,
@@ -198,11 +219,11 @@ class LLMAdapter:
                 # Rate limit - wait and retry
                 if "rate" in error_str or "429" in error_str:
                     wait_time = (attempt + 1) * 5
-                    print(f"[LLM] Rate limited (attempt {attempt + 1}/{self.max_retries}), waiting {wait_time}s...")
+                    log("LLM", f"Rate limited (attempt {attempt + 1}/{self.max_retries}), waiting {wait_time}s...")
                     await asyncio.sleep(wait_time)
                 # Network error - shorter retry
                 elif "network" in error_str or "connection" in error_str:
-                    print(f"[LLM] Network error (attempt {attempt + 1}/{self.max_retries}), retrying...")
+                    log("LLM", f"Network error (attempt {attempt + 1}/{self.max_retries}), retrying...")
                     await asyncio.sleep(2)
                 else:
                     # Unknown error - don't retry, fail immediately
@@ -238,5 +259,34 @@ async def call_llm(
         max_tokens=max_tokens,
         stop_sequences=stop_sequences,
         step_name=step_name,
+        return_usage=False,
     )
 
+
+async def call_llm_with_usage(
+    prompt: str,
+    system_prompt: str = "",
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    temperature: float = 0.7,
+    max_tokens: int = 8000,
+    stop_sequences: Optional[List[str]] = None,
+    step_name: str = "",
+) -> LLMResponse:
+    """
+    V3: Call LLM and return BOTH text and usage metadata.
+    
+    Returns:
+        Dict with {"text": str, "usage": {"input": int, "output": int}}
+    """
+    return await _adapter.call(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        provider=provider,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        stop_sequences=stop_sequences,
+        step_name=step_name,
+        return_usage=True,
+    )

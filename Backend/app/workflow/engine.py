@@ -345,7 +345,19 @@ async def run_workflow(
                 shutil.copy2(item, frontend_dest / item.name)
             elif item.is_dir() and item.name == "src":
                 # Special merge for src: Don't overwrite seed/src files
-                shutil.copytree(item, frontend_dest / "src", dirs_exist_ok=True)
+                # IMPORTANT: Skip components/ui - these are copied on-demand by component_copier
+                # This keeps projects lean (only 5-10 UI components instead of 55+)
+                src_dir = frontend_dest / "src"
+                for src_item in item.rglob("*"):
+                    if src_item.is_file():
+                        # Skip ui components - copied on-demand after Derek generates code
+                        rel_path = src_item.relative_to(item)
+                        if "components/ui" in str(rel_path).replace("\\", "/"):
+                            continue
+                        dest_path = src_dir / rel_path
+                        dest_path.parent.mkdir(parents=True, exist_ok=True)
+                        if not dest_path.exists():  # Don't overwrite seed files
+                            shutil.copy2(src_item, dest_path)
             elif item.is_dir() and item.name == "public":
                  shutil.copytree(item, frontend_dest / "public", dirs_exist_ok=True)
 

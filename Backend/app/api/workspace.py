@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.core.config import settings
+from app.core.logging import log
+from app.utils.path_utils import get_project_path
 
 # ============================================================================
 # WORKSPACE API ROUTER
@@ -42,7 +44,7 @@ def get_safe_project_path(project_id: str) -> Path:
     if not validate_project_id(project_id):
         raise HTTPException(status_code=400, detail="Invalid project ID format")
     
-    project_path = settings.paths.workspaces_dir / project_id
+    project_path = get_project_path(project_id)
     
     # FIX #12: Use resolve() to prevent symlink attacks
     try:
@@ -183,19 +185,19 @@ async def generate_backend(request: Request, project_id: str, data: GenerateRequ
     from app.workflow import run_workflow
     from app.orchestration.state import WorkflowStateManager
     
-    print(f"[GENERATE] Starting generation for {project_id}")
+    log("WORKSPACE", f"Starting generation for {project_id}")
     
     # FIX #13: Validate project_id
     if not validate_project_id(project_id):
-        print(f"[GENERATE] Invalid project_id: {project_id}")
+        log("WORKSPACE", f"Invalid project_id: {project_id}")
         raise HTTPException(status_code=400, detail="Invalid project ID format")
     
     # Guard: Check if workflow is already running
     is_running = await WorkflowStateManager.is_running(project_id)
-    print(f"[GENERATE] is_running check: {is_running}")
+    log("WORKSPACE", f"is_running check: {is_running}")
     
     if is_running:
-        print(f"[GENERATE] ⚠️ Workflow already running for {project_id}, blocking new request")
+        log("WORKSPACE", f"⚠️ Workflow already running for {project_id}, blocking new request")
         return {
             "success": True,
             "message": "Workflow already in progress",
@@ -203,7 +205,7 @@ async def generate_backend(request: Request, project_id: str, data: GenerateRequ
             "already_running": True,
         }
     
-    project_path = settings.paths.workspaces_dir / project_id
+    project_path = get_project_path(project_id)
     project_path.mkdir(parents=True, exist_ok=True)
     
     # Get connection manager
@@ -222,8 +224,8 @@ async def generate_backend(request: Request, project_id: str, data: GenerateRequ
             )
         except Exception as e:
             import traceback
-            print(f"[WORKFLOW ERROR] {project_id}: {e}")
-            print(traceback.format_exc())
+            log("WORKSPACE", f"ERROR {project_id}: {e}")
+            log("WORKSPACE", traceback.format_exc())
     
     asyncio.create_task(_run_workflow_with_logging())
     
@@ -247,7 +249,7 @@ async def resume_workflow_endpoint(request: Request, data: ResumeRequest):
     from app.core.constants import WorkflowStep, WSMessageType
     from app.orchestration.utils import broadcast_to_project
     
-    project_path = settings.paths.workspaces_dir / data.project_id
+    project_path = get_project_path(data.project_id)
     
     # Check if workflow is paused
     if await WorkflowStateManager.is_paused(data.project_id):
@@ -316,7 +318,7 @@ async def resume_workflow_endpoint(request: Request, data: ResumeRequest):
                 await engine.run()
             except Exception as e:
                 # Engine.run() handles cleanup in finally block
-                print(f"[RESUME] Refine workflow error: {e}")
+                log("WORKSPACE", f"Refine workflow error: {e}")
         
         asyncio.create_task(run_refine())
         
@@ -356,7 +358,7 @@ async def force_reset_workflow(project_id: str):
     """
     from app.orchestration.state import WorkflowStateManager
     
-    print(f"[FORCE-RESET] Resetting workflow state for {project_id}")
+    log("WORKSPACE", f"Resetting workflow state for {project_id}")
     await WorkflowStateManager.cleanup(project_id)
     
     return {

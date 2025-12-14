@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 
 
-from app.core.logging import log, log_section, log_thinking, log_files, log_result
+from app.core.logging import log, log_section, log_files, log_result
 from app.llm import call_llm
 from app.llm.prompts import MARCUS_SUPERVISION_PROMPT
 # NOTE: Quality tracking kept, cost tracking moved to BudgetManager
@@ -346,9 +346,8 @@ RESPOND WITH JSON:
                 result["warnings"] = warnings
 
         
-        # Log Marcus's thinking using centralized logging
-        if thinking:
-            log_thinking("MARCUS", thinking, project_id)
+        # NOTE: Marcus's thinking is broadcast to UI (below) but not logged to server console
+        # This reduces log noise while keeping the user-facing feature
         
         # Log the result
         log_result("MARCUS", approved, quality, issues if not approved else None, project_id)
@@ -403,7 +402,8 @@ async def categorize_issue_severity(issue: str) -> str:
     """
     Categorize Marcus's issues into 'critical' or 'warning' using Universal Attention.
     """
-    from app.orchestration.attention_router import route_query
+    from app.arbormind.router import ArborMindRouter
+    _router = ArborMindRouter()
     
     options = [
         {"id": "warning", "description": "Style preference, suggestion, best practice, optimization, maintainability, naming convention, optional improvement, placeholder text, mock data, future todo"},
@@ -411,7 +411,7 @@ async def categorize_issue_severity(issue: str) -> str:
     ]
     
     # Use attention to classify
-    result = await route_query(issue, options)
+    result = await _router.route(query=issue, options=options)
     
     # Default to critical if confidence is low, otherwise use selection
     # But for "warning", we want to be sure. If unsure, treat as critical.
@@ -538,7 +538,7 @@ async def supervised_agent_call(
     # ============================================================
     # CRITICAL: Read and Filter Project Files
     # ============================================================
-    from app.llm.prompt_management import get_relevant_files
+    from app.llm.prompt_management import filter_files_for_step
     import os
     
     # FIX ASYNC-002: Use asyncio.to_thread to avoid blocking event loop for large projects
@@ -553,18 +553,18 @@ async def supervised_agent_call(
                         file_path = Path(root) / filename
                         rel_path = file_path.relative_to(project_path)
                         
-                        # Skip node_modules, .git, __pycache__, etc.
-                        if any(skip in str(rel_path) for skip in ['node_modules', '.git', '__pycache__', 'dist', 'build']):
+                        # Skip large or generated files
+                        if any(skip in str(rel_path) for skip in ['node_modules', 'dist', '__pycache__', '.git']):
                             continue
                         
                         try:
-                            content = file_path.read_text(encoding='utf-8')
-                            files.append({
-                                "path": str(rel_path),
-                                "content": content
-                            })
-                        except (UnicodeDecodeError, PermissionError, OSError):
-                            # Skip unreadable files (binary files, permission issues, etc.)
+                            content = file_path.read_text(encoding="utf-8", errors="ignore")
+                            if len(content) < 50000:  # Skip very large files
+                                files.append({
+                                    "path": str(rel_path).replace("\\", "/"),
+                                    "content": content
+                                })
+                        except Exception:
                             pass
         except Exception:
             pass
@@ -574,7 +574,7 @@ async def supervised_agent_call(
     all_files = await asyncio.to_thread(_read_project_files, project_path, project_id)
     
     # Filter files to only those relevant for this step
-    relevant_files = get_relevant_files(step_id, all_files)
+    relevant_files = filter_files_for_step(step_id, all_files)
     
     log("OPTIMIZATION", f"Filtered {len(all_files)} files → {len(relevant_files)} relevant for {step_name}", project_id=project_id)
     
@@ -627,6 +627,9 @@ async def supervised_agent_call(
             
             raw_output = tool_result.get("output", {})
             
+            # V3: Extract token usage for cost tracking
+            step_token_usage = tool_result.get("token_usage", {"input": 0, "output": 0})
+            
             if isinstance(raw_output, dict):
                 parsed = raw_output
             else:
@@ -662,7 +665,7 @@ async def supervised_agent_call(
                 # Don't return approved=True here - this was allowing empty output through!
                 # Instead, let the retry loop handle it
                 if attempt >= max_retries:
-                    return {"output": parsed, "approved": False, "attempt": attempt, "error": "No files generated"}
+                    return {"output": parsed, "approved": False, "attempt": attempt, "error": "No files generated", "token_usage": step_token_usage}
                 # Continue to next attempt
                 continue
             
@@ -726,7 +729,7 @@ async def supervised_agent_call(
                         except Exception:
                             pass
                 
-                return {"output": parsed, "approved": True, "attempt": attempt, "quality": quality}
+                return {"output": parsed, "approved": True, "attempt": attempt, "quality": quality, "token_usage": step_token_usage}
             
             # Not approved - check quality gate (FIX #4)
             quality = review.get("quality_score", 4)
@@ -920,7 +923,7 @@ Corrections: {correction_text}
                 await asyncio.sleep(5)
             
             if attempt >= max_retries:
-                return {"output": last_output, "approved": False, "attempt": attempt, "error": str(e)}
+                return {"output": last_output, "approved": False, "attempt": attempt, "error": str(e), "token_usage": step_token_usage if 'step_token_usage' in dir() else {"input": 0, "output": 0}}
     
     # Max retries reached
     quality = last_review.get("quality_score", 5) if last_review else 5
@@ -962,7 +965,7 @@ Corrections: {correction_text}
          except Exception as e:
              log("LEARNING", f"⚠️ Failed to record failure: {e}")
              
-         return {"output": None, "approved": False, "attempt": max_retries, "error": f"Failed quality gate (Score {quality})"}
+         return {"output": None, "approved": False, "attempt": max_retries, "error": f"Failed quality gate (Score {quality})", "token_usage": step_token_usage if 'step_token_usage' in dir() else {"input": 0, "output": 0}}
 
          # Return empty files to signal failure to orchestrator (which will trigger healing)
          return {
@@ -983,4 +986,4 @@ Corrections: {correction_text}
              # Try to filter files if possible, or drop all if unsure
              final_output = {**last_output, "files": []} 
     
-    return {"output": final_output, "approved": False, "attempt": max_retries, "quality": quality}
+    return {"output": final_output, "approved": False, "attempt": max_retries, "quality": quality, "token_usage": step_token_usage if 'step_token_usage' in dir() else {"input": 0, "output": 0}}

@@ -16,6 +16,7 @@ from app.orchestration.state import WorkflowStateManager
 from app.supervision import supervised_agent_call
 from app.persistence import persist_agent_output
 from app.persistence.validator import validate_file_output
+from app.handlers.archetype_guidance import get_architecture_archetype_guidance
 
 
 # Constants from legacy
@@ -66,11 +67,18 @@ async def step_architecture(
     archetype = archetype_routing.get("top", "general")
     ui_vibe = ui_vibe_routing.get("top", "minimal_light")
     
+    # Get archetype-specific architecture guidance
+    architecture_archetype_guidance = get_architecture_archetype_guidance(archetype, ui_vibe)
+    
+    log("ARCHITECTURE", f"🏗️ Creating architecture for archetype: {archetype}, vibe: {ui_vibe}")
+    
     victoria_instructions = f"""Create a high-level architecture plan for: {user_request}
 DETECTED ENTITIES: {', '.join(intent.get('entities', []))}
 DOMAIN: {intent.get('domain', 'general')}
 PROJECT ARCHETYPE (attention-based routing): {archetype}
 UI VIBE (attention-based routing): {ui_vibe}
+
+{architecture_archetype_guidance}
 
 ═══════════════════════════════════════════════════════
 🚨 CRITICAL: UI TOKENS JSON IS REQUIRED
@@ -112,7 +120,9 @@ INCLUDE:
    - MUST include UI Tokens JSON block (see above)
 
 CRITICAL OUTPUT RULES:
-- You MUST follow your system prompt (Victoria) which requires {{ "thinking": "...", "files": [{{ "path": "architecture.md", "content": "full markdown architecture plan here" }}] }}
+- You MUST follow your system prompt (Victoria) which requires {{ "thinking": "...", "files": [{{ "path": "architecture.md", "content": "..." }}] }}
+- IMPORTANT: Ensure the JSON string is VALID and complete. Do NOT truncate the output.
+- If the architecture plan is long, be concise, but NEVER break JSON syntax with unbalanced brackets.
 - Do NOT return "architecturePlan": "..." format.
 - ONLY return {{ "thinking": "...", "files": [...] }} with architecture.md.
 - INCLUDE the UI Tokens JSON block in your architecture.md!"""
@@ -130,6 +140,9 @@ CRITICAL OUTPUT RULES:
             contracts="",
             max_retries=2,
         )
+        
+        # V3: Extract token usage for cost tracking
+        step_token_usage = result.get("token_usage")
         
         parsed = result.get("output", {})
         if isinstance(parsed, dict) and "files" in parsed and parsed["files"]:
@@ -343,8 +356,24 @@ export const ui = {
 
     # GENCODE STUDIO PATTERN: After architecture, go to Frontend Mock (not Contracts)
     # This creates the "aha moment" for users before building backend
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 🚫 EARLY DOCKER START DISABLED (Bug Fix #1)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Previously we started Docker here in parallel with LLM work.
+    # PROBLEM: At this point, main.py is scaffold-only (no routes wired).
+    # - Health check /api/health passes ✅
+    # - But NO business routes exist yet ❌
+    # - Tests later fail with 307/404 because Docker cached the empty state
+    # 
+    # FIX: Docker now starts at system_integration AFTER routes are wired.
+    # This adds ~10s to total time but eliminates the infinite healing loop.
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    
     return StepResult(
         nextstep=WorkflowStep.FRONTEND_MOCK,
         turn=current_turn + 1,
+        token_usage=step_token_usage if 'step_token_usage' in dir() else None,  # V3
     )
 

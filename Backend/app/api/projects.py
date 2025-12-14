@@ -11,6 +11,8 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.core.config import settings
+from app.core.logging import log
+from app.utils.path_utils import get_project_path
 
 
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
@@ -76,12 +78,12 @@ async def create_project(request: Request, data: CreateProjectRequest):
     project_id = base_slug
     
     # Handle duplicates by appending a short unique suffix
-    project_path = settings.paths.workspaces_dir / project_id
+    project_path = get_project_path(project_id)
     if project_path.exists():
         # Add a 4-char suffix to make it unique
         suffix = str(uuid.uuid4())[:4]
         project_id = f"{base_slug}-{suffix}"
-        project_path = settings.paths.workspaces_dir / project_id
+        project_path = get_project_path(project_id)
     
     project_path.mkdir(parents=True, exist_ok=True)
     
@@ -152,7 +154,7 @@ async def list_projects():
                         description = data.get("description", description)
                         name = data.get("name", name)
                 except Exception as e:
-                    print(f"Error reading metadata for {p.name}: {e}")
+                    log("PROJECTS", f"Error reading metadata for {p.name}: {e}")
             
             # Get modification time
             try:
@@ -176,7 +178,7 @@ async def list_projects():
 @router.get("/{project_id}")
 async def get_project(project_id: str):
     """Get project details."""
-    project_path = settings.paths.workspaces_dir / project_id
+    project_path = get_project_path(project_id)
     
     if not project_path.exists():
         raise HTTPException(status_code=404, detail="Project not found")
@@ -197,7 +199,7 @@ async def get_project(project_id: str):
                 name = metadata.get("name", name)
                 description = metadata.get("description", description)
         except Exception as e:
-            print(f"Error reading metadata for {project_id}: {e}")
+            log("PROJECTS", f"Error reading metadata for {project_id}: {e}")
     
     # Get last modification time
     try:
@@ -205,7 +207,7 @@ async def get_project(project_id: str):
         last_modified = mtime.strftime("%Y-%m-%d %H:%M")
     except (OSError, ValueError) as e:
         # FIX #10: Log the error instead of silently swallowing it
-        print(f"[PROJECTS] Could not get mtime for {project_id}: {e}")
+        log("PROJECTS", f"Could not get mtime for {project_id}: {e}")
         last_modified = "Unknown"
         
     return {
@@ -225,7 +227,7 @@ async def delete_project(project_id: str):
     """Delete a project."""
     import shutil
     
-    project_path = settings.paths.workspaces_dir / project_id
+    project_path = get_project_path(project_id)
     
     if project_path.exists():
         shutil.rmtree(project_path)

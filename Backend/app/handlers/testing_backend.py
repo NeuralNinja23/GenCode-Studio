@@ -20,7 +20,7 @@ from app.core.constants import WorkflowStep
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.core.logging import log
 from app.tools import run_tool
-from app.llm.prompts.derek import DEREK_TESTING_INSTRUCTIONS
+from app.llm.prompts.derek import DEREK_TESTING_PROMPT
 from app.persistence.validator import validate_file_output
 from app.core.constants import PROTECTED_SANDBOX_FILES
 from app.utils.entity_discovery import discover_primary_entity
@@ -39,124 +39,231 @@ MAX_FILE_LINES = 400
 
 
 # Centralized entity discovery for dynamic fallback
+from app.utils.entity_discovery import extract_entity_from_request as _extract_entity_from_request
 
 
 # REMOVED: Restrictive allowed prefixes - agents can write to any file except protected ones
 
 
-def _extract_entity_from_request(user_request: str) -> str:
+def _has_routing_failures(stdout: str, stderr: str, entity_plural: str) -> bool:
     """
-    Dynamically extract a potential entity name from the user request.
+    Detect if test failures are due to routing/integration issues (404s).
+    
+    Args:
+        stdout: Test output stdout
+        stderr: Test output stderr
+        entity_plural: Plural form of the primary entity
+    
+    Returns:
+        True if 404 routing failures detected
     """
     import re
     
-    if not user_request:
-        return None
+    combined_output = (stdout + "\n" + stderr).lower()
     
-    request_lower = user_request.lower()
-    patterns = [
-        r'(?:manage|track|create|build|store|list)\s+(\w+)',
-        r'(\w+)\s+(?:app|application|manager|tracker|system)',
-        r'(?:a|an)\s+(\w+)\s+(?:management|tracking|listing)',
-    ]
+    # Pattern 1: Direct 404 assertions on entity endpoints
+    if re.search(rf'assert 404 == 200.*?/api/{entity_plural}', combined_output):
+        return True
     
-    skip_words = {'the', 'a', 'an', 'my', 'your', 'web', 'full', 'stack', 'simple', 'basic', 'new'}
+    # Pattern 2: Generic 404 on entity routes
+    if f"/api/{entity_plural}" in combined_output and "404" in combined_output:
+        return True
     
-    def singularize(word: str) -> str:
-        """Simple singularization that handles common patterns."""
-        word = word.lower().strip()
-        if word.endswith('ies') and len(word) > 4:
-            return word[:-3] + 'y'
-        if word.endswith('sses'):
-            return word[:-2]
-        if word.endswith('ches') or word.endswith('shes'):
-            return word[:-2]
-        if word.endswith('xes') or word.endswith('zes'):
-            return word[:-2]
-        if word.endswith('s') and len(word) > 2 and not word.endswith('ss'):
-            return word[:-1]
-        return word
+    # Pattern 3: "Not Found" errors on entity endpoints
+    if f"/api/{entity_plural}" in combined_output and "not found" in combined_output:
+        return True
     
-    for pattern in patterns:
-        match = re.search(pattern, request_lower)
-        if match:
-            candidate = match.group(1)
-            if candidate not in skip_words and len(candidate) > 2:
-                return singularize(candidate)
-    
-    return None
+    return False
 
 
-async def safe_write_llm_files_for_testing(
-    manager: Any,
+async def _heal_integration_failures(
     project_id: str,
     project_path: Path,
-    files: List[Dict[str, Any]],
-    step_name: str,
-) -> int:
-    """Safely write test files with path validation."""
-    from app.lib.file_system import get_safe_workspace_path, sanitize_project_id
-    from app.orchestration.utils import broadcast_to_project
+    entity_plural: str,
+    failure_output: str,
+    attempt: int
+) -> bool:
+    """
+    Policy-driven healing for integration failures.
     
-    if not files:
-        return 0
-
-    safe_ws = get_safe_workspace_path(project_path.parent, sanitize_project_id(project_path.name))
-    safe_ws.mkdir(parents=True, exist_ok=True)
-
-    written: List[Dict[str, Any]] = []
-
-    for entry in files:
-        if not isinstance(entry, dict):
+    Uses:
+    - HealingPolicy to determine what to heal
+    - HealingPipeline to execute repairs
+    - BackendProbe to validate fixes
+    
+    No hardcoded artifact names or URLs - all driven by policy and contracts.
+    
+    Args:
+        project_id: Project ID
+        project_path: Path to workspace
+        entity_plural: Plural form of entity (from discovery)
+        failure_output: Combined stdout/stderr from test failure
+        attempt: Current attempt number
+    
+    Returns:
+        True if healing succeeded and validation passed
+    """
+    from app.orchestration.healing_pipeline import HealingPipeline
+    from app.orchestration.healing_policy import HealingPolicy
+    from app.orchestration.backend_probe import BackendProbe, ProbeMode
+    from app.orchestration.contract_parser import ContractParser
+    import asyncio
+    
+    log("HEAL", f"🧬 Policy-driven healing triggered (attempt {attempt})")
+    
+    # Initialize components
+    policy = HealingPolicy(project_path)
+    healer = HealingPipeline(project_path=project_path, llm_caller=None)
+    probe = BackendProbe.from_env(ProbeMode.DOCKER, project_id=project_id)
+    
+    # Classify error type
+    error_type = policy.classify_error(
+        step="testing_backend",
+        error_message=failure_output,
+        http_statuses=[404] if "404" in failure_output else None
+    )
+    
+    log("HEAL", f"📊 Classified as: {error_type.value}")
+    
+    # Get healing actions from policy
+    actions = policy.get_healing_actions(
+        step="testing_backend",
+        error_type=error_type,
+        entity_plural=entity_plural,
+        http_statuses=[404] if "404" in failure_output else None
+    )
+    
+    if not actions:
+        log("HEAL", "⚠️ No healing actions suggested by policy")
+        return False
+    
+    log("HEAL", f"📋 Policy suggests {len(actions)} healing action(s)")
+    
+    # Try each action in priority order
+    for action in actions:
+        # Check if we should skip this action (already tried too many times)
+        if policy.should_stop_healing(action.artifact, max_attempts=2):
+            log("HEAL", f"⏭️ Skipping {action.artifact} (already tried {2} times)")
             continue
-
-        raw_path = entry.get("path") or entry.get("file") or entry.get("name") or entry.get("filename")
-        content = entry.get("content") or entry.get("code") or entry.get("text") or ""
-
-        if not raw_path:
-            log("PERSIST", f"[TEST] Skipping file with no path: {entry.keys()}")
-            continue
-
-        rel_path = str(raw_path).replace("\\", "/").strip()
-
-        # Only block protected infrastructure files - everything else is allowed
-        if rel_path in PROTECTED_SANDBOX_FILES:
-            log("PERSIST", f"[TEST] ❌ BLOCKED write to protected sandbox file: {rel_path}")
-            continue
-            
-        # ... (rest of function unchanged, just closing the block for context)
-        # Clean filename 
-        clean_path = re.sub(r'[<>:"|?*]', "", rel_path)
-        if not clean_path:
-            log("PERSIST", f"[TEST] Invalid filename after cleaning: '{rel_path}', skipping")
-            continue
-
-        abs_path = safe_ws / Path(clean_path)
-        abs_path.parent.mkdir(parents=True, exist_ok=True)
-
+        
+        log("HEAL", f"🔧 Action: {action.artifact}")
+        log("HEAL", f"   Reason: {action.reason}")
+        log("HEAL", f"   Requires restart: {action.requires_restart}")
+        
+        # Map artifact to step name for healing pipeline
+        step_map = {
+            "backend_vertical": "backend_implementation",
+            "system_integration": "system_integration",
+            "backend_main": "system_integration",
+            "backend_db": "backend_implementation",
+        }
+        
+        step = step_map.get(action.artifact, action.artifact)
+        
+        # Attempt healing
         try:
-            abs_path.write_text(content, encoding="utf-8")
+            result = await healer.attempt_heal(
+                step=step,
+                error_log=failure_output[:1000],
+                archetype="general",
+                retries=attempt
+            )
+            
+            if not result:
+                log("HEAL", f"❌ Healing {action.artifact} failed")
+                policy.record_repair(action.artifact)
+                continue
+            
+            log("HEAL", f"✅ Healing {action.artifact} completed")
+            policy.record_repair(action.artifact)
+            
+            # Restart service if required
+            if action.requires_restart:
+                log("HEAL", "🔄 Restarting backend service...")
+                try:
+                    # CRITICAL FIX: Use the global SANDBOX singleton from implementations.py
+                    # This is the SAME instance that created the sandbox during test execution
+                    # Creating a new SandboxManager() would have an empty active_sandboxes dict
+                    from app.tools.implementations import SANDBOX as sandbox_mgr
+                    
+                    # Bug Fix #2: Sync files before Docker restart
+                    log("HEAL", "📁 Syncing files before restart...")
+                    main_py = project_path / "backend" / "app" / "main.py"
+                    if main_py.exists():
+                        main_py.touch()  # Force filesystem sync
+                    await asyncio.sleep(2)  # Wait for Windows filesystem
+                    
+                    # Stop the running container
+                    stop_result = await sandbox_mgr.stop_sandbox(project_id)
+                    if not stop_result.get("success"):
+                        log("HEAL", f"⚠️ Stop sandbox warning: {stop_result.get('error')}")
+                    
+                    await asyncio.sleep(1)  # Brief pause after stop
+                    
+                    # Restart with rebuild to pick up new code
+                    start_result = await sandbox_mgr.start_sandbox(
+                        project_id=project_id,
+                        wait_healthy=True,
+                        services=["backend"]  # Only restart backend, not frontend/db
+                    )
+                    
+                    if not start_result.get("success"):
+                        log("HEAL", f"⚠️ Service restart failed: {start_result.get('error')}")
+                    else:
+                        log("HEAL", "✅ Service restarted successfully")
+                    
+                    await asyncio.sleep(3)  # Wait for service to fully initialize
+                except Exception as e:
+                    log("HEAL", f"⚠️ Restart failed: {e}")
+            
+            # Validate using contract-driven probe
+            log("HEAL", "🔍 Validating fix via contract routes...")
+            
+            # Check health first
+            if not await probe.is_healthy(timeout=5.0):
+                log("HEAL", "❌ Health check failed after healing")
+                continue
+            
+            # Check primary entity routes
+            parser = ContractParser(project_path)
+            entity_routes = parser.get_primary_entity_routes()
+            
+            if not entity_routes:
+                log("HEAL", "⚠️ No entity routes in contract - assuming success")
+                return True
+            
+            all_passed = True
+            for route in entity_routes:
+                passed = await probe.check_route(
+                    method=route.method,
+                    path=route.path,
+                    expected_status=route.expected_status,
+                    timeout=5.0
+                )
+                
+                if not passed:
+                    log("HEAL", f"❌ Route still broken: {route.method} {route.path}")
+                    all_passed = False
+                    break
+            
+            if all_passed:
+                log("HEAL", "✅ All validation checks passed!")
+                return True
+            else:
+                log("HEAL", "❌ Validation failed - trying next action")
+                continue
+                
         except Exception as e:
-            log("PERSIST", f"[TEST] Failed to write {abs_path}: {e}")
+            log("HEAL", f"❌ Healing action failed: {e}")
+            policy.record_repair(action.artifact)
             continue
+    
+    log("HEAL", "🛑 All healing actions exhausted")
+    return False
 
-        size_kb = round(len(content.encode("utf-8")) / 1024, 2)
-        log("WRITE", f"[TEST] {abs_path} ({size_kb} KB)")
-        written.append({"path": clean_path, "size_kb": size_kb})
 
-    if written:
-        await broadcast_to_project(
-            manager,
-            project_id,
-            {
-                "type": "WORKSPACE_UPDATED",
-                "projectId": project_id,
-                "filesWritten": written,
-                "step": step_name,
-            },
-        )
-
-    return len(written)
+# Centralized file writing utility
+from app.lib.file_writer import safe_write_llm_files
 
 
 async def _generate_tests_from_template(
@@ -244,6 +351,16 @@ REQUIREMENTS
 5. Use Faker for test data when appropriate
 6. ALL tests must be async (async def test_...)
 
+🚨 CRITICAL - TEST DATA FIELDS:
+- You MUST read the provided `models.py` content below.
+- Use EXACTLY the fields defined in the model (e.g. if model has 'content', use 'content'; if 'description', use 'description').
+- Do not invent fields. Matching the model schema is MANDATORY.
+- Example correct test data (adapt to actual model):
+  {{
+      "title": fake.sentence(nb_words=4),
+      "content": fake.paragraph(nb_sentences=2),
+  }}
+
 ═══════════════════════════════════════════════════════
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════
@@ -286,7 +403,7 @@ Generate COMPLETE, WORKING test file now!
         
         if files:
             # Write the test file
-            written = await safe_write_llm_files_for_testing(
+            written = await safe_write_llm_files(
                 manager=manager,
                 project_id=project_id,
                 project_path=project_path,
@@ -352,12 +469,12 @@ async def test_list_{entity_plural}(client):
 
 @pytest.mark.anyio
 async def test_create_{entity}(client):
-    """Test creating a {entity}."""
+    \"\"\"Test creating a {entity}.\"\"\"
     {entity}_data = {{
-        "title": fake.sentence(),
-        "content": fake.paragraph(),
+        \"title\": fake.sentence(nb_words=4),
+        \"content\": fake.paragraph(nb_sentences=2),
     }}
-    response = await client.post("/api/{entity_plural}", json={entity}_data)
+    response = await client.post(\"/api/{entity_plural}\", json={entity}_data)
     assert response.status_code in [200, 201]
 
 
@@ -419,6 +536,9 @@ async def step_testing_backend(
     max_attempts = 3
     last_stdout: str = ""
     last_stderr: str = ""
+    
+    # V3: Cumulative token tracking across all LLM calls in this step
+    step_token_usage = {"input": 0, "output": 0}
 
     # ═══════════════════════════════════════════════════════
     # CRITICAL: Run tests FIRST before calling Derek
@@ -584,6 +704,7 @@ Focus on fixing the {primary_entity} router and related models.
                         turn=current_turn + 1,
                         status="ok",
                         data={"tier": "sandbox", "attempt": 0},
+                        token_usage=step_token_usage,  # V3
                     )
             except Exception as e:
                 last_stderr = str(e)
@@ -734,6 +855,12 @@ Focus on fixing the {primary_entity} router and related models.
                 max_retries=0,  # No retries - single attempt only to avoid loop explosion
             )
             
+            # V3: Accumulate token usage
+            if marcus_result.get("token_usage"):
+                usage = marcus_result.get("token_usage")
+                step_token_usage["input"] += usage.get("input", 0)
+                step_token_usage["output"] += usage.get("output", 0)
+            
             # Check if LLM is unavailable due to rate limiting
             if marcus_result.get("skipped") and marcus_result.get("reason") == "rate_limit":
                 log("TESTING", "⚠️ LLM unavailable (rate limited), stopping backend testing")
@@ -809,7 +936,7 @@ You MUST follow Marcus's instructions above. He has analyzed the failure against
 
         # NOTE: Using string concatenation to avoid "Invalid format specifier" when content contains { }
         instructions = (
-            DEREK_TESTING_INSTRUCTIONS + "\n"
+            DEREK_TESTING_PROMPT + "\n"
             + entity_context + "\n\n"
             + marcus_guidance + "\n\n"
             "EXISTING TEST FILE (backend/tests/test_api.py):\n"
@@ -838,6 +965,12 @@ You MUST follow Marcus's instructions above. He has analyzed the failure against
                 contracts="", # Contracts not critical for syntax fixes
                 max_retries=0,  # No retries - single attempt only to avoid loop explosion
             )
+            
+            # V3: Accumulate token usage
+            if result.get("token_usage"):
+                usage = result.get("token_usage")
+                step_token_usage["input"] += usage.get("input", 0)
+                step_token_usage["output"] += usage.get("output", 0)
             
             # Check if LLM is unavailable due to rate limiting
             if result.get("skipped") and result.get("reason") == "rate_limit":
@@ -883,7 +1016,7 @@ You MUST follow Marcus's instructions above. He has analyzed the failure against
                     max_files=MAX_FILES_PER_STEP,
                 )
 
-                written_count = await safe_write_llm_files_for_testing(
+                written_count = await safe_write_llm_files(
                     manager=manager,
                     project_id=project_id,
                     project_path=project_path,
@@ -950,13 +1083,59 @@ You MUST follow Marcus's instructions above. He has analyzed the failure against
                 data={
                     "tier": "sandbox",
                     "attempt": attempt,
-                }
+                },
+                token_usage=step_token_usage,  # V3
             )
 
         log(
             "TESTING",
             f"❌ Backend tests FAILED in sandbox on attempt {attempt}",
         )
+
+        #═══════════════════════════════════════════════════════════
+        # 🧬 ARBORMIND HEALING LOOP: Detect 404s and heal integration
+        #═══════════════════════════════════════════════════════════
+        if _has_routing_failures(last_stdout, last_stderr, primary_entity_plural):
+            log("TESTING", "🔧 Detected 404 routing failures - triggering integration healing")
+            
+            healed = await _heal_integration_failures(
+                project_id=project_id,
+                project_path=project_path,
+                entity_plural=primary_entity_plural,
+                failure_output=last_stdout + "\n" + last_stderr,
+                attempt=attempt
+            )
+            
+            if healed:
+                log("TESTING", "✅ Integration healed - re-running tests")
+                # Re-run tests after healing
+                try:
+                    sandbox_result = await run_tool(
+                        name="sandboxexec",
+                        args={
+                            "project_id": project_id,
+                            "service": "backend",
+                            "command": "pytest -q",
+                            "start_services": ["backend"],
+                            "timeout": 300,
+                        },
+                    )
+                    
+                    if sandbox_result.get("success"):
+                        log("TESTING", "✅ Tests PASSED after integration healing!")
+                        return StepResult(
+                            nextstep=WorkflowStep.FRONTEND_INTEGRATION,
+                            turn=current_turn + 1,
+                            status="ok",
+                            data={"tier": "sandbox", "attempt": attempt, "healed": True},
+                            token_usage=step_token_usage,  # V3
+                        )
+                    else:
+                        log("TESTING", "⚠️ Tests still failing after healing - will retry Derek fixes")
+                except Exception as e:
+                    log("TESTING", f"Re-test after healing failed: {e}")
+            else:
+                log("TESTING", "⚠️ Integration healing did not resolve issue")
 
         if attempt < max_attempts:
             log(

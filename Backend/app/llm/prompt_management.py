@@ -299,10 +299,13 @@ STEP_CONTEXT_RULES = {
 }
 
 
-def get_relevant_files(step_name: str, all_files: List[Dict[str, str]]) -> List[Dict[str, str]]:
+def filter_files_for_step(step_name: str, all_files: List[Dict[str, str]]) -> List[Dict[str, str]]:
     """
     Filter files to only those relevant for the current step.
     PHASE 2: Context Optimization
+    
+    NOTE: This is different from orchestration.context.get_relevant_files() which
+    reads files from disk. This function filters an existing list.
     """
     rules = STEP_CONTEXT_RULES.get(step_name, {"files": []})
     patterns = rules.get("files", [])
@@ -436,7 +439,7 @@ async def get_adaptive_file_context(
         config = result.get("value", FILE_CONTEXT_MODES[1]["value"])  # Default: focused
         
         # Apply step-based filtering first
-        relevant = get_relevant_files(step_name, all_files)
+        relevant = filter_files_for_step(step_name, all_files)
         
         # If no step rules matched, use all files
         if not relevant:
@@ -475,7 +478,7 @@ async def get_adaptive_file_context(
         
     except Exception as e:
         # Fallback to step-based selection
-        relevant = get_relevant_files(step_name, all_files)
+        relevant = filter_files_for_step(step_name, all_files)
         return {
             "files": relevant[:10] if relevant else all_files[:10],
             "mode": "fallback",

@@ -24,75 +24,8 @@ from app.persistence.validator import validate_file_output
 MAX_FILES_PER_STEP = 20
 
 
-
-
-
-
-async def safe_write_llm_files_for_testing(
-    manager: Any,
-    project_id: str,
-    project_path: Path,
-    files: List[Dict[str, Any]],
-    step_name: str,
-) -> int:
-    """Safely write files for refine step."""
-    import re
-    from app.lib.file_system import get_safe_workspace_path, sanitize_project_id
-    from app.orchestration.utils import broadcast_to_project
-
-    if not files:
-        return 0
-
-    safe_ws = get_safe_workspace_path(project_path.parent, sanitize_project_id(project_path.name))
-    safe_ws.mkdir(parents=True, exist_ok=True)
-
-    written: List[Dict[str, Any]] = []
-
-    for entry in files:
-        if not isinstance(entry, dict):
-            continue
-
-        raw_path = entry.get("path") or entry.get("file") or entry.get("name") or entry.get("filename")
-        content = entry.get("content") or entry.get("code") or entry.get("text") or ""
-
-        if not raw_path:
-            log("PERSIST", f"[REFINE] Skipping file with no path: {entry.keys()}")
-            continue
-
-        rel_path = str(raw_path).replace("\\", "/").strip()
-
-        # Clean filename
-        clean_path = re.sub(r'[<>:"|?*]', "", rel_path)
-        if not clean_path:
-            log("PERSIST", f"[REFINE] Invalid filename after cleaning: '{rel_path}', skipping")
-            continue
-
-        abs_path = safe_ws / Path(clean_path)
-        abs_path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            abs_path.write_text(content, encoding="utf-8")
-        except Exception as e:
-            log("PERSIST", f"[REFINE] Failed to write {abs_path}: {e}")
-            continue
-
-        size_kb = round(len(content.encode("utf-8")) / 1024, 2)
-        log("WRITE", f"[REFINE] {abs_path} ({size_kb} KB)")
-        written.append({"path": clean_path, "size_kb": size_kb})
-
-    if written:
-        await broadcast_to_project(
-            manager,
-            project_id,
-            {
-                "type": "WORKSPACE_UPDATED",
-                "projectId": project_id,
-                "filesWritten": written,
-                "step": step_name,
-            },
-        )
-
-    return len(written)
+# Centralized file writing utility
+from app.lib.file_writer import safe_write_llm_files
 
 
 async def step_refine(
@@ -277,7 +210,7 @@ You MUST:
         # Handle full file rewrites
         if "files" in parsed and parsed["files"]:
             valid = validate_file_output(parsed, WorkflowStep.REFINE)
-            changes_made = await safe_write_llm_files_for_testing(
+            changes_made = await safe_write_llm_files(
                 manager, project_id, project_path, valid["files"], WorkflowStep.REFINE
             )
         

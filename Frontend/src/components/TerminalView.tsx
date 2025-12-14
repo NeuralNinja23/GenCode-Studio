@@ -79,12 +79,15 @@ const TerminalView: React.FC<TerminalViewProps> = ({ logs }) => {
         }
     }, [logs]);
 
-    // FILTER: Only show AGENT:* logs (the actual thinking)
-    const agentLogs = logs.filter((log) =>
-        log.scope.startsWith("AGENT:") &&
-        !log.message.includes("Processing request") &&
-        !log.message.includes("thinking...")
-    );
+    // FILTER: Show agent logs with either "AGENT:*" prefix or direct agent names
+    const validScopes = ["MARCUS", "DEREK", "VICTORIA", "LUNA"];
+    const agentLogs = logs.filter((log) => {
+        const isAgentPrefix = log.scope.startsWith("AGENT:");
+        const isDirectAgent = validScopes.includes(log.scope.toUpperCase());
+        return (isAgentPrefix || isDirectAgent) &&
+            !log.message.includes("Processing request") &&
+            !log.message.includes("thinking...");
+    });
 
     return (
         <div className="flex flex-col h-full bg-zinc-950 overflow-hidden">
@@ -110,7 +113,10 @@ const TerminalView: React.FC<TerminalViewProps> = ({ logs }) => {
                 )}
 
                 {agentLogs.map((log, i) => {
-                    const agentName = log.scope.replace("AGENT:", "");
+                    // Handle both "AGENT:Derek" and "MARCUS" formats
+                    const agentName = log.scope.startsWith("AGENT:")
+                        ? log.scope.replace("AGENT:", "")
+                        : log.scope.charAt(0) + log.scope.slice(1).toLowerCase(); // "MARCUS" -> "Marcus"
                     // Only animate the very last log to prevent re-animating old ones
                     const isLatest = i === agentLogs.length - 1;
 

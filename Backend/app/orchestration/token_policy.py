@@ -41,9 +41,10 @@ STEP_TOKEN_POLICIES = {
     # MEDIUM COMPLEXITY STEPS (Architecture, Frontend)
     # ───────────────────────────────────────────────────
     # Issue #6 Fix: Increased tokens to prevent Victoria output truncation
+    # Issue #8 Fix: Further increased since architecture often contains detailed UI tokens JSON
     "architecture": {
-        "max_tokens": 16000,     # System design + UI design system (increased from 12000)
-        "retry_tokens": 20000,   # More detailed architecture (increased from 16000)
+        "max_tokens": 20000,     # System design + UI design system (increased from 16000)
+        "retry_tokens": 24000,   # More detailed architecture (increased from 20000)
         "description": "Architecture planning and UI design system"
     },
     

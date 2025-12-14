@@ -213,6 +213,43 @@ DEFAULT_PACKAGE_JSON = """{
     "tailwindcss": "^4.0.0",
     "tailwindcss-animate": "^1.0.7"
   }
-}
+}\r
 """
+
+# ============================================================================
+# MULTI-ENTITY GENERATION (Phase 1, 6)
+# ============================================================================
+
+# Maximum entities per project (cost control)
+MAX_ENTITIES = 5
+MAX_ENTITIES_OVERRIDE = 8  # For explicit complex projects (CRM, marketplace)
+
+# Token budgets per step (multi-entity aware)
+MULTI_ENTITY_BUDGETS = {
+    "analysis": 5000,
+    "entity_planning": 6000,
+    "architecture": 20000,
+    "contracts": 10000,
+    "backend_models": 10000,  # All models at once
+    "backend_relationships": 6000,
+    "backend_router_per_entity": 8000,  # Per entity (vs 20K for all)
+    "frontend_components": 8000,
+    "frontend_page_per_entity": 5000,  # Per entity (vs 12K for all)
+    "frontend_navigation": 3000,
+}
+
+# Entity generation priority (lower = generated first)
+ENTITY_GENERATION_PRIORITY = {
+    "User": 1,
+    "Organization": 2,
+    "Team": 3,
+    "Project": 4,
+    "Task": 5,
+    "Note": 6,
+    "Label": 7,
+    "Tag": 7,
+    "Attachment": 8,
+    "Comment": 9,
+    "Activity": 10,
+}
 

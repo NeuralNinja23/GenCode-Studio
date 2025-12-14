@@ -18,17 +18,9 @@ class StructuralCompiler:
     Acts like a mini-compiler to ensure the generated code is structurally valid.
     - Python AST validation
     - JS structural validation (regex-level + bracket analysis)
-    - Router CRUD completeness
+    - Router CRUD completeness (flexible pattern matching)
     - API client export completeness
     """
-    
-    REQUIRED_ROUTER_FUNCTIONS = [
-        "create",
-        "get_all",
-        "get_one",
-        "update",
-        "delete",
-    ]
 
     def __init__(self):
         pass
@@ -67,26 +59,75 @@ class StructuralCompiler:
     # ---------------------------------------------------------
     # Router completeness check
     # ---------------------------------------------------------
+    
+    # FLEXIBLE CRUD patterns - accept common naming conventions
+    # Derek might use list_items, get_item, etc. instead of get_all, get_one
+    CRUD_PATTERNS = {
+        "create": [
+            r"async\s+def\s+create\b",           # create()
+            r"async\s+def\s+create_\w+",          # create_item()
+            r"async\s+def\s+add_?\w*",            # add(), add_item()
+            r"async\s+def\s+new_?\w*",            # new(), new_item()
+            r"@router\.post",                     # Has POST endpoint (fallback)
+        ],
+        "read_all": [
+            r"async\s+def\s+get_all\b",          # get_all()
+            r"async\s+def\s+get_all_\w+",         # get_all_items()
+            r"async\s+def\s+list_?\w*",           # list(), list_items()
+            r"async\s+def\s+get_\w+s\b",          # get_items() (plural)
+            r"@router\.get\s*\(\s*[\"']/[\"']",   # GET "/" endpoint (fallback)
+        ],
+        "read_one": [
+            r"async\s+def\s+get_one\b",          # get_one()
+            r"async\s+def\s+get_one_\w+",         # get_one_item()
+            r"async\s+def\s+get_\w+\b(?!s\b)",    # get_item() but NOT get_items()
+            r"async\s+def\s+get_by_id",           # get_by_id()
+            r"async\s+def\s+read_?\w*",           # read(), read_item()
+            r"@router\.get\s*\(\s*[\"']/\{",      # GET "/{id}" endpoint (fallback)
+        ],
+        "update": [
+            r"async\s+def\s+update\b",           # update()
+            r"async\s+def\s+update_\w+",          # update_item()
+            r"async\s+def\s+edit_?\w*",           # edit(), edit_item()
+            r"async\s+def\s+modify_?\w*",         # modify(), modify_item()
+            r"@router\.put",                      # Has PUT endpoint (fallback)
+        ],
+        "delete": [
+            r"async\s+def\s+delete\b",           # delete()
+            r"async\s+def\s+delete_\w+",          # delete_item()
+            r"async\s+def\s+remove_?\w*",         # remove(), remove_item()
+            r"@router\.delete",                   # Has DELETE endpoint (fallback)
+        ],
+    }
+    
     def router_is_complete(self, code: str) -> bool:
-        """Check if router has all required CRUD functions."""
-        for fn in self.REQUIRED_ROUTER_FUNCTIONS:
-            # Match async def create, async def get_all, etc.
-            pattern = rf"async\s+def\s+{fn}\b"
-            if not re.search(pattern, code):
-                # Also check for alternate naming (e.g., create_note, get_notes)
-                alt_pattern = rf"async\s+def\s+{fn}_?\w*\b"
-                if not re.search(alt_pattern, code):
-                    return False
+        """
+        Check if router has all required CRUD operations.
+        
+        FLEXIBLE: Accepts common naming patterns, not just exact names.
+        Derek might use list_items, get_item, etc.
+        """
+        for operation, patterns in self.CRUD_PATTERNS.items():
+            found = False
+            for pattern in patterns:
+                if re.search(pattern, code):
+                    found = True
+                    break
+            if not found:
+                return False
         return True
 
     def get_missing_router_functions(self, code: str) -> List[str]:
-        """Get list of missing CRUD functions."""
+        """Get list of missing CRUD operations."""
         missing = []
-        for fn in self.REQUIRED_ROUTER_FUNCTIONS:
-            pattern = rf"async\s+def\s+{fn}\b"
-            alt_pattern = rf"async\s+def\s+{fn}_?\w*\b"
-            if not re.search(pattern, code) and not re.search(alt_pattern, code):
-                missing.append(fn)
+        for operation, patterns in self.CRUD_PATTERNS.items():
+            found = False
+            for pattern in patterns:
+                if re.search(pattern, code):
+                    found = True
+                    break
+            if not found:
+                missing.append(operation)
         return missing
 
     # ---------------------------------------------------------
@@ -180,8 +221,8 @@ class StructuralCompiler:
     # ---------------------------------------------------------
     # Combined validation
     # ---------------------------------------------------------
-    def validate_file(self, filename: str, content: str) -> bool:
-        """Validate file based on extension."""
+    def validate_file_structure(self, filename: str, content: str) -> bool:
+        """Validate file structure based on extension (brackets, basic syntax)."""
         if filename.endswith('.py'):
             return self.validate_python(content)
         elif filename.endswith(('.js', '.jsx', '.ts', '.tsx')):

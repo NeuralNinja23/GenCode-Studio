@@ -26,21 +26,24 @@ class FileTreeEntry(BaseModel):
     children: Optional[List["FileTreeEntry"]] = None
 
 # ================================================================
-# ✅ NEW: PATH SAFETY FUNCTIONS
+# ✅ PATH SAFETY FUNCTIONS
 # ================================================================
 
 def sanitize_project_id(project_id: str) -> str:
     """
-    ✅ NEW: Normalize project IDs for safe filesystem use.
+    Normalize project IDs for safe filesystem use.
     Replaces any character not in [a-zA-Z0-9._-] with underscore.
     """
     return re.sub(r'[^a-zA-Z0-9._-]', '_', project_id)
 
+
 def get_safe_workspace_path(base_path: Path, project_id: str) -> Path:
     """
-    ✅ UPDATED: Build a safe, absolute project workspace path under base_path.
-    Now uses sanitize_project_id for consistency.
-    Ensures the directory exists.
+    Build a safe, absolute project workspace path under base_path.
+    
+    NOTE: For new code, prefer using app.utils.path_utils.get_project_path()
+    which uses centralized settings. This function is maintained for
+    backwards compatibility with existing code that passes explicit base_path.
     """
     safe_id = sanitize_project_id(project_id)
     
@@ -85,6 +88,22 @@ async def write_file_content(file_path: Path, content: str) -> None:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
         await f.write(content)
+
+
+def write_file_content_sync(file_path: Path, content: str, encoding: str = "utf-8") -> None:
+    """
+    Write text content to a file synchronously, ensuring parent directory exists.
+    
+    This is the SINGLE SOURCE OF TRUTH for synchronous file writing.
+    Use this instead of direct path.write_text() calls for consistency.
+    
+    Args:
+        file_path: Path to the file to write
+        content: Text content to write
+        encoding: File encoding (default: utf-8)
+    """
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(content, encoding=encoding)
 
 async def save_generated_files(workspace_base: Path, project_id: str, files: List[GeneratedFile]) -> List[str]:
     """

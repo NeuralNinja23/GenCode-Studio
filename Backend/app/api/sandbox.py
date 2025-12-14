@@ -52,10 +52,10 @@ async def create_sandbox(project_id: str):
     """Create/initialize sandbox for a project (idempotent)."""
     try:
         from app.sandbox import sandbox as manager
-        from app.core.config import settings
+        from app.utils.path_utils import get_project_path
         
-        # Get workspace path using proper settings
-        project_path = settings.paths.workspaces_dir / project_id
+        # Get workspace path using centralized utility
+        project_path = get_project_path(project_id)
         
         if not project_path.exists():
             raise HTTPException(status_code=404, detail=f"Project {project_id} not found at {project_path}")

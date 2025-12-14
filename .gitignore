@@ -48,7 +48,7 @@ htmlcov/
 .tox/
 
 # GenCode Studio specific
-workspaces/
+
 *.fast_checkpoints/
 containers.json
 .agent
@@ -68,4 +68,4 @@ logs/
 Emergent Prompt.txt
 
 # GitHub pretraining data (contains API keys/responses)
-GitHub/
+GitHub

@@ -215,9 +215,9 @@ const WorkspacePage: React.FC = () => {
         switch (data.type) {
           case "WORKFLOW_UPDATE":
             setIsWorkflowRunning(true);
-            setWorkflowStage(data.turn ?? 0);
+            setWorkflowStage(data.currentTurn ?? data.turn ?? 0);
             setCurrentStepName(data.step || "");
-            setWorkflowTotalStages(data.totalTurns ?? 9);
+            setWorkflowTotalStages(data.maxTurns ?? data.totalTurns ?? 12);
             setGenerationStatus(data.status || "Processing");
 
             // Refetch file tree when backend sends updates implying files changed

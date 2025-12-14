@@ -14,9 +14,10 @@ from app.handlers.base import broadcast_status
 from app.core.logging import log
 from app.testing.self_healing import SelfHealingTests, create_matching_smoke_test
 from app.tools import run_tool
-from app.llm.prompts.luna import LUNA_TESTING_INSTRUCTIONS
+from app.llm.prompts.luna import LUNA_TESTING_PROMPT
 from app.persistence.validator import validate_file_output
 from app.core.constants import PROTECTED_SANDBOX_FILES
+from app.handlers.archetype_guidance import get_e2e_testing_guidance
 
 
 # Constants from legacy
@@ -34,76 +35,8 @@ MAX_FILE_LINES = 400
 # REMOVED: Restrictive allowed prefixes - agents can write to any file except protected ones
 
 
-
-async def safe_write_llm_files_for_testing(
-    manager: Any,
-    project_id: str,
-    project_path: Path,
-    files: List[Dict[str, Any]],
-    step_name: str,
-) -> int:
-    """Safely write test files with path validation."""
-    from app.lib.file_system import get_safe_workspace_path, sanitize_project_id
-    from app.orchestration.utils import broadcast_to_project
-
-    if not files:
-        return 0
-
-    safe_ws = get_safe_workspace_path(project_path.parent, sanitize_project_id(project_path.name))
-    safe_ws.mkdir(parents=True, exist_ok=True)
-
-    written: List[Dict[str, Any]] = []
-
-    for entry in files:
-        if not isinstance(entry, dict):
-            continue
-
-        raw_path = entry.get("path") or entry.get("file") or entry.get("name") or entry.get("filename")
-        content = entry.get("content") or entry.get("code") or entry.get("text") or ""
-
-        if not raw_path:
-            log("PERSIST", f"[TEST] Skipping file with no path: {entry.keys()}")
-            continue
-
-        rel_path = str(raw_path).replace("\\", "/").strip()
-
-        # Only block protected infrastructure files - everything else is allowed
-        if rel_path in PROTECTED_SANDBOX_FILES:
-            log("PERSIST", f"[TEST] ❌ BLOCKED write to protected sandbox file: {rel_path}")
-            continue
-
-        # Clean filename
-        clean_path = re.sub(r'[<>:"|?*]', "", rel_path)
-        if not clean_path:
-            log("PERSIST", f"[TEST] Invalid filename after cleaning: '{rel_path}', skipping")
-            continue
-
-        abs_path = safe_ws / Path(clean_path)
-        abs_path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            abs_path.write_text(content, encoding="utf-8")
-        except Exception as e:
-            log("PERSIST", f"[TEST] Failed to write {abs_path}: {e}")
-            continue
-
-        size_kb = round(len(content.encode("utf-8")) / 1024, 2)
-        log("WRITE", f"[TEST] {abs_path} ({size_kb} KB)")
-        written.append({"path": clean_path, "size_kb": size_kb})
-
-    if written:
-        await broadcast_to_project(
-            manager,
-            project_id,
-            {
-                "type": "WORKSPACE_UPDATED",
-                "projectId": project_id,
-                "filesWritten": written,
-                "step": step_name,
-            },
-        )
-
-    return len(written)
+# Centralized file writing utility
+from app.lib.file_writer import safe_write_llm_files
 
 
 def ensure_str(val) -> str:
@@ -135,6 +68,7 @@ async def _generate_frontend_tests_from_template(
     project-specific and match the implemented frontend components.
     """
     from app.handlers.base import broadcast_agent_log
+    from app.orchestration.state import WorkflowStateManager
     
     tests_dir = project_path / "frontend" / "tests"
     template_file = tests_dir / "e2e.spec.js.template"
@@ -143,7 +77,18 @@ async def _generate_frontend_tests_from_template(
     log("TESTING", f"📝 Luna generating frontend E2E tests from template for entity: {primary_entity}")
     
     entity_plural = primary_entity + "s" if not primary_entity.endswith("s") else primary_entity
-
+    
+    # ═══════════════════════════════════════════════════════
+    # ARCHETYPE-AWARE E2E TEST GENERATION
+    # ═══════════════════════════════════════════════════════
+    intent = await WorkflowStateManager.get_intent(project_id) or {}
+    archetype_routing = intent.get("archetypeRouting", {})
+    detected_archetype = archetype_routing.get("top", "general") if isinstance(archetype_routing, dict) else "general"
+    
+    # Get archetype-specific E2E testing guidance
+    e2e_archetype_guidance = get_e2e_testing_guidance(detected_archetype, primary_entity)
+    
+    log("TESTING", f"🧪 Generating E2E tests for archetype: {detected_archetype}")
     
     # Read the template if it exists
     template_content = ""
@@ -164,6 +109,9 @@ PROJECT CONTEXT
 User Request: {user_request[:300]}
 Primary Entity: {primary_entity.capitalize()}
 Entity Plural: {entity_plural}
+Archetype: {detected_archetype}
+
+{e2e_archetype_guidance}
 
 ═══════════════════════════════════════════════════════
 TEST TEMPLATE (CUSTOMIZE THIS FOR THE PROJECT)
@@ -235,7 +183,7 @@ Generate COMPLETE, WORKING test file now!
         files = parsed.get("files", [])
         
         if files:
-            written = await safe_write_llm_files_for_testing(
+            written = await safe_write_llm_files(
                 manager=manager,
                 project_id=project_id,
                 project_path=project_path,
@@ -350,6 +298,9 @@ async def step_testing_frontend(
     max_attempts = 3
     last_stdout: str = ""
     last_stderr: str = ""
+    
+    # V3: Cumulative token tracking across all LLM calls in this step
+    step_token_usage = {"input": 0, "output": 0}
 
     # Directory to persist test files between attempts for debugging
     test_history_dir = project_path / ".test_history"
@@ -444,7 +395,8 @@ async def step_testing_frontend(
                 "missing_files": missing_critical,
                 "reason": "backend_implementation_failed",
                 "suggestion": "Check if Derek produced valid router files in the Backend Implementation step",
-            }
+            },
+            token_usage=step_token_usage,  # V3
         )
 
 
@@ -610,7 +562,7 @@ async def step_testing_frontend(
             # Standard Agent Logic for Attempts 1 & 2
             if attempt == 1:
                 instructions = (
-                    f"{LUNA_TESTING_INSTRUCTIONS}\n"
+                    f"{LUNA_TESTING_PROMPT}\n"
                     f"{context_snippet}\n"
                     "ENVIRONMENT:\n"
                     "- Frontend dev server is reachable at http://localhost:5174/.\n"
@@ -637,7 +589,7 @@ async def step_testing_frontend(
 
                 # NOTE: Using string concat to avoid format specifier errors with failure_snippet
                 instructions = (
-                    LUNA_TESTING_INSTRUCTIONS + "\n"
+                    LUNA_TESTING_PROMPT + "\n"
                     + context_snippet + "\n"
                     "ENVIRONMENT:\n"
                     "- Frontend dev server is reachable at http://localhost:5174/.\n"
@@ -668,6 +620,12 @@ async def step_testing_frontend(
                     contracts="", 
                     max_retries=0,  # No retries - single attempt only to avoid loop explosion
                 )
+                
+                # V3: Accumulate token usage
+                if result.get("token_usage"):
+                    usage = result.get("token_usage")
+                    step_token_usage["input"] += usage.get("input", 0)
+                    step_token_usage["output"] += usage.get("output", 0)
 
                 # Check if LLM is unavailable due to rate limiting
                 if result.get("skipped") and result.get("reason") == "rate_limit":
@@ -713,7 +671,7 @@ async def step_testing_frontend(
                         max_files=MAX_FILES_PER_STEP,
                     )
 
-                    await safe_write_llm_files_for_testing(
+                    await safe_write_llm_files(
                         manager=manager,
                         project_id=project_id,
                         project_path=project_path,
@@ -933,7 +891,8 @@ async def step_testing_frontend(
                 data={
                     "tier": "sandbox",
                     "attempt": attempt,
-                }
+                },
+                token_usage=step_token_usage,  # V3
             )
 
         if attempt < max_attempts:

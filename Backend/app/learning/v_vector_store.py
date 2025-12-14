@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from app.core.logging import log
+from app.core.config import settings
 
 
 @dataclass
@@ -168,7 +169,8 @@ class VVectorStore:
                 ))
                 conn.commit()
                 
-            log("V_VECTOR", f"📊 Recorded decision: {context_type}/{selected_option}")
+            if settings.debug:
+                log("V_VECTOR", f"📊 Recorded decision: {context_type}/{selected_option}")
             return decision_id
             
         except Exception as e:
@@ -203,7 +205,8 @@ class VVectorStore:
                 """, (outcome, outcome_score, outcome_details, decision_id))
                 conn.commit()
                 
-            log("V_VECTOR", f"📈 Recorded outcome: {outcome} ({outcome_score:.1f}/10)")
+            if settings.debug:
+                log("V_VECTOR", f"📈 Recorded outcome: {outcome} ({outcome_score:.1f}/10)")
             
             # Trigger learning update
             self._update_evolved_vector(decision_id)
@@ -301,7 +304,8 @@ class VVectorStore:
                     ))
                 
                 conn.commit()
-                log("V_VECTOR", f"🧬 Evolved V-vector: {context_key}")
+                if settings.debug:
+                    log("V_VECTOR", f"🧬 Evolved V-vector: {context_key}")
                 
         except Exception as e:
             log("V_VECTOR", f"⚠️ Failed to update evolved vector: {e}")
@@ -337,7 +341,8 @@ class VVectorStore:
                 
                 if row:
                     evolved = json.loads(row["evolved_value"])
-                    log("V_VECTOR", f"🎯 Using evolved vector (conf={row['confidence']:.2f}): {context_key}")
+                    if settings.debug:
+                        log("V_VECTOR", f"🎯 Using evolved vector (conf={row['confidence']:.2f}): {context_key}")
                     return {
                         "value": evolved,
                         "confidence": row["confidence"],
@@ -413,7 +418,7 @@ class VVectorStore:
             adjusted.append(opt_copy)
         
         evolved_count = sum(1 for o in adjusted if o.get("_evolved"))
-        if evolved_count > 0:
+        if evolved_count > 0 and settings.debug:
             log("V_VECTOR", f"🧬 Applied evolution to {evolved_count}/{len(options)} options")
         
         return adjusted
@@ -586,7 +591,8 @@ class VVectorStore:
                     ))
                 
                 conn.commit()
-                log("V_VECTOR", f"🌱 Seeded V-vector: {context_key} (n={sample_count}, source={source})")
+                if settings.debug:
+                    log("V_VECTOR", f"🌱 Seeded V-vector: {context_key} (n={sample_count}, source={source})")
                 return True
                 
         except Exception as e:
@@ -661,9 +667,8 @@ def get_v_vector_store() -> VVectorStore:
     """Get the global V-vector store instance."""
     global _v_vector_store
     if _v_vector_store is None:
-        root_dir = Path(__file__).parent.parent.parent
-        storage_dir = root_dir / "data"
-        _v_vector_store = VVectorStore(storage_dir)
+        from app.core.arbormind_paths import ARBORMIND_STORAGE_DIR
+        _v_vector_store = VVectorStore(ARBORMIND_STORAGE_DIR)
     return _v_vector_store
 
 

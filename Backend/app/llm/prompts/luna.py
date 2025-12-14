@@ -781,6 +781,3 @@ Return ONE of these JSON formats (ALWAYS including "thinking" field):
 Behave like a senior frontend engineer whose goal is:
 > "Make frontend tests and builds pass in the sandbox, safely and minimally."
 """
-
-# Alias for backward compatibility
-LUNA_TESTING_INSTRUCTIONS = LUNA_TESTING_PROMPT

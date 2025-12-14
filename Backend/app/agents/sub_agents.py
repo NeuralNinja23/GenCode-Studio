@@ -23,7 +23,7 @@ from app.core.logging import log
 from app.core.constants import TEST_FILE_MIN_TOKENS
 from app.llm.prompts.derek import DEREK_PROMPT
 from app.llm.prompts.luna import LUNA_PROMPT
-from app.llm import call_llm  # ✅ Use unified LLM interface
+from app.llm import call_llm, call_llm_with_usage  # ✅ Use unified LLM interface with V3 usage tracking
 
 # NOTE: Cost tracking now handled by BudgetManager in orchestrator
 
@@ -49,7 +49,8 @@ async def _broadcast_agent_thinking(project_id: str, agent_name: str, status: st
                 }
             )
     except Exception as e:
-        print(f"[_broadcast_agent_thinking] Failed to broadcast: {e}")
+
+        log("BROADCAST", f"Failed to broadcast: {e}")
 
 
 async def _llm_generate_tests(
@@ -332,7 +333,8 @@ async def run_sub_agent(
                 )
                 
             except Exception as e:
-                print(f"[LEARNING] Failed to record test feedback: {e}")
+
+                log("LEARNING", f"Failed to record test feedback: {e}")
 
         return {
             "agent": name,
@@ -531,13 +533,15 @@ async def marcus_call_sub_agent(
         
         max_tokens = get_tokens_for_step(step_name, is_retry=is_retry)
 
-        print(f"[marcus_call_sub_agent] Calling {agent_name} (retry={is_retry}) with max_tokens={max_tokens}")
-        print(f"[OPTIMIZATION] Core prompt: ~{len(core_prompt)//4} tokens, Context: ~{len(dynamic_context)//4} tokens")
+        max_tokens = get_tokens_for_step(step_name, is_retry=is_retry)
+
+        log("MARCUS", f"Calling {agent_name} (retry={is_retry}) with max_tokens={max_tokens}")
+        log("OPTIMIZATION", f"Core prompt: ~{len(core_prompt)//4} tokens, Context: ~{len(dynamic_context)//4} tokens")
         
         # ============================================================
-        # LLM CALL with OPTIMIZED PROMPTS
+        # LLM CALL with OPTIMIZED PROMPTS + V3 USAGE TRACKING
         # ============================================================
-        raw = await call_llm(
+        llm_result = await call_llm_with_usage(
             prompt=dynamic_context,  # MINIMAL dynamic context
             provider=provider,
             model=model,
@@ -545,11 +549,13 @@ async def marcus_call_sub_agent(
             temperature=0.7,
             max_tokens=max_tokens,
         )
-
-        print(f"[marcus_call_sub_agent] Received {len(raw)} chars from {agent_name}")
         
-        # NOTE: Cost tracking now handled by BudgetManager at orchestrator level
-        # Handlers call budget.register_usage() after receiving the response
+        # V3: Extract text and usage from result
+        raw = llm_result.get("text", "")
+        token_usage = llm_result.get("usage", {"input": 0, "output": 0})
+
+        log("MARCUS", f"Received {len(raw)} chars from {agent_name}")
+        log("TOKENS", f"📊 Actual usage: {token_usage.get('input', 0):,} in / {token_usage.get('output', 0):,} out")
 
         # Try to parse JSON and normalize into {"files": [...]} schema
         try:
@@ -559,14 +565,16 @@ async def marcus_call_sub_agent(
         
         # Broadcast the agent's ACTUAL thinking (from the thinking field)
         if project_id and parsed and isinstance(parsed, dict):
-            from app.core.logging import log_thinking, log_files
+            from app.core.logging import log_files
             
             thinking = parsed.get("thinking") or parsed.get("notes") or ""
+            files = parsed.get("files", [])
+            
             if thinking:
-                # Use centralized logging for thinking
-                log_thinking(agent_name.upper(), thinking, project_id, max_lines=15)
+                # Broadcast to UI terminal (user feature) but don't spam server console
                 await _broadcast_agent_thinking(project_id, agent_name, "thinking", thinking)
-            elif "approved" in parsed:
+            
+            if "approved" in parsed:
                 # This is Marcus's supervision response - format it nicely
                 approved = parsed.get("approved", False)
                 quality = parsed.get("quality_score", "?")
@@ -581,11 +589,17 @@ async def marcus_call_sub_agent(
                     if issues:
                         msg += "\nIssues: " + ", ".join(str(i)[:100] for i in issues[:3])
                 await _broadcast_agent_thinking(project_id, agent_name, "review", msg)
-            else:
-                # Show file count summary using centralized logging
-                files = parsed.get("files", [])
-                if files:
-                    log_files(agent_name.upper(), files, project_id)
+            
+            # Always broadcast file summary for Derek/Luna/Victoria
+            if files and "approved" not in parsed:
+                # Build concise file summary
+                file_list = [f.get("path", "?") for f in files[:5]]
+                msg = f"📁 Generated {len(files)} file(s):\n" + "\n".join(f"  • {f}" for f in file_list)
+                if len(files) > 5:
+                    msg += f"\n  ... and {len(files) - 5} more"
+                await _broadcast_agent_thinking(project_id, agent_name, "files", msg)
+                # Also log to server console
+                log_files(agent_name.upper(), files, project_id)
 
 
 
@@ -654,6 +668,7 @@ async def marcus_call_sub_agent(
                 "output": normalized,
                 "raw_generation": raw,
                 "issues": [],
+                "token_usage": token_usage,  # V3: Return actual usage for cost tracking
             }
 
         # Fallback: return raw + parsed (if any) for tool_sub_agent_caller to attempt recovery
@@ -694,12 +709,13 @@ async def marcus_call_sub_agent(
             "output": parsed if parsed is not None else raw,
             "raw_generation": raw,
             "issues": issues,
+            "token_usage": token_usage,  # V3: Return actual usage even on failure
         }
 
     except Exception as e:
         import traceback
-        print(f"[marcus_call_sub_agent] Error: {e}")
-        print(traceback.format_exc())
+        log("MARCUS", f"Error: {e}")
+        log("MARCUS", traceback.format_exc())
         return {
             "passed": False,
             "output": "",

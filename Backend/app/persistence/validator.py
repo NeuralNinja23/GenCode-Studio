@@ -5,7 +5,8 @@ Output validation before persistence.
 from typing import Any, Dict
 
 from app.core.config import settings
-from app.core.logging import log  # Use canonical import
+from app.core.logging import log
+from app.validation.syntax_validator import validate_python_syntax as _validate_python_syntax
 
 
 def normalize_python_filename(path: str) -> str:
@@ -213,10 +214,12 @@ def validate_file_output(
             log("VALIDATE", f"[{step_name}] Skipping path without extension: {path}")
             continue
         
-        # Validate Python Syntax
+        # Validate Python Syntax using centralized validator
         if path.endswith(".py"):
-             if not validate_python_syntax(content, path):
-                 continue
+            result = _validate_python_syntax(content, path)
+            if not result.valid:
+                log("VALIDATE", f"🚨 REJECTING invalid Python file: {path} - {result.errors[0] if result.errors else 'Unknown error'}")
+                continue
         
         # Validate JSX completeness
         if path.endswith((".jsx", ".tsx")):
@@ -235,24 +238,3 @@ def validate_file_output(
     
     
     return {"files": validated, "thinking": response.get("thinking", "")}
-
-
-def validate_python_syntax(content: str, path: str) -> bool:
-    """
-    Validate Python syntax using AST.
-    Returns True if valid, False if SyntaxError.
-    """
-    import ast
-    try:
-        ast.parse(content)
-        return True
-    except SyntaxError as e:
-        log("VALIDATE", f"🚨 REJECTING invalid Python file: {path} - {e}")
-        return False
-    except Exception as e:
-        # Don't block on other AST errors (unlikely), but log them
-        log("VALIDATE", f"⚠️ AST validation error for {path}: {e}")
-        return True
-
-
-

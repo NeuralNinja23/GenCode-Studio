@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from prometheus_client.registry import CollectorRegistry as Registry
 from prometheus_client import Gauge
 from prometheus_fastapi_instrumentator import Instrumentator
+from app.core.logging import log
 
 # Create a separate registry
 registry = Registry()
@@ -33,4 +34,4 @@ def register_monitoring(app: FastAPI):
     # This exposes the /metrics endpoint
     instrumentator.expose(app, include_in_schema=False, should_gzip=True)
 
-    print("[Monitoring] Prometheus instrumentation registered at /metrics.")
+    log("MONITORING", "Prometheus instrumentation registered at /metrics.")

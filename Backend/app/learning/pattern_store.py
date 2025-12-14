@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import hashlib
 
 from app.core.logging import log
+from app.core.config import settings
 
 
 @dataclass
@@ -148,7 +149,8 @@ class PatternStore:
                         WHERE pattern_id = ?
                     """, (new_count, new_quality, datetime.now(timezone.utc).isoformat(), pattern_id))
                     
-                    log("LEARNING", f"📈 Updated pattern {pattern_id[:16]}... (count={new_count}, quality={new_quality})")
+                    if settings.debug:
+                        log("LEARNING", f"📈 Updated pattern {pattern_id[:16]}... (count={new_count}, quality={new_quality})")
                 else:
                     # Insert new pattern
                     conn.execute("""
@@ -169,7 +171,8 @@ class PatternStore:
                         1,
                     ))
                     
-                    log("LEARNING", f"🧠 Stored new pattern for {archetype}/{step} (quality={quality_score})")
+                    if settings.debug:
+                        log("LEARNING", f"🧠 Stored new pattern for {archetype}/{step} (quality={quality_score})")
                 
                 conn.commit()
                 return pattern_id
@@ -223,7 +226,7 @@ class PatternStore:
                         success_count=row["success_count"],
                     ))
                 
-                if patterns:
+                if patterns and settings.debug:
                     log("LEARNING", f"📚 Found {len(patterns)} patterns for {archetype}/{step}")
                 
                 return patterns
@@ -368,7 +371,8 @@ For "{archetype}" applications, high-quality code typically includes:
                         WHERE pattern_id = ?
                     """, (new_score, new_count, datetime.now(timezone.utc).isoformat(), pattern_id))
                     
-                    log("LEARNING", f"📉 Penalized pattern {pattern_id[:8]} (False Positive Detected): {old_score} → {new_score}")
+                    if settings.debug:
+                        log("LEARNING", f"📉 Penalized pattern {pattern_id[:8]} (False Positive Detected): {old_score} → {new_score}")
                     conn.commit()
                     return True
                 

@@ -619,10 +619,13 @@ YOUR TEST GENERATION WORKFLOW (Step 8):
 5. Then pytest runs your generated tests
 
 REQUIREMENTS for generated tests:
+- CRITICAL: You MUST use the EXACT field names from your `backend/app/models.py`.
+- If your model has `content`, your test data MUST use `content`.
+- If your model has `description`, your test data MUST use `description`.
+- DO NOT blindly copy the "description" field from the template if your model uses "content".
 - Use the `client` fixture from conftest.py
 - Use @pytest.mark.anyio for async tests
-- Use Faker for test data
-- Follow response envelope patterns from architecture.md
+- Use Faker for test data (but map it to YOUR model's fields)
 ```
 
 
@@ -716,16 +719,20 @@ REQUIREMENTS for generated tests:
    
    ✅ CORRECT: Create `frontend/src/lib/api.js`:
    ```javascript
-   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8001";
-   
-   export async function api(path, options = {}) {
-     const res = await fetch(`${API_BASE}/api${path}`, {
-       headers: { "Content-Type": "application/json" },
-       ...options,
-     });
-     if (!res.ok) throw new Error(await res.text() || res.statusText);
-     return res.json();
-   }
+    const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8001";
+
+    export async function api(path, options = {}) {
+      // Ensure no double slash //api/api if env var already includes it
+      const baseURL = API_BASE.endsWith('/api') ? API_BASE : `${API_BASE}/api`;
+      const cleanPath = path.startsWith('/') ? path : `/${path}`;
+      
+      const res = await fetch(`${baseURL}${cleanPath}`, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      if (!res.ok) throw new Error(await res.text() || res.statusText);
+      return res.json();
+    }
    
    export const get = (path) => api(path);
    export const post = (path, data) => api(path, { method: "POST", body: JSON.stringify(data) });
@@ -1182,6 +1189,3 @@ Return ONE of these JSON formats:
 Behave like a senior backend engineer whose single goal is:
 > "Make backend pytest pass in the sandbox, safely and minimally."
 """
-
-# Alias for backward compatibility
-DEREK_TESTING_INSTRUCTIONS = DEREK_TESTING_PROMPT

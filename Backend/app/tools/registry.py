@@ -5,6 +5,7 @@ Matches tools to user intent using Attention (V!=K).
 """
 from typing import Any, Dict, List, Optional
 from app.core.logging import log
+from app.core.config import settings
 
 # ---------------------------------------------------------------------
 # CONTEXT MAPPING (Step -> Allowed Categories)
@@ -49,7 +50,7 @@ TOOL_DEFINITIONS = [
         "value": {"temperature": 0.3},
         "categories": ["planning", "coding"]
     },
-
+    
     # --- FILE OPERATIONS ---
     {
         "id": "filewriterbatch",
@@ -245,8 +246,8 @@ def get_available_tools() -> List[str]:
 
 async def run_tool(name: str, args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Execute a tool by name."""
-    from app.tools.implementations import run_tool as impl_run_tool
-    return await impl_run_tool(name, args)
+    from app.tools.implementations import _run_tool_impl
+    return await _run_tool_impl(name, args)
 
 
 async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> List[Dict[str, Any]]:
@@ -285,7 +286,8 @@ async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> 
             "value": {}
         })
 
-        log("REGISTRY", f"🔍 Routing query '{query[:50]}...' across {len(candidates)} candidates for step '{step_name}'")
+        if settings.debug:
+            log("REGISTRY", f"🔍 Routing query '{query[:50]}...' across {len(candidates)} candidates for step '{step_name}'")
 
         # 3. Route Query
         result = await arbormind_route(
@@ -302,12 +304,14 @@ async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> 
         
         # Threshold: if < 0.15, confidence is too low → default to standard
         if top_score < 0.15:
-            log("REGISTRY", f"📉 Low confidence ({top_score:.3f}). Defaulting to standard tools.")
+            if settings.debug:
+                log("REGISTRY", f"📉 Low confidence ({top_score:.3f}). Defaulting to standard tools.")
             return _get_standard_tools()
 
         # If explicit no-op wins
         if top_match == "standard_tools_only":
-            log("REGISTRY", f"✅ Selected 'standard_tools_only' (Score: {top_score:.3f})")
+            if settings.debug:
+                log("REGISTRY", f"✅ Selected 'standard_tools_only' (Score: {top_score:.3f})")
             return _get_standard_tools()
         
         # 5. Build Result
