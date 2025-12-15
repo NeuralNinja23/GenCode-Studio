@@ -38,52 +38,21 @@ The **Backend** is where the magic happens — a sophisticated orchestration sys
 
 ## ✨ Core Capabilities
 
-<table>
-<tr>
-<td width="50%">
+<div align="center">
 
 ### ⚡ FAST V2 Orchestrator
-The intelligent workflow engine:
-- **12 atomic steps** with dependency barriers
-- **Budget tracking** per step and project
-- **Checkpointing** for resume on failure
-- **Cross-step context** sharing
-
-</td>
-<td width="50%">
+The intelligent workflow engine: **12 atomic steps** with dependency barriers · **Budget tracking** per step · **Checkpointing** for resume · **Cross-step context** sharing
 
 ### 🌳 ArborMind Intelligence
-Self-evolving AI routing:
-- **V≠K attention** architecture
-- **Semantic decision** making
-- **Pattern learning** from outcomes
-- **Adaptive strategies**
-
-</td>
-</tr>
-<tr>
-<td width="50%">
+Self-evolving AI routing: **V≠K attention** architecture · **Semantic decision** making · **Pattern learning** from outcomes · **Adaptive strategies**
 
 ### 🩹 Self-Healing Pipeline
-Automatic error recovery:
-- **Semantic error** classification
-- **Targeted repair** strategies
-- **Fallback templates** for edge cases
-- **Rollback** on critical failures
-
-</td>
-<td width="50%">
+Automatic error recovery: **Semantic error** classification · **Targeted repair** strategies · **Fallback templates** for edge cases · **Rollback** on critical failures
 
 ### 🐳 Docker Sandbox
-Isolated testing environment:
-- **Containerized** pytest runs
-- **Playwright E2E** testing
-- **MongoDB** test instances
-- **Full isolation** per project
+Isolated testing environment: **Containerized** pytest runs · **Playwright E2E** testing · **MongoDB** test instances · **Full isolation** per project
 
-</td>
-</tr>
-</table>
+</div>
 
 <br />
 
