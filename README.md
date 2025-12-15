@@ -3,13 +3,6 @@
 <img src="docs/images/hero_banner.png" alt="GenCode Studio" width="100%" />
 
 <br />
-<br />
-
-# 🚀 GenCode Studio
-
-### **Transform Ideas into Production-Ready Code with AI**
-
-<br />
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -41,52 +34,17 @@
 
 ## ✨ Key Features
 
-<table>
-<tr>
-<td width="50%">
-
 ### 🤖 Multi-Agent Intelligence
-A specialized team of AI agents work together:
-- **Code Review & Quality Gates**
-- **Architecture Design & Planning**
-- **Full-Stack Implementation**
-- **Automated E2E Testing**
+A specialized team of AI agents work together: **Code Review & Quality Gates** · **Architecture Design & Planning** · **Full-Stack Implementation** · **Automated E2E Testing**
 
-</td>
-<td width="50%">
-
-### 🌳 Self-Evolving AI
-ArborMind orchestration engine:
-- **Learns from every generation**
-- **Adapts strategies in real-time**
-- **Attention-based smart routing**
-- **Automatic error recovery**
-
-</td>
-</tr>
-<tr>
-<td width="50%">
+### 🌳 Self-Evolving AI  
+ArborMind orchestration engine: **Learns from every generation** · **Adapts strategies in real-time** · **Attention-based smart routing** · **Automatic error recovery**
 
 ### 🛡️ Production-Grade Output
-Enterprise-quality code generation:
-- **AST validation before write**
-- **Pre-flight syntax checks**
-- **Docker sandbox testing**
-- **Automatic rollback on failure**
-
-</td>
-<td width="50%">
+Enterprise-quality code generation: **AST validation before write** · **Pre-flight syntax checks** · **Docker sandbox testing** · **Automatic rollback on failure**
 
 ### 🎨 Intelligent UI Design
-Smart frontend generation:
-- **6 UI vibes** (Dark, Minimal, Glass...)
-- **Archetype detection** (SaaS, E-commerce...)
-- **Modern shadcn/ui components**
-- **Mobile-first responsive design**
-
-</td>
-</tr>
-</table>
+Smart frontend generation: **6 UI vibes** (Dark, Minimal, Glass...) · **Archetype detection** (SaaS, E-commerce...) · **Modern shadcn/ui components** · **Mobile-first responsive design**
 
 <br />
 
@@ -198,59 +156,24 @@ Writes and runs Playwright E2E tests, catches bugs before deployment.
 
 **ArborMind (AM)** is our next-generation orchestration engine featuring:
 
-<table>
-<tr>
-<td width="33%" align="center">
-
-### 🧠 Attention Router
-**V≠K Architecture**
-
+### 🧠 Attention Router — V≠K Architecture
 Unlike traditional RAG where V=K, ArborMind uses separate Key and Value vectors for semantic routing that synthesizes weighted configurations.
 
 ```python
 # Smart routing example
-result = await arbormind_route(
-    "Fix React component bug",
-    tool_options
-)
+result = await arbormind_route("Fix React component bug", tool_options)
 # → {mode: "strict", max_edits: 2}
 ```
 
-</td>
-<td width="33%" align="center">
-
-### ⚡ Hybrid Workflow
-**Flexible Execution**
-
+### ⚡ Hybrid Workflow — Flexible Execution
 Intelligently combines sequential and parallel execution. Steps run in parallel when independent, sequentially when dependent.
 
-```
-Sequential → Parallel
-     ↓          ↓
-Combinational Mode
-     ↓
- Self-Healing
-```
-
-</td>
-<td width="33%" align="center">
-
-### 🧬 Self Evolution
-**Continuous Learning**
-
+### 🧬 Self Evolution — Continuous Learning
 Learns from every success and failure using EMA-adjusted V-vectors. Gets smarter with every generation.
 
 ```python
-EVOLUTION = {
-    "prompt_mutation": True,
-    "step_reordering": True,
-    "ema_alpha": 0.3
-}
+EVOLUTION = {"prompt_mutation": True, "step_reordering": True, "ema_alpha": 0.3}
 ```
-
-</td>
-</tr>
-</table>
 
 <br />
 

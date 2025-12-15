@@ -106,82 +106,25 @@ Isolated testing environment:
 
 The FAST V2 Orchestrator executes a carefully designed sequence of steps:
 
-<table>
-<tr>
-<td align="center" width="25%">
+### 🔍 Phase 1 — Analysis
+> **Marcus** → `analysis` · Extract entities, classify archetype  
+> **Victoria** → `architecture` · Design system, create schemas
 
-### 🔍 Phase 1
-**Analysis**
+### 🎨 Phase 2 — Frontend  
+> **Derek** → `frontend_mock` · Generate React UI with mock data  
+> **Marcus** → `screenshot_verify` · Visual QA review  
+> **Marcus** → `contracts` · Define OpenAPI specifications
 
-<br />
+### ⚙️ Phase 3 — Backend
+> **Derek** → `backend_models` · Generate Beanie/MongoDB models  
+> **Derek** → `backend_impl` · Create FastAPI routers  
+> **Script** → `system_integration` · Wire main.py & requirements
 
-| Step | Agent |
-|:-----|:------|
-| `analysis` | Marcus |
-| `architecture` | Victoria |
-
-<br />
-
-*Extract entities, design system*
-
-</td>
-<td align="center" width="25%">
-
-### 🎨 Phase 2
-**Frontend**
-
-<br />
-
-| Step | Agent |
-|:-----|:------|
-| `frontend_mock` | Derek |
-| `screenshot_verify` | Marcus |
-| `contracts` | Marcus |
-
-<br />
-
-*Generate UI with mock data*
-
-</td>
-<td align="center" width="25%">
-
-### ⚙️ Phase 3
-**Backend**
-
-<br />
-
-| Step | Agent |
-|:-----|:------|
-| `backend_models` | Derek |
-| `backend_impl` | Derek |
-| `system_integration` | Script |
-
-<br />
-
-*Models, routers, wiring*
-
-</td>
-<td align="center" width="25%">
-
-### 🧪 Phase 4
-**Testing**
-
-<br />
-
-| Step | Agent |
-|:-----|:------|
-| `testing_backend` | Derek |
-| `frontend_int` | Derek |
-| `testing_frontend` | Luna |
-| `preview_final` | Marcus |
-
-<br />
-
-*Test, integrate, deploy*
-
-</td>
-</tr>
-</table>
+### 🧪 Phase 4 — Testing & Deploy
+> **Derek** → `testing_backend` · Run pytest in Docker  
+> **Derek** → `frontend_integration` · Connect UI to real APIs  
+> **Luna** → `testing_frontend` · Playwright E2E tests  
+> **Marcus** → `preview_final` · Final review & deployment
 
 <br />
 
@@ -284,50 +227,12 @@ explorer.inject_patterns(
 
 <br />
 
-<table>
-<tr>
-<td align="center" width="25%">
-
-### 🔵 Marcus
-**Senior Architect**
-
-Code review, quality gates, supervision. Every output passes his review.
-
-**Steps:** Analysis, Contracts, Screenshot, Preview
-
-</td>
-<td align="center" width="25%">
-
-### 🟣 Victoria
-**System Architect**
-
-Designs architecture, data models, API contracts from requirements.
-
-**Steps:** Architecture
-
-</td>
-<td align="center" width="25%">
-
-### 🟢 Derek
-**Full-Stack Dev**
-
-Implements React frontends, FastAPI backends, integrations.
-
-**Steps:** Frontend, Backend, Testing Backend
-
-</td>
-<td align="center" width="25%">
-
-### 🟡 Luna
-**QA Engineer**
-
-Writes Playwright E2E tests, validates user flows.
-
-**Steps:** Testing Frontend
-
-</td>
-</tr>
-</table>
+| Agent | Role | Responsibility | Steps |
+|:-----:|:-----|:---------------|:------|
+| 🔵 **Marcus** | Senior Architect | Code review, quality gates, supervision | Analysis, Contracts, Screenshot, Preview |
+| 🟣 **Victoria** | System Architect | Designs architecture, data models, API contracts | Architecture |
+| 🟢 **Derek** | Full-Stack Dev | Implements React frontends, FastAPI backends | Frontend, Backend, Testing Backend |
+| 🟡 **Luna** | QA Engineer | Writes Playwright E2E tests, validates flows | Testing Frontend |
 
 <br />
 
