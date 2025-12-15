@@ -596,6 +596,32 @@ These testids allow Luna to write reliable, non-flaky Playwright tests.
        id: Optional[PydanticObjectId] = Field(default=None, alias="_id")
    ```
 
+4. **BEANIE INDEXES** - Use simple field name strings ONLY:
+   ❌ WRONG (causes TypeError on startup):
+   ```python
+   class Settings:
+       name = "items"
+       indexes = [
+           ("date", -1),  # INVALID - tuple syntax doesn't work!
+           ("date", pymongo.DESCENDING),  # INVALID - also doesn't work!
+       ]
+   ```
+   
+   ✅ CORRECT (simple string field names):
+   ```python
+   class Settings:
+       name = "items"
+       indexes = [
+           "category",  # Index on category field
+           "status",    # Index on status field
+           "date",      # Index on date field (ascending by default)
+       ]
+   ```
+   
+   NOTE: Beanie's Settings.indexes list only supports simple field name strings.
+   For compound or descending indexes, they must be created via MongoDB directly
+   or using Beanie's @before_event hooks - but for most CRUD apps, simple indexes suffice.
+
 ═══════════════════════════════════════════════════════
 🧪 BACKEND TESTING PATTERNS (CRITICAL - MUST FOLLOW)
 ═══════════════════════════════════════════════════════

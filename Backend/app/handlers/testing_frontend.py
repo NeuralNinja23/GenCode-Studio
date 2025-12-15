@@ -12,7 +12,8 @@ from app.core.types import ChatMessage, StepResult
 from app.core.constants import WorkflowStep
 from app.handlers.base import broadcast_status
 from app.core.logging import log
-from app.testing.self_healing import SelfHealingTests, create_matching_smoke_test
+from app.utils.regex_healer import TestRegexPatcher
+from app.utils.test_scaffolding import create_matching_smoke_test
 from app.tools import run_tool
 from app.llm.prompts.luna import LUNA_TESTING_PROMPT
 from app.persistence.validator import validate_file_output
@@ -36,7 +37,7 @@ MAX_FILE_LINES = 400
 
 
 # Centralized file writing utility
-from app.lib.file_writer import safe_write_llm_files
+from app.persistence import safe_write_llm_files
 
 
 def ensure_str(val) -> str:
@@ -315,7 +316,7 @@ async def step_testing_frontend(
         except Exception as e:
             log("TESTING", f"⚠️ Failed to persist test history: {e}")
 
-    self_healing = SelfHealingTests()
+    self_healing = TestRegexPatcher()
     marcus_feedback = ""
     
     # ============================================================
@@ -444,8 +445,7 @@ async def step_testing_frontend(
         # ------------------------------------------------------------
         context_parts = []
         
-        # Import selector extraction
-        from app.testing.self_healing import get_available_selectors
+        from app.utils.test_scaffolding import get_available_selectors
         
         try:
             # Primary files to check (in priority order)

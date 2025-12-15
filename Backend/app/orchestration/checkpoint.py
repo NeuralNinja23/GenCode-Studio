@@ -1,14 +1,17 @@
-# app/workflow/engine_v2/checkpoint.py
+# app/orchestration/checkpoint.py
 """
 FAST v2 Checkpoint Manager
 
 Stores SAFE checkpoints of each FAST step.
-Does NOT store broken artifacts.
+Persists project state to disk for rollback and debugging.
 """
 import os
 import json
-from datetime import datetime
-from typing import Dict, Optional
+import shutil
+import asyncio
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional, Any
 
 
 class CheckpointManagerV2:
@@ -21,22 +24,43 @@ class CheckpointManagerV2:
         self.base_dir = base_dir
         os.makedirs(self.base_dir, exist_ok=True)
 
-    def save(self, step: str, files: Dict[str, str]):
+    async def save_project_snapshot(self, project_path: Path, step: str, **metadata) -> str:
         """
-        Save a checkpoint for a step.
+        Capture the entire project state from disk.
+        Async wrapper for blocking IO.
+        """
+        return await asyncio.to_thread(self._save_project_snapshot_sync, project_path, step, **metadata)
+
+    def _save_project_snapshot_sync(self, project_path: Path, step: str, **metadata) -> str:
+        """Sync implementation of project capture."""
+        files = {}
+        ignore_dirs = {".git", ".fast_checkpoints", "node_modules", "__pycache__", "venv", ".venv"}
         
-        Args:
-            step: The step name
-            files: Dict of {path: content}
+        for root, dirs, filenames in os.walk(project_path):
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+            for filename in filenames:
+                if filename.endswith(('.py', '.js', '.jsx', '.ts', '.tsx', '.json', '.md', '.css', '.html', '.env')):
+                    filepath = Path(root) / filename
+                    try:
+                        rel_path = str(filepath.relative_to(project_path))
+                        files[rel_path] = filepath.read_text(encoding='utf-8')
+                    except Exception:
+                        pass
+        
+        return self.save(step, files, **metadata)
+
+    def save(self, step: str, files: Dict[str, str], **metadata):
+        """
+        Save a checkpoint for a step using provided file content.
         """
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         directory = os.path.join(self.base_dir, f"{step}_{ts}")
         os.makedirs(directory, exist_ok=True)
 
-        for path, content in files.items():
-            # Save with basename to avoid path issues
-            filename = os.path.basename(path)
-            full_path = os.path.join(directory, filename)
+        for rel_path, content in files.items():
+            safe_rel = rel_path.replace("\\", "/").lstrip("/")
+            full_path = os.path.join(directory, safe_rel)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
@@ -46,8 +70,11 @@ class CheckpointManagerV2:
             "timestamp": ts,
             "files": list(files.keys())
         }
+        meta.update(metadata) # Merge extra metadata
         with open(os.path.join(directory, "meta.json"), "w") as f:
             json.dump(meta, f, indent=2)
+            
+        return directory
 
     def get_latest(self, step: str) -> Optional[Dict[str, str]]:
         """Get the latest checkpoint for a step."""
@@ -70,19 +97,20 @@ class CheckpointManagerV2:
         # Load metadata
         meta_path = os.path.join(latest_dir, "meta.json")
         if not os.path.exists(meta_path):
-            return None
+            # Fallback: traverse dir
+            pass
+        else:
+            with open(meta_path, "r") as f:
+                meta = json.load(f)
 
-        with open(meta_path, "r") as f:
-            meta = json.load(f)
-
-        # Load files
+        # Load files recursively
         files = {}
-        for original_path in meta.get("files", []):
-            filename = os.path.basename(original_path)
-            file_path = os.path.join(latest_dir, filename)
-            if os.path.exists(file_path):
-                with open(file_path, "r", encoding="utf-8") as f:
-                    files[original_path] = f.read()
+        for root, _, filenames in os.walk(latest_dir):
+            for filename in filenames:
+                if filename == "meta.json": continue
+                full_path = Path(root) / filename
+                rel_path = str(full_path.relative_to(latest_dir))
+                files[rel_path] = full_path.read_text(encoding="utf-8")
 
         return files
 
@@ -96,8 +124,11 @@ class CheckpointManagerV2:
             if step is None or name.startswith(f"{step}_"):
                 meta_path = os.path.join(self.base_dir, name, "meta.json")
                 if os.path.exists(meta_path):
-                    with open(meta_path, "r") as f:
-                        meta = json.load(f)
+                    try:
+                        with open(meta_path, "r") as f:
+                            meta = json.load(f)
                         checkpoints.append(meta)
+                    except:
+                        pass
 
         return sorted(checkpoints, key=lambda x: x.get("timestamp", ""), reverse=True)

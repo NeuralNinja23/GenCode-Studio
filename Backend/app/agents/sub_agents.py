@@ -364,6 +364,8 @@ async def marcus_call_sub_agent(
     contracts: Optional[str] = None,  # NEW: API contracts
     is_retry: bool = False,  # NEW: For retry optimization
     errors: Optional[List[str]] = None,  # NEW: For differential retry
+    max_tokens_override: Optional[int] = None,  # NEW: Override token policy (for healing)
+    temperature_override: Optional[float] = None,  # NEW: Override temperature (for healing)
 ) -> Dict[str, Any]:
     """
     Marcus uses this to call Derek/Luna/Victoria for code generation.
@@ -532,8 +534,17 @@ async def marcus_call_sub_agent(
         from app.orchestration.token_policy import get_tokens_for_step
         
         max_tokens = get_tokens_for_step(step_name, is_retry=is_retry)
-
-        max_tokens = get_tokens_for_step(step_name, is_retry=is_retry)
+        
+        # Allow override from healing (progressive token scaling)
+        if max_tokens_override is not None:
+            max_tokens = max_tokens_override
+            log("MARCUS", f"Using max_tokens override: {max_tokens}")
+        
+        # Allow temperature override from healing
+        temperature = 0.7  # Default
+        if temperature_override is not None:
+            temperature = temperature_override
+            log("MARCUS", f"Using temperature override: {temperature}")
 
         log("MARCUS", f"Calling {agent_name} (retry={is_retry}) with max_tokens={max_tokens}")
         log("OPTIMIZATION", f"Core prompt: ~{len(core_prompt)//4} tokens, Context: ~{len(dynamic_context)//4} tokens")
@@ -546,7 +557,7 @@ async def marcus_call_sub_agent(
             provider=provider,
             model=model,
             system_prompt=core_prompt,  # CORE static rules (cacheable!)
-            temperature=0.7,
+            temperature=temperature,  # Use override or default
             max_tokens=max_tokens,
         )
         

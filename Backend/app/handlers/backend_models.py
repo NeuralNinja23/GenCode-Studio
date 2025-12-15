@@ -16,7 +16,7 @@ from app.core.types import ChatMessage, StepResult
 from app.core.constants import WorkflowStep
 from app.core.logging import log
 from app.handlers.base import broadcast_status, broadcast_agent_log
-from app.utils.entity_specs import EntitySpec, EntityPlan
+from app.utils.entity_discovery import EntitySpec, EntityPlan
 from app.llm import call_llm_with_usage
 from app.llm.prompts import DEREK_PROMPT
 
@@ -360,8 +360,15 @@ from beanie import Document
     
     models_code = []
     
+    # Build entity type lookup map
+    entity_type_map = {e.name: e.type for e in entities}
+    
     for model_def in model_spec.get("models", []):
         name = model_def["name"]
+        
+        # FIX #5: Determine if this entity is AGGREGATE or EMBEDDED
+        entity_type = entity_type_map.get(name, "AGGREGATE")  # Default to AGGREGATE
+        is_aggregate = (entity_type == "AGGREGATE")
         table_name = model_def.get("table_name", name.lower() + "s")
         description = model_def.get("description", f"{name} model")
         fields_list = model_def.get("fields", [])
@@ -416,16 +423,29 @@ from beanie import Document
         create_fields_str = "\n".join(create_fields)
         response_fields_str = "\n".join(response_fields)
         
-        # Document class (database model)
-        model_code = f'''
+        # Generate model code based on entity type
+        if is_aggregate:
+            # AGGREGATE: Document class (Beanie collection with Settings)
+            model_code = f'''
 class {name}(Document):
-    """{description}"""
+    """{description} (AGGREGATE - Beanie Document)"""
 {doc_fields_str}
     
     class Settings:
         name = "{table_name}"
 
+'''
+        else:
+            # EMBEDDED: BaseModel (nested object, no Settings)
+            model_code = f'''
+class {name}(BaseModel):
+    """{description} (EMBEDDED - Pydantic BaseModel)"""
+{doc_fields_str}
 
+'''
+        
+        # Always add Create and Response schemas
+        model_code += f'''
 class {name}Create(BaseModel):
     """Create {name} request"""
 {create_fields_str}

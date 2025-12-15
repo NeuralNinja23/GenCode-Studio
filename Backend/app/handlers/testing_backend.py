@@ -23,7 +23,7 @@ from app.tools import run_tool
 from app.llm.prompts.derek import DEREK_TESTING_PROMPT
 from app.persistence.validator import validate_file_output
 from app.core.constants import PROTECTED_SANDBOX_FILES
-from app.utils.entity_discovery import discover_primary_entity
+from app.utils.entity_discovery import discover_primary_entity, extract_all_models_from_models_py
 
 
 # Constants from legacy
@@ -84,36 +84,45 @@ async def _heal_integration_failures(
     attempt: int
 ) -> bool:
     """
-    Policy-driven healing for integration failures.
+    LOOP CONSOLIDATION: Single healing attempt per outer loop iteration.
     
     Uses:
+    - HealingBudget to prevent runaway healing
     - HealingPolicy to determine what to heal
-    - HealingPipeline to execute repairs
-    - BackendProbe to validate fixes
-    
-    No hardcoded artifact names or URLs - all driven by policy and contracts.
+    - HealingPipeline to execute repair (single attempt)
+    - BackendProbe to validate fix
     
     Args:
         project_id: Project ID
         project_path: Path to workspace
         entity_plural: Plural form of entity (from discovery)
         failure_output: Combined stdout/stderr from test failure
-        attempt: Current attempt number
+        attempt: Current attempt number (for logging only)
     
     Returns:
         True if healing succeeded and validation passed
     """
     from app.orchestration.healing_pipeline import HealingPipeline
     from app.orchestration.healing_policy import HealingPolicy
+    from app.orchestration.healing_budget import get_healing_budget
     from app.orchestration.backend_probe import BackendProbe, ProbeMode
     from app.orchestration.contract_parser import ContractParser
     import asyncio
     
-    log("HEAL", f"🧬 Policy-driven healing triggered (attempt {attempt})")
+    log("HEAL", f"🧬 Healing triggered (master loop attempt {attempt}/3)")
     
-    # Initialize components
+    # ════════════════════════════════════════════════════════════════
+    # LOOP CONSOLIDATION: Check budget first
+    # ════════════════════════════════════════════════════════════════
+    budget = get_healing_budget(project_id)
+    if budget.is_exhausted():
+        log("HEAL", "🛑 Healing budget exhausted - cannot attempt repair")
+        log("HEAL", budget.get_exhaustion_diagnostic())
+        return False
+    
+    # Initialize components with project_id for budget tracking
     policy = HealingPolicy(project_path)
-    healer = HealingPipeline(project_path=project_path, llm_caller=None)
+    healer = HealingPipeline(project_path=project_path, llm_caller=None, project_id=project_id)
     probe = BackendProbe.from_env(ProbeMode.DOCKER, project_id=project_id)
     
     # Classify error type
@@ -124,6 +133,22 @@ async def _heal_integration_failures(
     )
     
     log("HEAL", f"📊 Classified as: {error_type.value}")
+    
+    # ════════════════════════════════════════════════════════════════
+    # 🔒 INVARIANT #2: Healing is FORBIDDEN for routing_404 on initial generation
+    # 
+    # If the FIRST attempt has routing 404s, it means the initial backend
+    # generation produced invalid routes. Healing should NOT try to fix this.
+    # The pipeline must fail loudly so the root cause (prompts/templates) is fixed.
+    # ════════════════════════════════════════════════════════════════
+    from app.orchestration.healing_policy import ErrorType
+    
+    if error_type == ErrorType.ROUTING_404 and attempt == 1:
+        log("HEAL", "🔒 INVARIANT #2: Routing 404 on initial generation - healing FORBIDDEN")
+        log("HEAL", "   Initial backend generation produced missing routes.")
+        log("HEAL", "   This is a bootstrapping failure, not a recoverable error.")
+        log("HEAL", "   Fix the generation prompts or templates, do not heal.")
+        return False  # Fail fast, do not attempt healing
     
     # Get healing actions from policy
     actions = policy.get_healing_actions(
@@ -139,54 +164,53 @@ async def _heal_integration_failures(
     
     log("HEAL", f"📋 Policy suggests {len(actions)} healing action(s)")
     
-    # Try each action in priority order
-    for action in actions:
-        # Check if we should skip this action (already tried too many times)
-        if policy.should_stop_healing(action.artifact, max_attempts=2):
-            log("HEAL", f"⏭️ Skipping {action.artifact} (already tried {2} times)")
-            continue
+    # Try FIRST action only (single attempt per outer loop)
+    # LOOP CONSOLIDATION: No more iterating through all actions
+    action = actions[0]
+    
+    log("HEAL", f"🔧 Action: {action.artifact}")
+    log("HEAL", f"   Reason: {action.reason}")
+    log("HEAL", f"   Requires restart: {action.requires_restart}")
+    
+    # Map artifact to step name for healing pipeline
+    step_map = {
+        "backend_vertical": "backend_implementation",
+        "system_integration": "system_integration",
+        "backend_main": "system_integration",
+        "backend_db": "backend_implementation",
+    }
+    
+    step = step_map.get(action.artifact, action.artifact)
+    
+    # SINGLE ATTEMPT: Healing with test failures for Derek feedback
+    try:
+        result = await healer.attempt_heal(
+            step=step,
+            error_log=failure_output[:1000],
+            archetype="general",
+            # LOOP CONSOLIDATION: retries parameter removed
+            test_failures=failure_output
+        )
         
-        log("HEAL", f"🔧 Action: {action.artifact}")
-        log("HEAL", f"   Reason: {action.reason}")
-        log("HEAL", f"   Requires restart: {action.requires_restart}")
-        
-        # Map artifact to step name for healing pipeline
-        step_map = {
-            "backend_vertical": "backend_implementation",
-            "system_integration": "system_integration",
-            "backend_main": "system_integration",
-            "backend_db": "backend_implementation",
-        }
-        
-        step = step_map.get(action.artifact, action.artifact)
-        
-        # Attempt healing
-        try:
-            result = await healer.attempt_heal(
-                step=step,
-                error_log=failure_output[:1000],
-                archetype="general",
-                retries=attempt
-            )
-            
-            if not result:
-                log("HEAL", f"❌ Healing {action.artifact} failed")
-                policy.record_repair(action.artifact)
-                continue
-            
-            log("HEAL", f"✅ Healing {action.artifact} completed")
+        if not result:
+            log("HEAL", f"❌ Healing {action.artifact} failed")
             policy.record_repair(action.artifact)
-            
-            # Restart service if required
-            if action.requires_restart:
+            return False
+        
+        log("HEAL", f"✅ Healing {action.artifact} completed")
+        policy.record_repair(action.artifact)
+        
+        # Restart service if required (budget-controlled)
+        if action.requires_restart:
+            if not budget.can_restart_docker():
+                log("HEAL", "⚠️ Docker restart budget exhausted - skipping restart")
+            else:
+                budget.use_docker_restart(reason=f"healing {action.artifact}")
                 log("HEAL", "🔄 Restarting backend service...")
                 try:
-                    # CRITICAL FIX: Use the global SANDBOX singleton from implementations.py
-                    # This is the SAME instance that created the sandbox during test execution
-                    # Creating a new SandboxManager() would have an empty active_sandboxes dict
                     from app.tools.implementations import SANDBOX as sandbox_mgr
                     
-                    # Bug Fix #2: Sync files before Docker restart
+                    # Sync files before Docker restart
                     log("HEAL", "📁 Syncing files before restart...")
                     main_py = project_path / "backend" / "app" / "main.py"
                     if main_py.exists():
@@ -204,7 +228,7 @@ async def _heal_integration_failures(
                     start_result = await sandbox_mgr.start_sandbox(
                         project_id=project_id,
                         wait_healthy=True,
-                        services=["backend"]  # Only restart backend, not frontend/db
+                        services=["backend"]  # Only restart backend
                     )
                     
                     if not start_result.get("success"):
@@ -215,55 +239,52 @@ async def _heal_integration_failures(
                     await asyncio.sleep(3)  # Wait for service to fully initialize
                 except Exception as e:
                     log("HEAL", f"⚠️ Restart failed: {e}")
+        
+        # Validate using contract-driven probe
+        log("HEAL", "🔍 Validating fix via contract routes...")
+        
+        # Check health first
+        if not await probe.is_healthy(timeout=5.0):
+            log("HEAL", "❌ Health check failed after healing")
+            return False
+        
+        # Check primary entity routes
+        parser = ContractParser(project_path)
+        entity_routes = parser.get_primary_entity_routes()
+        
+        if not entity_routes:
+            log("HEAL", "⚠️ No entity routes in contract - assuming success")
+            return True
+        
+        all_passed = True
+        for route in entity_routes:
+            passed = await probe.check_route(
+                method=route.method,
+                path=route.path,
+                expected_status=route.expected_status,
+                timeout=5.0
+            )
             
-            # Validate using contract-driven probe
-            log("HEAL", "🔍 Validating fix via contract routes...")
+            if not passed:
+                log("HEAL", f"❌ Route still broken: {route.method} {route.path}")
+                all_passed = False
+                break
+        
+        if all_passed:
+            log("HEAL", "✅ All validation checks passed!")
+            return True
+        else:
+            log("HEAL", "❌ Validation failed after healing")
+            return False
             
-            # Check health first
-            if not await probe.is_healthy(timeout=5.0):
-                log("HEAL", "❌ Health check failed after healing")
-                continue
-            
-            # Check primary entity routes
-            parser = ContractParser(project_path)
-            entity_routes = parser.get_primary_entity_routes()
-            
-            if not entity_routes:
-                log("HEAL", "⚠️ No entity routes in contract - assuming success")
-                return True
-            
-            all_passed = True
-            for route in entity_routes:
-                passed = await probe.check_route(
-                    method=route.method,
-                    path=route.path,
-                    expected_status=route.expected_status,
-                    timeout=5.0
-                )
-                
-                if not passed:
-                    log("HEAL", f"❌ Route still broken: {route.method} {route.path}")
-                    all_passed = False
-                    break
-            
-            if all_passed:
-                log("HEAL", "✅ All validation checks passed!")
-                return True
-            else:
-                log("HEAL", "❌ Validation failed - trying next action")
-                continue
-                
-        except Exception as e:
-            log("HEAL", f"❌ Healing action failed: {e}")
-            policy.record_repair(action.artifact)
-            continue
-    
-    log("HEAL", "🛑 All healing actions exhausted")
-    return False
+    except Exception as e:
+        log("HEAL", f"❌ Healing action failed: {e}")
+        policy.record_repair(action.artifact)
+        return False
 
 
 # Centralized file writing utility
-from app.lib.file_writer import safe_write_llm_files
+from app.persistence import safe_write_llm_files
 
 
 async def _generate_tests_from_template(
@@ -508,13 +529,23 @@ async def step_testing_backend(
     max_turns: int,
 ) -> StepResult:
     """
-    Step: Derek tests backend using tools only.
-
-    - Uses subagentcaller to ask Derek for fixes.
-    - Applies unified diffs or JSON patches via patch tools.
-    - Runs backend tests INSIDE sandbox via sandboxexec.
+    MASTER LOOP: Derek tests backend using sandbox with healing.
+    
+    LOOP CONSOLIDATION:
+    This is the ONLY retry loop in the healing system.
+    - All other components (HealingPipeline, Derek, ArborMind) execute ONCE per attempt
+    - Healing budget is reset at start and consumed by healing operations
+    - After 3 attempts or budget exhaustion, we fail with diagnostic
+    
+    Flow:
+    1. Reset healing budget (fresh for each test run)
+    2. Run pytest in Docker
+    3. If pass → done
+    4. If fail → single healing attempt (budget-controlled)
+    5. Repeat up to 3 times (MASTER LOOP)
     """
     from app.orchestration.utils import broadcast_to_project
+    from app.orchestration.healing_budget import reset_healing_budget, get_healing_budget
 
     await broadcast_status(
         manager,
@@ -529,6 +560,12 @@ async def step_testing_backend(
         "STATUS",
         f"[{WorkflowStep.TESTING_BACKEND}] Starting backend sandbox tests for {project_id}",
     )
+
+    # ════════════════════════════════════════════════════════════════
+    # LOOP CONSOLIDATION: Reset healing budget at start of test run
+    # ════════════════════════════════════════════════════════════════
+    reset_healing_budget(project_id)
+    log("TESTING", "🔄 Healing budget reset for this test run")
 
     # Ensure tests directory exists so Docker doesn't create it as root
     (project_path / "backend/tests").mkdir(parents=True, exist_ok=True)
@@ -553,15 +590,23 @@ async def step_testing_backend(
     entities = intent.get("entities", [])
     
     # Use centralized discovery as fallback with dynamic last-resort
+    # BUG FIX: For testing, prefer actual models from models.py over
+    # discover_primary_entity which may return wrong entity from mock.js
     if entities:
         primary_entity = entities[0]
     else:
-        entity_name, _ = discover_primary_entity(project_path)
-        if entity_name:
-            primary_entity = entity_name
+        # First try to get actual models from models.py
+        actual_models = extract_all_models_from_models_py(project_path)
+        if actual_models:
+            primary_entity = actual_models[0].lower()
         else:
-            # Dynamic last resort: extract from user request
-            primary_entity = _extract_entity_from_request(user_request) or "entity"
+            # Fallback to discover_primary_entity
+            entity_name, _ = discover_primary_entity(project_path)
+            if entity_name:
+                primary_entity = entity_name
+            else:
+                # Dynamic last resort: extract from user request
+                primary_entity = _extract_entity_from_request(user_request) or "entity"
     
     primary_entity_plural = pluralize(primary_entity)
     
@@ -1156,3 +1201,164 @@ You MUST follow Marcus's instructions above. He has analyzed the failure against
         "Backend testing step exited without success or explicit failure. "
         "This indicates a logic error in the backend test loop."
     )
+
+
+# ════════════════════════════════════════════════════════════════════════
+# VICTORIA ESCALATION - Architectural Review After Derek Failures
+# ════════════════════════════════════════════════════════════════════════
+
+async def escalate_to_victoria(
+    project_path: Path,
+    entity_name: str,
+    entity_plural: str,
+    test_output: str,
+    failures: List[str],
+    attempt_count: int
+) -> bool:
+    """
+    Escalate to Victoria for architectural review after Derek fails multiple times.
+    
+    Victoria provides a deeper analysis of root causes and generates fixes
+    based on architectural understanding rather than just test errors.
+    
+    Args:
+        project_path: Path to project
+        entity_name: Entity name (singular)
+        entity_plural: Entity name (plural)
+        test_output: Full test output
+        failures: Parsed failure list
+        attempt_count: How many times Derek tried
+    
+    Returns:
+        True if Victoria fixed the issues
+    """
+    from app.supervision import supervised_agent_call
+    
+    log("HEAL", f"🆘 Escalating to Victoria after {attempt_count} Derek failures")
+    log("HEAL", "🏛️ Victoria will perform architectural review...")
+    
+    # Get current implementation
+    models_path = project_path / "backend" / "app" / "models.py"
+    router_path = project_path / "backend" / "app" / "routers" / f"{entity_plural}.py"
+    contracts_path = project_path / "contracts.md"
+    
+    models_code = models_path.read_text(encoding="utf-8") if models_path.exists() else "NOT FOUND"
+    router_code = router_path.read_text(encoding="utf-8") if router_path.exists() else "NOT FOUND"
+    contracts = contracts_path.read_text(encoding="utf-8")[:3000] if contracts_path.exists() else "NOT FOUND"
+    
+    failures_str = "\n".join([f"  {i+1}. {f}" for i, f in enumerate(failures)])
+    
+    prompt = f"""You are Victoria, a senior architecture expert. A backend has failed tests {attempt_count} times.
+
+ENTITY: {entity_name}
+PLURAL: {entity_plural}
+DEREK ATTEMPTS: {attempt_count}
+
+PERSISTENT FAILURES:
+{failures_str}
+
+TEST OUTPUT (first 2000 chars):
+{test_output[:2000]}
+
+CONTRACTS (first 1500 chars):
+{contracts[:1500]}
+
+CURRENT MODELS.PY (first 2000 chars):
+{models_code[:2000]}
+
+CURRENT ROUTER (first 2000 chars):
+{router_code[:2000]}
+
+TASK:
+Derek has failed {attempt_count} times. This suggests a deeper architectural issue.
+Identify the ROOT CAUSE and provide a complete, correct implementation.
+
+Common root causes:
+- Schema design flaws (wrong inheritance, missing schemas)
+- Router architecture issues (wrong patterns, missing middleware)
+- Status code mismatches
+- Enum validation missing
+- Query parameter support missing
+- Response model mismatches
+
+Return JSON with complete fixes:
+{{
+  "files": [
+    {{"path": "backend/app/models.py", "content": "...complete code..."}},
+    {{"path": "backend/app/routers/{entity_plural}.py", "content": "...complete code..."}}
+  ],
+  "root_cause": "The fundamental issue is...",
+  "fixes_applied": ["fix 1", "fix 2", "fix 3"]
+}}
+"""
+    
+    try:
+        log("HEAL", "🧠 Victoria analyzing root cause...")
+        
+        result = await supervised_agent_call(
+            project_id=project_path.name,
+            manager=None,  # No broadcast
+            agent_name="Victoria",
+            step_name=f"Architectural Review (Escalation)",
+            base_instructions=prompt,
+            project_path=project_path,
+            user_request=f"Fix persistent test failures for {entity_name}",
+            contracts=contracts,
+            max_retries=0,
+            max_tokens=20000,
+            temperature=0.2
+        )
+        
+        # Parse response
+        parsed = result.get("output", {})
+        files = parsed.get("files", [])
+        
+        if not files:
+            log("HEAL", "❌ Victoria returned no files")
+            return False
+        
+        root_cause = parsed.get("root_cause", "Unknown")
+        fixes = parsed.get("fixes_applied", [])
+        
+        log("HEAL", f"📋 Victoria identified root cause:")
+        log("HEAL", f"   {root_cause[:200]}")
+        
+        # Write files
+        files_written = 0
+        for file_obj in files:
+            file_path = project_path / file_obj.get("path", "")
+            content = file_obj.get("content", "")
+            
+            if content:
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(content, encoding="utf-8")
+                files_written += 1
+                log("HEAL", f"   ✅ Wrote {file_obj.get('path')}")
+        
+        if files_written == 0:
+            log("HEAL", "❌ No files written by Victoria")
+            return False
+        
+        log("HEAL", "✅ Victoria applied fixes:")
+        for fix in fixes:
+            log("HEAL", f"   - {fix}")
+        
+        # Restart backend
+        try:
+            from app.tools.implementations import SANDBOX
+            log("HEAL", "🔄 Restarting backend after Victoria fixes...")
+            await SANDBOX.restart_service(project_path.name, "backend")
+            import asyncio
+            await asyncio.sleep(5)  # Wait for restart
+            log("HEAL", "✅ Backend restarted")
+        except Exception as e:
+            log("HEAL", f"⚠️ Could not restart backend: {e}")
+        
+        return True
+        
+    except Exception as e:
+        log("HEAL", f"❌ Victoria escalation failed: {e}")
+        import traceback
+        log("HEAL", traceback.format_exc()[:500])
+        return False
+

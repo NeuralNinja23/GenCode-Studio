@@ -1,0 +1,143 @@
+# Project GenCode Backend - File Analysis
+
+Total Files: 137
+
+| File Path | Primary Function (1-2 Words) | Description |
+|-----------|------------------------------|-------------|
+| `agents\__init__.py` | **  Init  ** | Agent calling module - handles calls to sub-agents (Derek, Luna, Victoria). |
+| `agents\sub_agents.py` | **Sub Agents** | Sub-agent wrappers: Derek (backend QA), Luna (frontend QA), Victoria (architecture). |
+| `api\__init__.py` | **  Init  ** | API module - All route handlers. |
+| `api\agents.py` | **Agents** | Agent status routes. |
+| `api\deployment.py` | **Deployment** | Deployment routes. |
+| `api\health.py` | **Health** | Health check endpoints. |
+| `api\projects.py` | **Projects** | Project management routes. |
+| `api\providers.py` | **Providers** | LLM provider management routes. |
+| `api\sandbox.py` | **Sandbox** | Docker sandbox control routes. |
+| `api\tracking.py` | **Tracking** | Tracking API endpoints - BudgetManager integration for cost dashboard. |
+| `api\workspace.py` | **Workspace** | Workspace file operations. |
+| `arbormind\__init__.py` | **  Init  ** | ArborMind Framework - Core Package |
+| `arbormind\evolution.py` | **Evolution** | ArborMind Evolution Layer |
+| `arbormind\explorer.py` | **Explorer** | E-AM: Exploratory ArborMind - Foreign Pattern Injection. |
+| `arbormind\metrics_collector.py` | **Metrics Collector** | ArborMind Metrics Collector |
+| `arbormind\router.py` | **Router** | ArborMind Router - Attention-based routing for intelligent decision making. |
+| `arbormind\t_am_operators.py` | **T Am Operators** | No description available |
+| `arbormind\v_value_schema.py` | **V Value Schema** | No description available |
+| `core\__init__.py` | **  Init  ** | Core module - Application constants, configuration, and shared types. |
+| `core\arbormind_paths.py` | **Arbormind Paths** | Centralized ArborMind Storage Paths |
+| `core\config.py` | **Config** | Application configuration - single source of truth for all settings. |
+| `core\constants.py` | **Constants** | Application constants - all magic numbers and strings in one place. |
+| `core\exceptions.py` | **Exceptions** | Custom exceptions for the application. |
+| `core\integration.py` | **Integration** | Integration Manager logic ported from legacy agents/integration.py. |
+| `core\logging.py` | **Logging** | No description available |
+| `core\types.py` | **Types** | Shared type definitions used across the application. |
+| `db\__init__.py` | **  Init  ** | Database module. |
+| `handlers\__init__.py` | **  Init  ** | Workflow step handlers - one function per workflow step. |
+| `handlers\analysis.py` | **Analysis** | Step 1: Marcus analyzes user intent. |
+| `handlers\archetype_guidance.py` | **Archetype Guidance** | Archetype-Specific UI Guidance for Frontend Mock Generation. |
+| `handlers\architecture.py` | **Architecture** | Step 2: Victoria creates architecture plan with Marcus supervision. |
+| `handlers\backend.py` | **Backend** | Backend steps: models, routers, and main configuration. |
+| `handlers\backend_models.py` | **Backend Models** | Backend Models Handler (Phase 3) |
+| `handlers\base.py` | **Base** | Shared utilities for workflow handlers. |
+| `handlers\contracts.py` | **Contracts** | Step 5: Marcus creates API contracts AFTER seeing the frontend mock. |
+| `handlers\frontend_integration.py` | **Frontend Integration** | Step 10: Derek replaces mock data with real API calls. |
+| `handlers\frontend_mock.py` | **Frontend Mock** | Step 3: Derek creates frontend with MOCK DATA first. |
+| `handlers\preview.py` | **Preview** | Step 11: Launch preview with dynamic port allocation. |
+| `handlers\refine.py` | **Refine** | Refine Mode - Conversational Iteration (post-workflow). |
+| `handlers\screenshot_verify.py` | **Screenshot Verify** | Step 4: Visual QA - Screenshot verification after frontend mock. |
+| `handlers\testing_backend.py` | **Testing Backend** | Step 9: Derek tests backend using sandbox with Self-Healing. |
+| `handlers\testing_frontend.py` | **Testing Frontend** | Step 10: Luna runs E2E tests on the integrated frontend. |
+| `learning\__init__.py` | **  Init  ** | Learning module - Pattern memory, failure tracking, and quality improvement over time. |
+| `learning\failure_store.py` | **Failure Store** | Failure Memory & Learning System |
+| `learning\pattern_store.py` | **Pattern Store** | Pattern Memory & Learning System |
+| `learning\v_vector_store.py` | **V Vector Store** | V-Vector Learning Store |
+| `lib\__init__.py` | **  Init  ** | Library module - Shared utilities. |
+| `lib\monitoring.py` | **Monitoring** | No description available |
+| `lib\secrets.py` | **Secrets** | No description available |
+| `lib\websocket.py` | **Websocket** | No description available |
+| `llm\__init__.py` | **  Init  ** | LLM module - Unified interface for all LLM providers. |
+| `llm\adapter.py` | **Adapter** | Unified LLM adapter - single interface for all providers. |
+| `llm\prompt_management.py` | **Prompt Management** | PHASE 1: Prompt Management System |
+| `llm\prompts\__init__.py` | **  Init  ** | Agent prompts - organized by agent. |
+| `llm\prompts\derek.py` | **Derek** | Derek prompts - Full-Stack Developer. |
+| `llm\prompts\luna.py` | **Luna** | Luna prompts - QA Engineer. |
+| `llm\prompts\marcus.py` | **Marcus** | Marcus prompts - Lead AI Architect and Team Supervisor. |
+| `llm\prompts\victoria.py` | **Victoria** | Victoria prompts - Software Architect. |
+| `llm\providers\__init__.py` | **  Init  ** | LLM Providers - Individual provider implementations. |
+| `llm\providers\anthropic.py` | **Anthropic** | Anthropic Claude provider implementation. |
+| `llm\providers\gemini.py` | **Gemini** | Google Gemini provider implementation. |
+| `llm\providers\ollama.py` | **Ollama** | Ollama provider implementation. |
+| `llm\providers\openai.py` | **Openai** | OpenAI provider implementation. |
+| `main.py` | **Main** | GenCode Studio Backend - Clean Architecture |
+| `models\__init__.py` | **  Init  ** | No description available |
+| `models\deployment.py` | **Deployment** | No description available |
+| `models\project.py` | **Project** | No description available |
+| `models\snapshot.py` | **Snapshot** | No description available |
+| `models\workflow.py` | **Workflow** | No description available |
+| `orchestration\__init__.py` | **  Init  ** | FAST V2 Engine - Complete Workflow Overhaul |
+| `orchestration\artifact_contracts.py` | **Artifact Contracts** | Defines Required Artifacts + Validation Rules for FAST v2 |
+| `orchestration\artifact_types.py` | **Artifact Types** | Centralized Artifact Type Definitions |
+| `orchestration\backend_probe.py` | **Backend Probe** | BackendProbe: Environment-agnostic HTTP testing for backend services. |
+| `orchestration\budget_manager.py` | **Budget Manager** | BudgetManager for Gemini 2.5 Flash - Cost Controller for FAST Runs |
+| `orchestration\checkpoint.py` | **Checkpoint** | FAST v2 Checkpoint Manager |
+| `orchestration\code_validator.py` | **Code Validator** | Universal Code Validation Framework |
+| `orchestration\context.py` | **Context** | Context selection for agents - only provide relevant files per step. |
+| `orchestration\contract_parser.py` | **Contract Parser** | ContractParser: Extract expected routes from contracts.md and test_api.py |
+| `orchestration\critical_step_barriers.py` | **Critical Step Barriers** | Hard Barriers: Prevent FAST from Continuing if Critical Steps Fail |
+| `orchestration\error_router.py` | **Error Router** | FAST v2 Error Router (Self-Evolving + AM) |
+| `orchestration\fallback_api_agent.py` | **Fallback Api Agent** | Minimal JS API Client Generator (Used When Derek Fails) |
+| `orchestration\fallback_model_agent.py` | **Fallback Model Agent** | Fallback Model Generator - Single source of truth for model fallback generation. |
+| `orchestration\fallback_router_agent.py` | **Fallback Router Agent** | Minimal Router Generator (Used When Derek Fails) |
+| `orchestration\fast_orchestrator.py` | **Fast Orchestrator** | FAST v2 Orchestrator - Main Entry Point (OPTION A: Integrated with Existing Handlers) |
+| `orchestration\file_persistence.py` | **File Persistence** | FAST v2 File Persistence |
+| `orchestration\heal_helpers.py` | **Heal Helpers** | Healing Validation Utilities |
+| `orchestration\healing_budget.py` | **Healing Budget** | Global Healing Budget Controller |
+| `orchestration\healing_pipeline.py` | **Healing Pipeline** | HealingPipeline - High-level healing orchestrator |
+| `orchestration\healing_policy.py` | **Healing Policy** | HealingPolicy: Stateful policy engine for determining healing actions. |
+| `orchestration\llm_output_integrity.py` | **Llm Output Integrity** | LLM Output Structural Integrity Validator â€” Python 3.12 |
+| `orchestration\prompt_adapter.py` | **Prompt Adapter** | FAST v2 Prompt Adapter |
+| `orchestration\router_utils.py` | **Router Utils** | Router Wiring Utilities - Single source of truth for router detection. |
+| `orchestration\self_healing_manager.py` | **Self Healing Manager** | Self-Healing Workflow Manager (HYBRID VERSION - Phase 1 & 2) |
+| `orchestration\state.py` | **State** | Workflow state management. |
+| `orchestration\step_contracts.py` | **Step Contracts** | FAST v2 Step Contracts |
+| `orchestration\structural_compiler.py` | **Structural Compiler** | Compiler-Layer Structural Validator (Python + JS) â€” Python 3.12 |
+| `orchestration\task_graph.py` | **Task Graph** | FAST v2 Task Graph - Fixed Pipeline with Dependencies |
+| `orchestration\token_policy.py` | **Token Policy** | Step-specific token allocation policies. |
+| `orchestration\utils.py` | **Utils** | Workflow utilities - shared helper functions. |
+| `orchestration\wiring_utils.py` | **Wiring Utils** | Wiring Utilities - Handles injection of content into main.py. |
+| `persistence\__init__.py` | **  Init  ** | Persistence module - file writing with validation. |
+| `persistence\filesystem.py` | **Filesystem** | No description available |
+| `persistence\validator.py` | **Validator** | Output validation before persistence. |
+| `persistence\writer.py` | **Writer** | File persistence with safety checks. |
+| `sandbox\__init__.py` | **  Init  ** | GenCode Studio - Docker Sandbox Manager |
+| `sandbox\health_monitor.py` | **Health Monitor** | Health Monitor |
+| `sandbox\log_streamer.py` | **Log Streamer** | Log Streamer |
+| `sandbox\pool.py` | **Pool** | Docker Sandbox Pool - Pre-warmed Container Management |
+| `sandbox\preview_manager.py` | **Preview Manager** | Preview Manager |
+| `sandbox\sandbox_config.py` | **Sandbox Config** | Sandbox Configuration |
+| `sandbox\sandbox_manager.py` | **Sandbox Manager** | Docker Sandbox Manager - Main Orchestrator |
+| `supervision\__init__.py` | **  Init  ** | Marcus supervision system. |
+| `supervision\quality_gate.py` | **Quality Gate** | Quality gate - blocks workflow if quality is too low. |
+| `supervision\supervisor.py` | **Supervisor** | Marcus supervision of agent output. |
+| `supervision\tiered_review.py` | **Tiered Review** | Tiered Review System - Smart quality gates based on file criticality. |
+| `tools\__init__.py` | **  Init  ** | Tools module - actions agents can take. |
+| `tools\implementations.py` | **Implementations** | GenCode Studio â€“ Complete Tool System (Full Production Version) |
+| `tools\patching.py` | **Patching** | Centralized Patching Utilities. |
+| `tools\registry.py` | **Registry** | Tool registry - routes tool calls to implementations. |
+| `tracking\__init__.py` | **  Init  ** | Tracking module - placeholder for BudgetManager. |
+| `tracking\memory.py` | **Memory** | No description available |
+| `tracking\metrics.py` | **Metrics** | Code quality metrics tracking. |
+| `tracking\quality.py` | **Quality** | Quality score tracking. |
+| `utils\__init__.py` | **  Init  ** | Utility modules for GenCode Studio. |
+| `utils\component_copier.py` | **Component Copier** | Just-in-Time Shadcn Component Copier |
+| `utils\dependency_fixer.py` | **Dependency Fixer** | Dependency Auto-Fixer for Backend Testing |
+| `utils\entity_discovery.py` | **Entity Discovery** | Centralized Entity Discovery Utility |
+| `utils\integration_playbooks.py` | **Integration Playbooks** | No description available |
+| `utils\parser.py` | **Parser** | No description available |
+| `utils\path_utils.py` | **Path Utils** | Centralized Path Utilities - Single source of truth for project path resolution. |
+| `utils\regex_healer.py` | **Regex Healer** | Patcher for common test failures using Regex. |
+| `utils\test_scaffolding.py` | **Test Scaffolding** | Utilities for generating robust frontend tests. |
+| `utils\ui_beautifier.py` | **Ui Beautifier** | UI Beautifier - Post-processes frontend files to ensure consistency. |
+| `validation\__init__.py` | **  Init  ** | Validation Module - Single Entry Point for All Validation. |
+| `validation\syntax_validator.py` | **Syntax Validator** | PRE-FLIGHT VALIDATION - Layer 1 Quality Gate |
+| `workflow\__init__.py` | **  Init  ** | Workflow module - Orchestrates the GenCode Studio workflow engine. |
+| `workflow\engine.py` | **Engine** | Workflow Engine - The main orchestration loop. |

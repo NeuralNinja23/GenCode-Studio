@@ -1,0 +1,1253 @@
+# Project GenCode Backend - Function Analysis
+
+Total Functions: 714
+
+
+## Module: `agents\sub_agents.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 31 | `_broadcast_agent_thinking` | Broadcast agent thinking to the frontend Terminal. | 2 | agents\sub_agents.py, orchestration\fast_orchestrator.py |
+| 56 | `_llm_generate_tests` | Ask LLM to generate tests given the current project files. | 1 | agents\sub_agents.py |
+| 83 | `_collect_files_sync` | No docstring | 1 | agents\sub_agents.py |
+| 155 | `_write_tests_to_workspace` | Persist generated tests into workspace and return list of written paths. | 1 | agents\sub_agents.py |
+| 171 | `_run_pytest` | Run pytest programmatically via async subprocess. | 1 | agents\sub_agents.py |
+| 181 | `run_pytest_sync` | No docstring | 1 | agents\sub_agents.py |
+| 214 | `_run_playwright` | Try to run playwright tests via CLI 'playwright test' (async). | 1 | agents\sub_agents.py |
+| 224 | `run_playwright_sync` | No docstring | 1 | agents\sub_agents.py |
+| 254 | `run_sub_agent` | Generic runner for a sub-agent: | 1 | agents\__init__.py |
+| 355 | `marcus_call_sub_agent` | Marcus uses this to call Derek/Luna/Victoria for code generation. | 3 | agents\__init__.py, supervision\supervisor.py, tools\implementations.py |
+| 617 | `to_files_schema` | No docstring | 1 | agents\sub_agents.py |
+
+## Module: `api\agents.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 13 | `get_agents_status` | Get status of all agents. | 0 | - |
+| 42 | `get_active_workflows` | Get list of active workflows. | 0 | - |
+
+## Module: `api\deployment.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 39 | `initialize_deployment` | Initialize a new deployment. | 0 | - |
+| 67 | `start_deployment` | Start one-click deployment. | 1 | api\deployment.py |
+| 95 | `get_deployment_status` | Get deployment status. | 0 | - |
+| 118 | `get_deployment_history` | Get deployment history. | 0 | - |
+| 137 | `rollback_deployment` | Rollback to previous version. | 0 | - |
+| 152 | `update_env_vars` | Update environment variables. | 0 | - |
+| 169 | `get_env_vars` | Get environment variables. | 0 | - |
+| 179 | `setup_custom_domain` | Setup custom domain. | 0 | - |
+| 197 | `get_deployment_logs` | Get deployment logs. | 0 | - |
+| 209 | `download_logs` | Download deployment logs as file. | 0 | - |
+| 221 | `restart_deployment` | Restart deployment. | 0 | - |
+| 232 | `get_deployment_metrics` | Get deployment metrics. | 0 | - |
+| 243 | `get_container_health` | Get container health status. | 0 | - |
+
+## Module: `api\health.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 12 | `healthz` | Simple health check. | 1 | api\health.py |
+| 18 | `api_health` | API health check. | 0 | - |
+
+## Module: `api\projects.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 40 | `create_project` | Create a new project. | 0 | - |
+| 51 | `generate_slug` | Generate a URL-safe slug from the user prompt. | 1 | api\projects.py |
+| 129 | `list_projects` | List all projects. | 0 | - |
+| 179 | `get_project` | Get project details. | 9 | api\projects.py, api\sandbox.py, api\tracking.py (+6 more) |
+| 226 | `delete_project` | Delete a project. | 0 | - |
+
+## Module: `api\providers.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 21 | `list_providers` | List available LLM providers. | 0 | - |
+| 54 | `get_available_providers` | Get list of available providers (those with API keys configured). | 0 | - |
+| 98 | `get_current_provider` | Get current default provider and model. | 0 | - |
+| 116 | `set_provider` | Set the current provider and model. | 0 | - |
+
+## Module: `api\sandbox.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 20 | `sandbox_exec` | Execute command in sandbox. | 1 | tools\implementations.py |
+| 38 | `get_sandbox_status` | Get sandbox status for a project. | 0 | - |
+| 51 | `create_sandbox` | Create/initialize sandbox for a project (idempotent). | 5 | api\sandbox.py, handlers\backend.py, sandbox\pool.py (+2 more) |
+| 74 | `start_sandbox` | Start sandbox for a project. | 5 | api\sandbox.py, handlers\backend.py, handlers\testing_backend.py (+2 more) |
+| 87 | `stop_sandbox` | Stop sandbox for a project. | 6 | api\sandbox.py, handlers\backend.py, handlers\testing_backend.py (+3 more) |
+| 100 | `get_preview_url` | Get preview URL for a project sandbox. | 2 | api\sandbox.py, sandbox\sandbox_manager.py |
+
+## Module: `api\tracking.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 16 | `health` | Health check for tracking service. | 30 | main.py, api\deployment.py, api\health.py (+27 more) |
+| 22 | `get_project_costs` | Get cost/token usage data for a project. | 0 | - |
+| 38 | `get_project_budget` | Get budget status for a project. | 0 | - |
+| 52 | `list_tracked_projects` | List all projects with budget tracking. | 0 | - |
+
+## Module: `api\workspace.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 29 | `validate_project_id` | Validate project_id format to prevent path traversal attacks. | 1 | api\workspace.py |
+| 39 | `get_safe_project_path` | Get project path with security validation. | 1 | api\workspace.py |
+| 77 | `list_workspaces` | List all workspaces (for connection test). | 0 | - |
+| 91 | `get_workspace_files` | Get workspace file tree. | 0 | - |
+| 98 | `build_tree` | No docstring | 1 | api\workspace.py |
+| 127 | `get_file_content` | Get file content. | 0 | - |
+| 159 | `save_file_content` | Save file content. | 0 | - |
+| 183 | `generate_backend` | Start backend generation workflow. | 1 | orchestration\self_healing_manager.py |
+| 215 | `_run_workflow_with_logging` | No docstring | 1 | api\workspace.py |
+| 240 | `resume_workflow_endpoint` | Resume a paused workflow OR start a refine workflow for completed projects. | 0 | - |
+| 309 | `run_refine` | No docstring | 1 | api\workspace.py |
+| 341 | `apply_instruction` | Apply an instruction to modify project files. | 0 | - |
+| 354 | `force_reset_workflow` | Force reset workflow state for a project. | 0 | - |
+
+## Module: `arbormind\evolution.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 72 | `v_store` | No docstring | 1 | arbormind\evolution.py |
+| 77 | `evolve_options` | Apply evolution to a list of options before routing. | 2 | arbormind\evolution.py, arbormind\router.py |
+| 111 | `_enhance_from_patterns` | Enhance options with insights from successful patterns. | 1 | arbormind\evolution.py |
+| 171 | `_apply_failure_warnings` | Apply warnings and confidence adjustments from failure history. | 1 | arbormind\evolution.py |
+| 305 | `start_tracking` | Start tracking a routing decision. | 2 | arbormind\evolution.py, arbormind\router.py |
+| 352 | `complete_tracking` | Complete tracking by recording the outcome. | 1 | arbormind\evolution.py |
+| 398 | `_record_to_pattern_store` | Cross-record successful patterns for redundancy. | 1 | arbormind\evolution.py |
+| 414 | `_record_to_failure_store` | Cross-record failures for anti-pattern learning. | 1 | arbormind\evolution.py |
+| 430 | `get_stats` | Get evolution statistics. | 3 | arbormind\evolution.py, handlers\archetype_guidance.py, learning\pattern_store.py |
+| 455 | `get_evolution_manager` | Get the global ArborMind evolution manager. | 3 | arbormind\evolution.py, arbormind\router.py, arbormind\__init__.py |
+| 467 | `evolve_before_routing` | Called by router BEFORE making a decision. | 1 | arbormind\__init__.py |
+| 479 | `track_routing_decision` | Called by router AFTER making a decision. | 1 | arbormind\__init__.py |
+| 497 | `report_routing_outcome` | Called when the outcome of a routing decision is known. | 6 | agents\sub_agents.py, arbormind\metrics_collector.py, arbormind\__init__.py (+3 more) |
+| 512 | `get_evolution_stats` | Get overall evolution statistics. | 1 | arbormind\__init__.py |
+
+## Module: `arbormind\explorer.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 21 | `arbormind_explore` | E-AM: Inject patterns from foreign archetypes. | 2 | arbormind\__init__.py, orchestration\error_router.py |
+| 116 | `_search_foreign_patterns` | Search for patterns in the V-vector store, excluding current archetype. | 1 | arbormind\explorer.py |
+| 149 | `_get_error_embedding` | Get embedding for error text. | 1 | arbormind\explorer.py |
+| 163 | `select_best_foreign_pattern` | Select the single best foreign pattern based on weights and compatibility. | 0 | - |
+| 202 | `get_archetype_hints_for_error` | Get suggested archetypes that often have solutions for this error type. | 1 | arbormind\__init__.py |
+
+## Module: `arbormind\metrics_collector.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 29 | `init_metrics_db` | Initialize the metrics database tables if they don't exist. | 1 | main.py |
+| 108 | `get_db_connection` | No docstring | 1 | arbormind\metrics_collector.py |
+| 115 | `start_pipeline_run` | Start tracking a new pipeline run. Returns run_id. | 1 | orchestration\fast_orchestrator.py |
+| 134 | `complete_pipeline_run` | Mark a pipeline run as complete. | 1 | orchestration\fast_orchestrator.py |
+| 161 | `start_step` | (Optional) Log step start - mainly for real-time dashboards. | 1 | orchestration\fast_orchestrator.py |
+| 165 | `complete_step` | Record the outcome of a single step. | 1 | orchestration\fast_orchestrator.py |
+| 198 | `record_arbormind_metrics` | Record ArborMind routing decision metrics to the metrics database. | 0 | - |
+| 212 | `report_routing_outcome_db` | Update a routing decision with its outcome. | 0 | - |
+
+## Module: `arbormind\router.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 129 | `_load_persistent_cache` | Load embeddings from disk on startup. | 1 | arbormind\router.py |
+| 143 | `_save_persistent_cache_entry` | Append a single entry to disk (simple append-only log or rewrite). | 1 | arbormind\router.py |
+| 168 | `_get_http_session` | Get or create shared HTTP session for connection pooling. | 1 | arbormind\router.py |
+| 179 | `close_http_session` | Close the shared HTTP session. Call during app shutdown. | 1 | main.py |
+| 187 | `_cache_get` | Get from cache if exists. | 1 | arbormind\router.py |
+| 197 | `_cache_set` | Set cache and persist. | 1 | arbormind\router.py |
+| 208 | `get_embedding` | Get text embedding using the configured LLM provider. | 3 | arbormind\explorer.py, arbormind\router.py, arbormind\__init__.py |
+| 249 | `_get_gemini_embedding` | Get embedding from Google Gemini API. | 1 | arbormind\router.py |
+| 280 | `_get_openai_embedding` | Get embedding from OpenAI API. | 1 | arbormind\router.py |
+| 313 | `_get_fallback_embedding` | Fallback embedding using simple hash-based approach. | 1 | arbormind\router.py |
+| 334 | `softmax` | Numerically stable softmax implementation. | 2 | arbormind\router.py, arbormind\__init__.py |
+| 351 | `scaled_dot_product_attention` | Compute scaled dot-product attention. | 1 | arbormind\__init__.py |
+| 396 | `_l2_normalize` | L2 normalize vectors along specified axis. | 1 | arbormind\router.py |
+| 402 | `_softmax_am` | Numerically stable softmax for AM operations. | 1 | arbormind\router.py |
+| 409 | `arbormind_attention` | Universal Attention operator supporting AM creative modes. | 3 | arbormind\explorer.py, arbormind\router.py, arbormind\__init__.py |
+| 476 | `arbormind_blend` | Domain-general V-value synthesis for AM. | 3 | arbormind\explorer.py, arbormind\router.py, arbormind\__init__.py |
+| 525 | `should_use_combinational_mode` | Determine if combinational mode should be used based on entropy. | 2 | arbormind\router.py, arbormind\__init__.py |
+| 562 | `_get_evolution_manager` | Lazy load evolution manager to avoid circular imports. | 1 | arbormind\router.py |
+| 572 | `route` | Route a query to the best matching options using Global Attention. | 63 | main.py, agents\sub_agents.py, api\agents.py (+60 more) |
+| 791 | `_fallback_response` | Return a safe fallback response. | 1 | arbormind\router.py |
+| 803 | `_log_decision` | Visual logging of the attention distribution and parameters. | 1 | arbormind\router.py |
+| 828 | `compute_archetype_routing` | Route to project archetype using the Universal Router. | 2 | arbormind\__init__.py, handlers\analysis.py |
+| 844 | `compute_ui_vibe_routing` | Route to UI vibe using the Universal Router. | 3 | arbormind\__init__.py, handlers\analysis.py, handlers\refine.py |
+| 860 | `arbormind_route` | ArborMind Route - Primary routing function. | 5 | agents\sub_agents.py, arbormind\__init__.py, llm\prompt_management.py (+2 more) |
+
+## Module: `arbormind\t_am_operators.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 10 | `apply` | No docstring | 11 | api\workspace.py, arbormind\evolution.py, handlers\testing_backend.py (+8 more) |
+| 13 | `_invert_strict_mode` | Strategy: Relax constraints to allow partial success. | 1 | arbormind\t_am_operators.py |
+| 31 | `build_default_tam_operators` | Build the default set of T-AM mutation operators. | 1 | orchestration\healing_pipeline.py |
+
+## Module: `arbormind\v_value_schema.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 13 | `from_dict` | No docstring | 4 | arbormind\t_am_operators.py, orchestration\healing_pipeline.py, sandbox\sandbox_config.py (+1 more) |
+| 16 | `to_dict` | No docstring | 8 | arbormind\t_am_operators.py, core\types.py, handlers\backend_models.py (+5 more) |
+| 19 | `get` | No docstring | 110 | main.py, agents\sub_agents.py, api\agents.py (+107 more) |
+| 22 | `set` | No docstring | 70 | main.py, agents\sub_agents.py, api\deployment.py (+67 more) |
+
+## Module: `core\arbormind_paths.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 36 | `get_arbormind_storage_dir` | Get the ArborMind storage directory. | 0 | - |
+| 41 | `get_v_vector_db_path` | Get the V-Vector database path. | 0 | - |
+| 46 | `get_metrics_db_path` | Get the metrics database path. | 0 | - |
+
+## Module: `core\config.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 133 | `ensure_directories` | Ensure required directories exist. | 0 | - |
+
+## Module: `core\integration.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 60 | `_load_config` | Load configuration from environment and defaults | 1 | core\integration.py |
+| 73 | `is_feature_enabled` | Check if a specific feature is enabled. | 1 | core\integration.py |
+| 87 | `get_memory_db_path` | No docstring | 1 | core\integration.py |
+| 90 | `get_max_workflow_turns` | No docstring | 1 | core\integration.py |
+| 93 | `get_max_test_retries` | No docstring | 1 | core\integration.py |
+| 96 | `validate_api_keys` | Validate that required API keys are configured. | 1 | core\integration.py |
+| 117 | `get_config_summary` | Get summary of current configuration. | 1 | core\integration.py |
+| 139 | `create_integration_manager` | No docstring | 0 | - |
+| 143 | `validate_environment` | Validate that the environment is properly configured. | 0 | - |
+
+## Module: `core\logging.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 5 | `log` | Unified logging function for GenCode Studio. | 67 | main.py, agents\sub_agents.py, api\deployment.py (+64 more) |
+| 29 | `log_section` | Log a section header with visual separator. | 1 | supervision\supervisor.py |
+| 43 | `log_thinking` | Log agent thinking/reasoning with proper formatting. | 0 | - |
+| 61 | `log_files` | Log file list summary. | 2 | agents\sub_agents.py, supervision\supervisor.py |
+| 80 | `log_result` | Log review result with quality score. | 1 | supervision\supervisor.py |
+
+## Module: `core\types.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 26 | `to_dict` | No docstring | 9 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, core\types.py (+6 more) |
+| 39 | `to_dict` | No docstring | 9 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, core\types.py (+6 more) |
+| 80 | `total` | No docstring | 32 | api\tracking.py, arbormind\evolution.py, arbormind\metrics_collector.py (+29 more) |
+| 84 | `estimated_cost` | Estimate cost based on Gemini pricing. | 2 | api\tracking.py, orchestration\budget_manager.py |
+
+## Module: `db\__init__.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 14 | `connect_db` | Connect to MongoDB. | 4 | main.py, db\__init__.py, orchestration\self_healing_manager.py (+1 more) |
+| 60 | `disconnect_db` | Disconnect from MongoDB. | 2 | main.py, orchestration\self_healing_manager.py |
+| 68 | `get_db` | Get database instance. | 1 | arbormind\metrics_collector.py |
+| 78 | `is_connected` | Check if database is connected. | 1 | db\__init__.py |
+| 83 | `get_connection_error` | Get connection error message if connection failed. | 0 | - |
+| 88 | `get_collection` | Get a collection by name. | 0 | - |
+
+## Module: `handlers\analysis.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 27 | `_detect_primary_entity` | Detect primary entity from user request. | 1 | handlers\analysis.py |
+| 39 | `step_analysis` | Step 1: Marcus analyzes the user request. | 4 | handlers\analysis.py, handlers\__init__.py, orchestration\fast_orchestrator.py (+1 more) |
+
+## Module: `handlers\archetype_guidance.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 500 | `get_archetype_guidance` | Get UI guidance for a specific archetype. | 1 | handlers\archetype_guidance.py |
+| 528 | `get_archetype_pages` | Get additional pages recommended for this archetype. | 1 | handlers\archetype_guidance.py |
+| 534 | `get_archetype_components` | Get key components recommended for this archetype. | 1 | handlers\archetype_guidance.py |
+| 540 | `get_full_archetype_context` | Get complete archetype context for frontend mock generation. | 2 | handlers\archetype_guidance.py, handlers\frontend_mock.py |
+| 946 | `get_backend_archetype_guidance` | Get backend API guidance for a specific archetype. | 1 | handlers\archetype_guidance.py |
+| 973 | `get_full_backend_context` | Get complete archetype context for backend implementation. | 2 | handlers\archetype_guidance.py, handlers\backend.py |
+| 1205 | `get_architecture_archetype_guidance` | Get architecture guidance for a specific archetype. | 2 | handlers\archetype_guidance.py, handlers\architecture.py |
+| 1253 | `get_archetype_patterns_from_store` | Retrieve learned patterns from PatternStore for this archetype. | 3 | handlers\archetype_guidance.py, handlers\backend.py, handlers\frontend_mock.py |
+| 1307 | `get_enhanced_prompt_context` | Get complete enhanced context for any step. | 0 | - |
+| 1760 | `get_e2e_testing_guidance` | Get E2E testing guidance for a specific archetype. | 2 | handlers\archetype_guidance.py, handlers\testing_frontend.py |
+
+## Module: `handlers\architecture.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 31 | `step_architecture` | Step 2: Victoria creates architecture plan with Marcus supervision. | 4 | handlers\architecture.py, handlers\__init__.py, orchestration\fast_orchestrator.py (+1 more) |
+
+## Module: `handlers\backend.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 30 | `_validate_integration` | Validate that integrated routes are accessible using contract-driven testing. | 1 | handlers\backend.py |
+| 152 | `ensure_workspace_app_package` | Ensure the generated backend's `app` directory is a proper package: | 1 | handlers\backend.py |
+| 169 | `step_backend_implementation` | Step 6: Backend Implementation (Models + Routers). | 3 | handlers\__init__.py, orchestration\fast_orchestrator.py, workflow\engine.py |
+| 213 | `_step_backend_multi_entity` | Multi-entity backend implementation. | 1 | handlers\backend.py |
+| 359 | `_step_backend_single_entity` | Single-entity atomic backend implementation (LEGACY MODE). | 1 | handlers\backend.py |
+| 617 | `_build_single_router_prompt` | Build prompt for generating a single entity's router. | 1 | handlers\backend.py |
+| 677 | `step_system_integration` | Step 7: System Integration (Script). | 5 | handlers\__init__.py, orchestration\fast_orchestrator.py, orchestration\router_utils.py (+2 more) |
+
+## Module: `handlers\backend_models.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 24 | `step_backend_models` | Step: Backend Models - Generate all models at once. | 2 | handlers\backend.py, orchestration\fast_orchestrator.py |
+| 164 | `derek_generate_model_spec` | Derek generates model specifications as JSON (not Python code). | 1 | handlers\backend_models.py |
+| 332 | `merge_model_specs_to_python` | Convert JSON model spec to Python SQLModel/Pydantic code. | 1 | handlers\backend_models.py |
+
+## Module: `handlers\base.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 12 | `_get_broadcast_to_project` | Lazy import to avoid circular dependency with app.workflow package. | 1 | handlers\base.py |
+| 21 | `broadcast_status` | Broadcast workflow status update. | 12 | handlers\analysis.py, handlers\architecture.py, handlers\backend.py (+9 more) |
+| 47 | `broadcast_agent_log` | Broadcast an agent log/thinking message. | 7 | handlers\analysis.py, handlers\backend.py, handlers\backend_models.py (+4 more) |
+
+## Module: `handlers\contracts.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 36 | `step_contracts` | Step 5: Marcus creates API contracts AFTER the frontend mock is built. | 5 | handlers\__init__.py, orchestration\fast_orchestrator.py, orchestration\step_contracts.py (+2 more) |
+| 322 | `_generate_entity_plan_from_contracts` | Auto-generate entity_plan.json by parsing contracts.md. | 1 | handlers\contracts.py |
+
+## Module: `handlers\frontend_integration.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 41 | `cleanup_unused_components` | Remove unused Shadcn UI components to reduce bloat. | 1 | handlers\frontend_integration.py |
+| 123 | `step_frontend_integration` | Step 9: Derek replaces mock data with real API calls. | 4 | handlers\frontend_integration.py, handlers\__init__.py, orchestration\fast_orchestrator.py (+1 more) |
+
+## Module: `handlers\frontend_mock.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 42 | `step_frontend_mock` | Step 3: Derek generates frontend with MOCK DATA first. | 3 | handlers\__init__.py, orchestration\fast_orchestrator.py, workflow\engine.py |
+
+## Module: `handlers\preview.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 21 | `step_preview_final` | Step 11: Refresh preview on RANDOM free ports for both frontend and backend. | 3 | handlers\__init__.py, orchestration\fast_orchestrator.py, workflow\engine.py |
+
+## Module: `handlers\refine.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 26 | `step_refine` | Refine Mode - Conversational Iteration (post-workflow). | 3 | handlers\refine.py, handlers\__init__.py, workflow\engine.py |
+
+## Module: `handlers\screenshot_verify.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 24 | `step_screenshot_verify` | Step 4: Visual QA after frontend mock is created. | 3 | handlers\__init__.py, orchestration\fast_orchestrator.py, workflow\engine.py |
+
+## Module: `handlers\testing_backend.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 48 | `_has_routing_failures` | Detect if test failures are due to routing/integration issues (404s). | 1 | handlers\testing_backend.py |
+| 79 | `_heal_integration_failures` | LOOP CONSOLIDATION: Single healing attempt per outer loop iteration. | 1 | handlers\testing_backend.py |
+| 290 | `_generate_tests_from_template` | Generate backend tests from template at the START of testing step. | 1 | handlers\testing_backend.py |
+| 449 | `_fallback_generate_tests` | Fallback test generation when Derek fails (Option B supplement). | 1 | handlers\testing_backend.py |
+| 520 | `step_testing_backend` | MASTER LOOP: Derek tests backend using sandbox with healing. | 3 | handlers\__init__.py, orchestration\fast_orchestrator.py, workflow\engine.py |
+| 1210 | `escalate_to_victoria` | Escalate to Victoria for architectural review after Derek fails multiple times. | 0 | - |
+
+## Module: `handlers\testing_frontend.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 43 | `ensure_str` | Ensure value is a string (sandboxexec may return bytes). | 1 | handlers\testing_frontend.py |
+| 52 | `_generate_frontend_tests_from_template` | Generate frontend E2E tests from template at the START of testing step. | 1 | handlers\testing_frontend.py |
+| 209 | `_fallback_generate_frontend_tests` | Fallback test generation when Luna fails. | 1 | handlers\testing_frontend.py |
+| 263 | `step_testing_frontend` | Step 11: Luna tests frontend with Playwright and Self-Healing. | 3 | handlers\__init__.py, orchestration\fast_orchestrator.py, workflow\engine.py |
+| 310 | `persist_test_file_for_debugging` | Save test file content for debugging purposes. | 1 | handlers\testing_frontend.py |
+
+## Module: `learning\failure_store.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 49 | `_init_db` | Initialize the SQLite database. | 4 | learning\failure_store.py, learning\pattern_store.py, learning\v_vector_store.py (+1 more) |
+| 78 | `record_failure` | Record a failure. If a similar failure exists, increment its count. | 4 | agents\sub_agents.py, arbormind\evolution.py, orchestration\prompt_adapter.py (+1 more) |
+| 133 | `retrieve_relevant_failures` | Get similar failures to warn the agent before they start. | 2 | arbormind\evolution.py, learning\failure_store.py |
+| 174 | `get_anti_pattern_context` | Generate a 'KNOWN PITFALLS' string for the system prompt. | 1 | llm\prompt_management.py |
+| 202 | `get_failure_store` | No docstring | 5 | agents\sub_agents.py, arbormind\evolution.py, learning\__init__.py (+2 more) |
+
+## Module: `learning\pattern_store.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 59 | `_init_db` | Initialize the SQLite database. | 4 | learning\failure_store.py, learning\pattern_store.py, learning\v_vector_store.py (+1 more) |
+| 86 | `store_success` | Store a successful pattern for future reference. | 2 | arbormind\evolution.py, learning\pattern_store.py |
+| 184 | `retrieve_patterns` | Retrieve successful patterns for a given archetype and step. | 3 | arbormind\evolution.py, handlers\archetype_guidance.py, learning\pattern_store.py |
+| 238 | `get_prompt_enhancement` | Get a prompt enhancement based on learned patterns. | 1 | learning\pattern_store.py |
+| 283 | `get_stats` | Get learning statistics. | 2 | arbormind\evolution.py, handlers\archetype_guidance.py |
+| 308 | `_generate_pattern_id` | Generate a unique pattern ID. | 1 | learning\pattern_store.py |
+| 313 | `_extract_imports` | Extract import statements from code. | 1 | learning\pattern_store.py |
+| 332 | `penalize_pattern` | Retroactively penalize a pattern if it led to a failure later. | 1 | agents\sub_agents.py |
+| 390 | `get_pattern_store` | Get the global pattern store instance. | 5 | agents\sub_agents.py, arbormind\evolution.py, handlers\archetype_guidance.py (+2 more) |
+| 405 | `learn_from_success` | Convenience function to store successful patterns. | 2 | learning\__init__.py, supervision\supervisor.py |
+| 418 | `get_learned_enhancement` | Get prompt enhancement from learned patterns. | 1 | learning\__init__.py |
+
+## Module: `learning\v_vector_store.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 73 | `_init_db` | Initialize the SQLite database. | 4 | learning\failure_store.py, learning\pattern_store.py, learning\v_vector_store.py (+1 more) |
+| 123 | `record_decision` | Record a routing decision for future learning. | 3 | arbormind\evolution.py, learning\v_vector_store.py, learning\__init__.py |
+| 180 | `record_outcome` | Record the outcome of a routing decision. | 1 | learning\v_vector_store.py |
+| 220 | `_update_evolved_vector` | Update the evolved V-vector based on the new outcome. | 1 | learning\v_vector_store.py |
+| 313 | `get_evolved_vector` | Get the evolved V-vector for a specific context. | 1 | learning\v_vector_store.py |
+| 358 | `get_adjustment_for_options` | Adjust a list of options based on learned V-vectors. | 1 | learning\v_vector_store.py |
+| 426 | `get_learning_stats` | Get statistics about the learning system. | 1 | arbormind\evolution.py |
+| 463 | `get_anti_patterns_for_context` | Get configurations that consistently failed for a context. | 2 | arbormind\evolution.py, arbormind\explorer.py |
+| 502 | `_seed_evolved_vector` | Directly seed an evolved V-vector (for pre-training from GitHub). | 0 | - |
+| 602 | `search_patterns` | Search for successful patterns in foreign archetypes. | 1 | arbormind\explorer.py |
+| 666 | `get_v_vector_store` | Get the global V-vector store instance. | 4 | arbormind\evolution.py, arbormind\explorer.py, learning\v_vector_store.py (+1 more) |
+| 675 | `record_routing_decision` | Convenience function to record a routing decision. | 2 | arbormind\evolution.py, learning\__init__.py |
+| 690 | `record_decision_outcome` | Convenience function to record outcome. | 2 | arbormind\evolution.py, learning\__init__.py |
+| 702 | `get_evolved_options` | Convenience function to get evolved options. | 2 | arbormind\evolution.py, learning\__init__.py |
+
+## Module: `lib\monitoring.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 18 | `set_active_preview_servers` | Sets the value of the active preview servers gauge. | 0 | - |
+| 22 | `register_monitoring` | Registers Prometheus monitoring on the FastAPI app. | 1 | main.py |
+
+## Module: `lib\secrets.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 22 | `encrypt_secret` | Encrypts a plaintext secret using AES-256-GCM. | 0 | - |
+| 59 | `decrypt_secret` | Decrypts an AES-256-GCM encrypted secret. | 0 | - |
+| 92 | `fetch_vault_secret` | Fetches a single secret from Vault using its v1 kv API. | 1 | lib\secrets.py |
+| 116 | `load_secrets_from_vault` | Load a mapping of env names to Vault secret paths | 0 | - |
+
+## Module: `lib\websocket.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 21 | `connect` | No docstring | 26 | main.py, api\workspace.py, arbormind\metrics_collector.py (+23 more) |
+| 28 | `disconnect` | Thread-safe disconnect. | 5 | main.py, db\__init__.py, handlers\archetype_guidance.py (+2 more) |
+| 37 | `send_json` | No docstring | 3 | handlers\archetype_guidance.py, lib\websocket.py, orchestration\utils.py |
+| 40 | `send_to_project` | Send a JSON message to all clients connected for a given project_id. | 2 | lib\websocket.py, orchestration\utils.py |
+| 62 | `broadcast_json` | Broadcast a JSON message to all connected websockets across all projects. | 0 | - |
+| 70 | `broadcast` | Convenience / backwards-compatible alias: broadcast to a single project. | 24 | agents\sub_agents.py, api\workspace.py, handlers\analysis.py (+21 more) |
+
+## Module: `llm\adapter.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 60 | `get_stop_sequences` | Get appropriate stop sequences for a file type. | 1 | llm\adapter.py |
+| 65 | `get_stop_sequences_for_step` | Get appropriate stop sequences based on workflow step. | 1 | llm\adapter.py |
+| 113 | `call` | Call an LLM provider with automatic retry. | 65 | agents\sub_agents.py, agents\__init__.py, api\projects.py (+62 more) |
+| 174 | `_call_provider` | Call a specific provider with retry logic. | 1 | llm\adapter.py |
+| 242 | `call_llm` | Convenience function for calling LLM with V2 stop sequences support. | 9 | agents\sub_agents.py, handlers\analysis.py, handlers\backend_models.py (+6 more) |
+| 266 | `call_llm_with_usage` | V3: Call LLM and return BOTH text and usage metadata. | 5 | agents\sub_agents.py, handlers\analysis.py, handlers\backend_models.py (+2 more) |
+
+## Module: `llm\prompt_management.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 112 | `build_context` | Build minimal dynamic context for agent calls. | 1 | agents\sub_agents.py |
+| 302 | `filter_files_for_step` | Filter files to only those relevant for the current step. | 2 | llm\prompt_management.py, supervision\supervisor.py |
+| 395 | `get_adaptive_file_context` | Self-evolving file context selection. | 1 | llm\prompt_management.py |
+| 453 | `relevance_score` | No docstring | 1 | llm\prompt_management.py |
+| 492 | `report_context_outcome` | Report the outcome of a file context selection decision. | 0 | - |
+| 539 | `get_file_summary` | Generate or retrieve 500-char summary of a file. | 1 | llm\prompt_management.py |
+| 567 | `build_file_context` | Build file context - use summaries when possible. | 1 | llm\prompt_management.py |
+| 608 | `should_auto_approve` | Check if file should be auto-approved (skip Marcus review). | 0 | - |
+
+## Module: `llm\providers\anthropic.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 14 | `call` | Call Anthropic Claude API. | 64 | agents\sub_agents.py, agents\__init__.py, api\projects.py (+61 more) |
+
+## Module: `llm\providers\gemini.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 14 | `call` | Call Google Gemini API. | 64 | agents\sub_agents.py, agents\__init__.py, api\projects.py (+61 more) |
+
+## Module: `llm\providers\ollama.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 13 | `call` | Call Ollama API (local). | 65 | agents\sub_agents.py, agents\__init__.py, api\projects.py (+62 more) |
+
+## Module: `llm\providers\openai.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 14 | `call` | Call OpenAI API. | 64 | agents\sub_agents.py, agents\__init__.py, api\projects.py (+61 more) |
+
+## Module: `main.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 64 | `lifespan` | Application startup and shutdown. | 6 | main.py, llm\prompts\derek.py, orchestration\artifact_contracts.py (+3 more) |
+| 140 | `websocket_endpoint` | No docstring | 1 | handlers\archetype_guidance.py |
+| 197 | `serve_spa` | No docstring | 0 | - |
+
+## Module: `orchestration\artifact_contracts.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 37 | `register` | No docstring | 10 | main.py, lib\monitoring.py, llm\adapter.py (+7 more) |
+| 43 | `validate` | file_reader(path) -> returns file contents or None | 34 | api\workspace.py, core\config.py, core\integration.py (+31 more) |
+| 71 | `get_failures` | Get detailed failure information for each contract. | 1 | orchestration\critical_step_barriers.py |
+| 99 | `default_contracts` | Creates default contracts with flexible patterns. | 1 | orchestration\fast_orchestrator.py |
+| 157 | `dynamic_contracts` | Creates contracts based on actual files discovered in the workspace. | 1 | orchestration\artifact_contracts.py |
+
+## Module: `orchestration\artifact_types.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 67 | `get_artifact_display_name` | Get human-readable display name for an artifact. | 0 | - |
+
+## Module: `orchestration\backend_probe.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 29 | `check_route` | Test if a route returns the expected status code. | 3 | handlers\backend.py, handlers\testing_backend.py, orchestration\backend_probe.py |
+| 51 | `is_healthy` | Check if backend is healthy via /api/health. | 4 | handlers\testing_backend.py, orchestration\backend_probe.py, sandbox\health_monitor.py (+1 more) |
+| 56 | `from_env` | Factory method to create probe based on environment. | 2 | handlers\backend.py, handlers\testing_backend.py |
+| 85 | `_get_base_url` | Get base URL, dynamically detecting port for Docker mode. | 1 | orchestration\backend_probe.py |
+| 105 | `check_route` | Test route via HTTP request. | 3 | handlers\backend.py, handlers\testing_backend.py, orchestration\backend_probe.py |
+| 136 | `is_healthy` | Check health endpoint. | 4 | handlers\testing_backend.py, orchestration\backend_probe.py, sandbox\health_monitor.py (+1 more) |
+| 140 | `validate_all_contract_routes` | PHASE 4: Validate ALL routes from contracts.md. | 1 | orchestration\self_healing_manager.py |
+| 246 | `_get_app` | Lazy-load FastAPI app. | 1 | orchestration\backend_probe.py |
+| 258 | `check_route` | Test route via ASGI transport. | 3 | handlers\backend.py, handlers\testing_backend.py, orchestration\backend_probe.py |
+| 289 | `is_healthy` | Check health endpoint. | 4 | handlers\testing_backend.py, orchestration\backend_probe.py, sandbox\health_monitor.py (+1 more) |
+
+## Module: `orchestration\budget_manager.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 168 | `_reset_run_state` | Reset state for a new run. | 1 | orchestration\budget_manager.py |
+| 176 | `start_run` | Reset budget usage for a new FAST run. | 2 | orchestration\budget_manager.py, orchestration\fast_orchestrator.py |
+| 186 | `max_usd` | Maximum budget in USD. | 1 | orchestration\budget_manager.py |
+| 190 | `_estimate_cost_usd` | Estimate cost in USD for given token counts. | 1 | orchestration\budget_manager.py |
+| 197 | `_remaining_usd` | Remaining budget in USD. | 1 | orchestration\budget_manager.py |
+| 202 | `remaining_inr` | Remaining budget in INR. | 2 | api\tracking.py, orchestration\budget_manager.py |
+| 207 | `used_inr` | Used budget in INR. | 3 | api\tracking.py, orchestration\budget_manager.py, orchestration\fast_orchestrator.py |
+| 214 | `get_step_policy` | Get policy for a step (with sensible defaults). | 2 | orchestration\budget_manager.py, orchestration\fast_orchestrator.py |
+| 221 | `allowed_attempts_for_step` | Decide how many attempts this step is allowed, given the remaining budget. | 2 | orchestration\budget_manager.py, orchestration\fast_orchestrator.py |
+| 260 | `can_afford_step` | Quick check if we can afford at least one attempt of this step. | 0 | - |
+| 267 | `register_usage` | Call this after each ACTUAL Gemini call, | 3 | llm\adapter.py, orchestration\budget_manager.py, orchestration\fast_orchestrator.py |
+| 310 | `get_budget_status` | Return human-readable budget status emoji. | 1 | orchestration\budget_manager.py |
+| 323 | `get_usage_summary` | Get complete usage summary for logging/debugging. | 3 | api\tracking.py, orchestration\budget_manager.py, orchestration\fast_orchestrator.py |
+| 340 | `log_status` | Print current budget status to console. | 1 | orchestration\fast_orchestrator.py |
+| 359 | `get_budget_manager` | Get or create a BudgetManager instance. | 3 | api\tracking.py, orchestration\fast_orchestrator.py, orchestration\__init__.py |
+| 380 | `reset_budget_manager` | Reset a BudgetManager instance. | 1 | orchestration\__init__.py |
+| 393 | `get_all_project_budgets` | Get all tracked project budgets. | 1 | api\tracking.py |
+| 399 | `get_budget_for_api` | Get budget data formatted for the frontend CostDashboard API. | 1 | api\tracking.py |
+
+## Module: `orchestration\checkpoint.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 27 | `save_project_snapshot` | Capture the entire project state from disk. | 2 | orchestration\checkpoint.py, supervision\supervisor.py |
+| 34 | `_save_project_snapshot_sync` | Sync implementation of project capture. | 1 | orchestration\checkpoint.py |
+| 52 | `save` | Save a checkpoint for a step using provided file content. | 21 | api\deployment.py, api\workspace.py, arbormind\router.py (+18 more) |
+| 79 | `get_latest` | Get the latest checkpoint for a step. | 0 | - |
+| 117 | `list_checkpoints` | List all checkpoints, optionally filtered by step. | 0 | - |
+
+## Module: `orchestration\code_validator.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 74 | `failed_checks` | No docstring | 1 | orchestration\code_validator.py |
+| 78 | `failure_reasons` | No docstring | 1 | arbormind\evolution.py |
+| 99 | `validate_file` | Validate a single code file. | 15 | handlers\architecture.py, handlers\backend.py, handlers\contracts.py (+12 more) |
+| 140 | `validate_fastapi_app` | Validate that FastAPI app can be instantiated. | 1 | orchestration\code_validator.py |
+| 236 | `_check_syntax` | Check Python syntax using AST. | 1 | orchestration\code_validator.py |
+| 276 | `_check_imports` | Check that file can be imported. | 1 | orchestration\code_validator.py |
+| 356 | `_classify_error_from_output` | Classify error type from traceback output. | 1 | orchestration\code_validator.py |
+| 410 | `_extract_error_message` | Extract human-readable error message from traceback. | 1 | orchestration\code_validator.py |
+| 440 | `validate_healed_code` | Validate healed code files. | 0 | - |
+
+## Module: `orchestration\context.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 75 | `get_relevant_files` | Get only the files relevant to the current step. | 2 | agents\sub_agents.py, llm\prompt_management.py |
+| 140 | `get_entity_context` | Get entity-specific context for agents. | 0 | - |
+| 204 | `get_previous_files_summary` | Get a brief summary of what files exist in the project. | 0 | - |
+| 265 | `_ctx` | No docstring | 2 | orchestration\context.py, orchestration\fast_orchestrator.py |
+| 268 | `record_step_completion` | Record that a step completed with optional summary data. | 2 | orchestration\context.py, orchestration\fast_orchestrator.py |
+| 275 | `set_entities` | Set the primary entities from analysis step. | 1 | orchestration\fast_orchestrator.py |
+| 279 | `set_architecture` | Set architecture summary from architecture step. | 1 | orchestration\fast_orchestrator.py |
+| 283 | `get_summary_for_step` | Get a context summary tailored for the current step. | 1 | orchestration\context.py |
+| 318 | `get_completed_steps` | Get list of completed steps. | 0 | - |
+| 322 | `reset` | Reset context for a new workflow run. | 11 | api\providers.py, api\workspace.py, handlers\testing_backend.py (+8 more) |
+| 332 | `get_or_create` | Factory method to get or create context for a project. | 2 | handlers\archetype_guidance.py, orchestration\fast_orchestrator.py |
+
+## Module: `orchestration\contract_parser.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 39 | `get_expected_routes` | Extract expected routes for validation. | 3 | handlers\backend.py, orchestration\backend_probe.py, orchestration\contract_parser.py |
+| 111 | `_parse_contracts_md` | Parse route contracts from contracts.md. | 0 | - |
+| 144 | `_parse_test_file` | Parse expected routes from test_api.py. | 0 | - |
+| 186 | `get_primary_entity_routes` | Get routes for the primary entity only. | 1 | handlers\testing_backend.py |
+
+## Module: `orchestration\critical_step_barriers.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 27 | `enforce` | Returns True if allowed to continue. | 3 | handlers\backend.py, orchestration\budget_manager.py, orchestration\step_contracts.py |
+| 61 | `check_artifact` | Check if a specific artifact passes validation. | 0 | - |
+| 69 | `get_all_failures` | Get detailed failure information for all artifacts. | 0 | - |
+
+## Module: `orchestration\error_router.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 54 | `get_repair_artifact` | Get the artifact name to repair for a failed step. | 2 | orchestration\error_router.py, orchestration\healing_pipeline.py |
+| 58 | `is_repairable` | Check if a step can be repaired. | 1 | orchestration\healing_pipeline.py |
+| 62 | `get_repair_priority` | Get repair priority (lower = higher priority). | 1 | orchestration\error_router.py |
+| 67 | `get_repair_order` | Sort failed steps by repair priority. | 1 | orchestration\healing_pipeline.py |
+| 71 | `decide_repair_strategy` | LOOP CONSOLIDATION: Select strategy based on ERROR DEPTH, not retry count. | 2 | orchestration\healing_pipeline.py, supervision\supervisor.py |
+| 138 | `_analyze_error_depth` | Analyze error to determine depth level. | 1 | orchestration\error_router.py |
+| 198 | `_standard_route` | Standard attention-based routing. | 1 | orchestration\error_router.py |
+| 229 | `_exploratory_route` | E-AM: Inject foreign patterns from other archetypes. | 1 | orchestration\error_router.py |
+| 260 | `_transformational_route` | T-AM: Mutate constraints when fundamentally stuck. | 1 | orchestration\error_router.py |
+| 281 | `_select_mutation_operator` | Select T-AM mutation operator based on error analysis. | 1 | orchestration\error_router.py |
+| 307 | `_build_mutation` | Build the mutation based on operator and context. | 1 | orchestration\error_router.py |
+| 354 | `_merge_values` | Merge base strategy values with foreign pattern values. | 1 | orchestration\error_router.py |
+| 368 | `_get_repair_strategies` | Get the standard repair strategies. | 1 | orchestration\error_router.py |
+| 428 | `report_repair_outcome` | Report the outcome of a repair strategy decision. | 1 | orchestration\healing_pipeline.py |
+| 461 | `get_last_decision_id` | Get the decision_id from the last repair strategy decision. | 0 | - |
+| 465 | `get_last_mode` | Get the AM mode used in the last decision. | 0 | - |
+
+## Module: `orchestration\fallback_api_agent.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 36 | `generate` | Generate API client code for the specified entity. | 49 | agents\sub_agents.py, api\projects.py, api\workspace.py (+46 more) |
+| 61 | `generate_for_entity` | Generate an API client for a specific entity. | 5 | orchestration\fallback_api_agent.py, orchestration\fallback_model_agent.py, orchestration\fallback_router_agent.py (+2 more) |
+
+## Module: `orchestration\fallback_model_agent.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 29 | `generate` | Generate model code for the specified entity. | 49 | agents\sub_agents.py, api\projects.py, api\workspace.py (+46 more) |
+| 50 | `generate_for_entity` | Generate a Beanie Document model for a specific entity. | 5 | orchestration\fallback_api_agent.py, orchestration\fallback_model_agent.py, orchestration\fallback_router_agent.py (+2 more) |
+
+## Module: `orchestration\fallback_router_agent.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 36 | `generate` | Generate router code for the specified entity. | 49 | agents\sub_agents.py, api\projects.py, api\workspace.py (+46 more) |
+| 61 | `generate_for_entity` | Generate a CRUD router for a specific entity. | 5 | orchestration\fallback_api_agent.py, orchestration\fallback_model_agent.py, orchestration\fallback_router_agent.py (+2 more) |
+
+## Module: `orchestration\fast_orchestrator.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 137 | `run` | Execute the FAST V2 workflow. | 64 | main.py, agents\sub_agents.py, agents\__init__.py (+61 more) |
+| 538 | `_validate_critical_files` | Validate critical files exist before running testing/preview steps. | 1 | orchestration\fast_orchestrator.py |
+| 596 | `_validate_step_output` | Validate the output of a critical step. | 1 | orchestration\fast_orchestrator.py |
+| 635 | `has_document_class` | No docstring | 1 | orchestration\fast_orchestrator.py |
+| 687 | `_attempt_healing` | Attempt to heal a failed step using the healing pipeline. | 1 | orchestration\fast_orchestrator.py |
+| 705 | `_save_checkpoint` | Save a checkpoint after successful step completion. | 1 | orchestration\fast_orchestrator.py |
+| 745 | `_record_step_context` | V2 Feature: Record step completion to cross-step context. | 1 | orchestration\fast_orchestrator.py |
+| 819 | `run_fast_v2_workflow` | Convenience function to run FAST V2 workflow. | 1 | orchestration\__init__.py |
+
+## Module: `orchestration\file_persistence.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 24 | `write` | Atomically write text to a file. | 39 | agents\sub_agents.py, api\workspace.py, arbormind\router.py (+36 more) |
+| 59 | `read` | Read a file and return its contents, or None if not found. | 62 | agents\sub_agents.py, api\projects.py, api\sandbox.py (+59 more) |
+| 73 | `exists` | Check if a file exists. | 50 | main.py, api\deployment.py, api\projects.py (+47 more) |
+| 78 | `delete` | Delete a file if it exists. | 26 | api\projects.py, handlers\analysis.py, handlers\archetype_guidance.py (+23 more) |
+| 92 | `set_base_path` | Set the base path for all operations. | 0 | - |
+| 96 | `ensure_dir` | Ensure a directory exists. | 1 | core\config.py |
+
+## Module: `orchestration\heal_helpers.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 21 | `has_query_annotations` | Check if router code properly uses FastAPI Query() annotations. | 1 | orchestration\heal_helpers.py |
+| 41 | `has_pagination_params` | Check if router code includes expected pagination parameters. | 1 | orchestration\heal_helpers.py |
+| 58 | `has_proper_imports` | Validate that router has essential FastAPI imports. | 1 | orchestration\heal_helpers.py |
+| 80 | `has_router_variable` | Check that router code defines the router variable. | 1 | orchestration\heal_helpers.py |
+| 93 | `validate_router_code` | Comprehensive validation of LLM-generated router code. | 1 | orchestration\heal_helpers.py |
+| 133 | `validate_router_file` | Validate a router file on disk. | 1 | orchestration\self_healing_manager.py |
+
+## Module: `orchestration\healing_budget.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 57 | `reset` | Reset budget for a new test run. | 12 | api\providers.py, api\workspace.py, handlers\testing_backend.py (+9 more) |
+| 72 | `llm_calls_remaining` | No docstring | 1 | orchestration\healing_budget.py |
+| 77 | `critical_regens_remaining` | No docstring | 1 | orchestration\healing_budget.py |
+| 82 | `docker_restarts_remaining` | No docstring | 1 | orchestration\healing_budget.py |
+| 86 | `can_call_llm` | No docstring | 1 | supervision\supervisor.py |
+| 89 | `can_regen_critical` | No docstring | 1 | orchestration\self_healing_manager.py |
+| 92 | `can_restart_docker` | No docstring | 1 | handlers\testing_backend.py |
+| 95 | `is_exhausted` | Budget is exhausted when: | 3 | handlers\testing_backend.py, orchestration\healing_budget.py, orchestration\healing_pipeline.py |
+| 111 | `use_llm_call` | No docstring | 1 | supervision\supervisor.py |
+| 132 | `use_critical_regen` | No docstring | 1 | orchestration\self_healing_manager.py |
+| 152 | `use_docker_restart` | No docstring | 1 | handlers\testing_backend.py |
+| 176 | `get_status` | No docstring | 6 | api\sandbox.py, handlers\backend.py, orchestration\budget_manager.py (+3 more) |
+| 199 | `get_exhaustion_diagnostic` | No docstring | 2 | handlers\testing_backend.py, orchestration\healing_pipeline.py |
+| 238 | `get_healing_budget` | Get or create a healing budget for a project. | 4 | handlers\testing_backend.py, orchestration\healing_pipeline.py, orchestration\self_healing_manager.py (+1 more) |
+| 248 | `reset_healing_budget` | Reset healing budget at the start of testing_backend. | 1 | handlers\testing_backend.py |
+| 258 | `clear_healing_budget` | Remove healing budget after workflow completion. | 0 | - |
+| 264 | `get_all_budgets` | Return a snapshot of all active budgets. | 0 | - |
+
+## Module: `orchestration\healing_pipeline.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 56 | `attempt_heal` | Attempt to heal failed step. Returns SELF_HEALED or generated code. | 5 | handlers\testing_backend.py, handlers\testing_frontend.py, orchestration\fast_orchestrator.py (+2 more) |
+| 184 | `_fallback` | PHASE 3: Selective fallback - ONLY for boilerplate files. | 7 | arbormind\router.py, core\config.py, handlers\testing_backend.py (+4 more) |
+| 243 | `_is_critical_step` | PHASE 3: Check if step involves critical files. | 1 | orchestration\healing_pipeline.py |
+| 260 | `_is_boilerplate_step` | PHASE 3: Check if step involves boilerplate files. | 1 | orchestration\healing_pipeline.py |
+| 280 | `_generate_fallback_tests` | Generate fallback test_api.py to prevent 'no tests ran'. | 0 | - |
+| 350 | `_maybe_mutate_config_after_failures` | T-AM: Mutate strategy config after repeated failures. | 0 | - |
+| 365 | `_report_healing_outcome` | Report outcome for self-evolution. | 1 | orchestration\healing_pipeline.py |
+| 383 | `can_heal` | Check if a step can be healed. | 0 | - |
+| 387 | `get_healing_options` | Get available healing options for a step. | 0 | - |
+| 395 | `heal_all` | Heal all failed steps in priority order. | 0 | - |
+| 411 | `_record_healing_attempt` | PHASE 5: Record a healing attempt in memory. | 1 | orchestration\healing_pipeline.py |
+| 452 | `_is_duplicate_code` | PHASE 5: Check if code is identical to a previous attempt. | 1 | orchestration\healing_pipeline.py |
+| 463 | `get_healing_summary` | PHASE 5: Get summary of healing attempts. | 0 | - |
+| 492 | `_load_healing_memory` | Load healing memory from JSON file (persistent across runs). | 1 | orchestration\healing_pipeline.py |
+| 515 | `_save_healing_memory` | Save healing memory to JSON file (persistent across runs). | 1 | orchestration\healing_pipeline.py |
+| 534 | `clear_healing_memory` | Clear healing memory (call after successful workflow completion). | 0 | - |
+
+## Module: `orchestration\healing_policy.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 64 | `from_code_validator_error` | Map CodeValidator.ErrorType to HealingPolicy.ErrorType. | 0 | - |
+| 98 | `classify_error` | Classify the type of error based on context. | 2 | handlers\testing_backend.py, orchestration\code_validator.py |
+| 155 | `get_healing_actions` | Determine healing actions based on error type. | 1 | handlers\testing_backend.py |
+| 300 | `record_repair` | Record that a repair was attempted. | 1 | handlers\testing_backend.py |
+| 313 | `should_stop_healing` | Check if we should stop healing to avoid infinite loops. | 0 | - |
+| 328 | `reset` | Reset repair history (e.g., for new workflow run). | 11 | api\providers.py, api\workspace.py, handlers\testing_backend.py (+8 more) |
+
+## Module: `orchestration\llm_output_integrity.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 29 | `validate` | No docstring | 35 | api\workspace.py, core\config.py, core\integration.py (+32 more) |
+| 50 | `_looks_truncated` | No docstring | 1 | orchestration\llm_output_integrity.py |
+| 65 | `_balanced_brackets` | No docstring | 2 | orchestration\llm_output_integrity.py, orchestration\structural_compiler.py |
+| 99 | `_has_unterminated_string` | No docstring | 1 | orchestration\llm_output_integrity.py |
+| 128 | `_has_incomplete_class_or_function` | Checks if the text ends abruptly inside a function/class header. | 1 | orchestration\llm_output_integrity.py |
+| 159 | `get_issues` | Get list of all issues found. | 1 | supervision\supervisor.py |
+
+## Module: `orchestration\prompt_adapter.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 40 | `increment_failure_count` | Increment the failure counter for a step. | 1 | supervision\supervisor.py |
+| 44 | `record_success` | Reset failure count on success. | 1 | orchestration\prompt_adapter.py |
+| 48 | `get_failure_count` | Get the number of failures for a step. | 0 | - |
+| 52 | `adapt` | Applies controlled transformations to improve success rate. | 10 | agents\sub_agents.py, handlers\testing_backend.py, llm\adapter.py (+7 more) |
+| 102 | `get_context_hint` | Get a context hint based on failure history. | 1 | supervision\supervisor.py |
+| 133 | `get_adaptation_level` | Get the current adaptation level (0 = normal, 1-3 = escalating strictness). | 0 | - |
+
+## Module: `orchestration\router_utils.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 16 | `is_router_imported` | Check if a router is already imported in main.py. | 1 | orchestration\router_utils.py |
+| 40 | `is_router_registered` | Check if a router is already registered in main.py. | 1 | orchestration\router_utils.py |
+| 62 | `get_missing_routers` | Get routers that are missing import or registration. | 0 | - |
+| 78 | `get_routers_from_directory` | Discover router names from a routers directory. | 0 | - |
+
+## Module: `orchestration\self_healing_manager.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 107 | `_get_entity` | Get the primary entity from ACTUAL models in models.py. | 0 | - |
+| 132 | `repair` | Attempt to repair a broken artifact with tailored strategy. | 11 | arbormind\explorer.py, handlers\testing_backend.py, orchestration\artifact_types.py (+8 more) |
+| 176 | `_is_critical_artifact` | PHASE 3: Check if artifact is critical (must use Derek, not fallback). | 1 | orchestration\self_healing_manager.py |
+| 202 | `_repair_backend_router` | Repair the backend router using LLM or fallback template. | 0 | - |
+| 281 | `_repair_backend_vertical` | LOOP CONSOLIDATION: Single adaptive attempt for backend vertical repair. | 2 | orchestration\artifact_types.py, orchestration\self_healing_manager.py |
+| 352 | `_calculate_adaptive_tokens` | Calculate tokens based on error complexity, not retry count. | 1 | orchestration\self_healing_manager.py |
+| 396 | `_derek_generate_backend` | Call Derek (supervised agent) to generate backend vertical. | 1 | orchestration\self_healing_manager.py |
+| 529 | `_build_test_feedback_context` | PHASE 2: Build test failure context for Derek. | 1 | orchestration\self_healing_manager.py |
+| 553 | `_parse_test_failures` | PHASE 2: Parse test output to extract specific failure reasons. | 1 | orchestration\self_healing_manager.py |
+| 579 | `_validate_backend_can_start` | PHASE 4: Validate that backend works with comprehensive route testing. | 1 | orchestration\self_healing_manager.py |
+| 635 | `_ensure_router_wired` | Ensure router is wired in main.py (idempotent). | 1 | orchestration\self_healing_manager.py |
+| 719 | `_ensure_model_wired` | Ensure model is imported and registered in document_models list in main.py. | 0 | - |
+| 780 | `_repair_frontend_api` | Repair the frontend API client using LLM or fallback template. | 1 | orchestration\self_healing_manager.py |
+| 816 | `_repair_backend_main` | Repair backend main.py - reads actual routers and db function. | 1 | orchestration\self_healing_manager.py |
+| 843 | `_repair_backend_db` | Repair backend/app/db.py - optional wrapper for legacy compatibility. | 1 | orchestration\self_healing_manager.py |
+| 889 | `_get_router_prompt` | Generate a dynamic router prompt based on actual entity. | 1 | orchestration\self_healing_manager.py |
+| 914 | `_get_api_prompt` | Generate a dynamic API client prompt based on actual entity. | 1 | orchestration\self_healing_manager.py |
+| 938 | `_get_main_template` | Generate a DYNAMIC main.py template based on actual workspace contents. | 1 | orchestration\self_healing_manager.py |
+| 1018 | `_write_file` | Write content to file, creating directories as needed. | 1 | orchestration\self_healing_manager.py |
+| 1023 | `_read_file` | Read file content, return None if not found. | 0 | - |
+
+## Module: `orchestration\state.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 23 | `get_session` | Get or create session. | 1 | orchestration\state.py |
+| 32 | `is_running` | Check if a workflow is running for a project. | 5 | api\workspace.py, models\workflow.py, orchestration\state.py (+2 more) |
+| 38 | `set_running` | Set the running state for a project. | 1 | workflow\engine.py |
+| 46 | `try_start_workflow` | Atomically check if workflow can start and mark it as running. | 2 | api\workspace.py, workflow\engine.py |
+| 62 | `stop_workflow` | Atomically mark workflow as stopped. | 1 | workflow\engine.py |
+| 71 | `is_paused` | Check if a workflow is paused for a project. | 3 | api\workspace.py, models\workflow.py, orchestration\state.py |
+| 77 | `get_paused_state` | Get the paused workflow state. | 1 | workflow\engine.py |
+| 83 | `pause_workflow` | Pause a workflow for user input. State is persisted to DB. | 1 | workflow\engine.py |
+| 112 | `resume_workflow` | Resume a paused workflow, returning the saved state and cleaning up. | 5 | main.py, api\workspace.py, handlers\refine.py (+2 more) |
+| 127 | `set_intent` | Store analyzed intent for a project. | 2 | handlers\analysis.py, handlers\refine.py |
+| 134 | `get_intent` | Get stored intent for a project. | 12 | handlers\architecture.py, handlers\backend.py, handlers\contracts.py (+9 more) |
+| 140 | `set_original_request` | Store original user request. | 1 | handlers\analysis.py |
+| 147 | `get_original_request` | Get original user request. | 0 | - |
+| 153 | `set_manager` | Store connection manager (Memory only). | 0 | - |
+| 158 | `get_manager` | Get connection manager. | 7 | api\tracking.py, llm\providers\gemini.py, orchestration\budget_manager.py (+4 more) |
+| 163 | `cleanup` | Clean up state (stop running, unpause). | 8 | main.py, api\workspace.py, handlers\frontend_integration.py (+5 more) |
+| 175 | `acquire_lock` | No docstring | 0 | - |
+| 179 | `release_lock` | No docstring | 0 | - |
+
+## Module: `orchestration\step_contracts.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 79 | `requires_files` | Get required file paths/directories for a step. | 0 | - |
+| 83 | `requires_content` | Get required content patterns for a step. | 1 | orchestration\step_contracts.py |
+| 87 | `check_content` | Check if text contains all required patterns for a step. | 0 | - |
+| 94 | `get_missing_content` | Get list of missing content patterns. | 0 | - |
+
+## Module: `orchestration\structural_compiler.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 31 | `validate_python` | No docstring | 4 | orchestration\structural_compiler.py, persistence\validator.py, validation\syntax_validator.py (+1 more) |
+| 38 | `get_python_errors` | Get Python syntax error details. | 0 | - |
+| 49 | `validate_js` | No docstring | 3 | orchestration\structural_compiler.py, persistence\validator.py, validation\__init__.py |
+| 103 | `router_is_complete` | Check if router has all required CRUD operations. | 2 | orchestration\fast_orchestrator.py, orchestration\self_healing_manager.py |
+| 120 | `get_missing_router_functions` | Get list of missing CRUD operations. | 0 | - |
+| 136 | `api_is_complete` | Check if API client has all required exports for the entity. | 2 | orchestration\fast_orchestrator.py, orchestration\self_healing_manager.py |
+| 163 | `get_missing_api_exports` | Get list of missing API exports. | 0 | - |
+| 190 | `_balanced_brackets` | No docstring | 2 | orchestration\llm_output_integrity.py, orchestration\structural_compiler.py |
+| 224 | `validate_file_structure` | Validate file structure based on extension (brackets, basic syntax). | 0 | - |
+
+## Module: `orchestration\task_graph.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 56 | `get_steps` | Get the ordered list of all workflow steps. | 1 | orchestration\fast_orchestrator.py |
+| 60 | `required_for` | Get the dependencies required for a step. | 1 | orchestration\task_graph.py |
+| 64 | `is_ready` | Check if all dependencies for a step are satisfied. | 2 | orchestration\fast_orchestrator.py, orchestration\task_graph.py |
+| 69 | `get_blocking` | Get the dependencies that are NOT yet completed. | 1 | orchestration\fast_orchestrator.py |
+| 74 | `get_dependents` | Get all steps that depend on this step. | 0 | - |
+| 82 | `get_parallel_batch` | Get all steps that can run in parallel right now. | 0 | - |
+
+## Module: `orchestration\token_policy.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 137 | `get_tokens_for_step` | Get appropriate token allocation for a workflow step. | 7 | agents\sub_agents.py, core\constants.py, handlers\analysis.py (+4 more) |
+| 208 | `get_step_description` | Get human-readable description of a workflow step. | 1 | orchestration\__init__.py |
+| 215 | `get_all_policies` | Get all token policies (for debugging/monitoring). | 0 | - |
+| 257 | `get_temperature` | Get appropriate temperature for a workflow step. | 1 | orchestration\token_policy.py |
+| 301 | `get_retry_parameters` | Get adjusted parameters for retry attempts. | 1 | orchestration\token_policy.py |
+
+## Module: `orchestration\utils.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 11 | `broadcast_to_project` | Broadcast a message to all clients connected to a project. | 11 | agents\sub_agents.py, api\workspace.py, handlers\base.py (+8 more) |
+| 31 | `pluralize` | Simple English pluralization helper. | 6 | handlers\backend.py, handlers\contracts.py, handlers\frontend_mock.py (+3 more) |
+
+## Module: `orchestration\wiring_utils.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 18 | `wire_router` | Ensure router is wired in main.py (idempotent). | 2 | handlers\backend.py, orchestration\self_healing_manager.py |
+| 98 | `wire_model` | Ensure model is imported AND registered in document_models list in main.py. | 2 | handlers\backend.py, orchestration\self_healing_manager.py |
+
+## Module: `persistence\filesystem.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 32 | `sanitize_project_id` | Normalize project IDs for safe filesystem use. | 3 | persistence\filesystem.py, persistence\writer.py, persistence\__init__.py |
+| 40 | `get_safe_workspace_path` | Build a safe, absolute project workspace path under base_path. | 3 | persistence\filesystem.py, persistence\writer.py, persistence\__init__.py |
+| 69 | `within_workspace` | No docstring | 1 | persistence\filesystem.py |
+| 81 | `read_file_content` | Read a text file asynchronously. | 2 | orchestration\self_healing_manager.py, persistence\__init__.py |
+| 86 | `write_file_content` | Write text content to a file asynchronously, ensuring parent directory exists. | 3 | orchestration\self_healing_manager.py, persistence\filesystem.py, persistence\__init__.py |
+| 93 | `write_file_content_sync` | Write text content to a file synchronously, ensuring parent directory exists. | 0 | - |
+| 108 | `save_generated_files` | Save a batch of generated files relative to the project root. | 0 | - |
+| 129 | `get_project_file_tree` | âœ… UPDATED: Build a recursive file tree for the given project. | 0 | - |
+| 140 | `_read_dir_recursive` | âœ… UPDATED: Recursively read directory structure, returning FileTreeEntry. | 1 | persistence\filesystem.py |
+
+## Module: `persistence\validator.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 12 | `normalize_python_filename` | Normalize Python filenames for Linux/Docker compatibility. | 1 | persistence\validator.py |
+| 56 | `fix_path_prefix` | Auto-fix common path prefix issues. | 1 | persistence\validator.py |
+| 95 | `validate_jsx_completeness` | Basic validation that JSX has balanced tags. | 1 | persistence\validator.py |
+| 125 | `validate_file_output` | Validate and sanitize agent output before writing. | 10 | handlers\architecture.py, handlers\backend.py, handlers\contracts.py (+7 more) |
+
+## Module: `persistence\writer.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 16 | `safe_write_llm_files` | Safely write LLM-generated files to the workspace. | 5 | handlers\refine.py, handlers\testing_backend.py, handlers\testing_frontend.py (+2 more) |
+| 147 | `persist_agent_output` | Wrapper for safe_write_llm_files to handle standard agent response dict. | 7 | handlers\architecture.py, handlers\backend.py, handlers\contracts.py (+4 more) |
+
+## Module: `sandbox\health_monitor.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 20 | `wait_for_healthy` | Wait for all containers to become healthy, based on Docker's healthcheck. | 1 | sandbox\sandbox_manager.py |
+| 58 | `_check_container_health` | Check if a specific container is healthy using `docker inspect`. | 1 | sandbox\health_monitor.py |
+| 83 | `_inspect_container_state` | Run `docker inspect` and return the .State dict, or None on failure. | 1 | sandbox\health_monitor.py |
+| 108 | `get_detailed_health` | Get detailed health information for all containers. | 0 | - |
+
+## Module: `sandbox\log_streamer.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 22 | `_stream_logs_from_cli` | Internal helper: run `docker logs -f` on the container and forward | 1 | sandbox\log_streamer.py |
+| 41 | `start_process` | No docstring | 1 | sandbox\log_streamer.py |
+| 75 | `start_streaming` | Start streaming logs for a container. | 0 | - |
+| 92 | `stop_streaming` | Stop a log stream, if running. | 1 | sandbox\log_streamer.py |
+| 107 | `stop_all_streams` | Stop all active log streams. | 0 | - |
+
+## Module: `sandbox\pool.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 57 | `initialize` | Initialize the pool with pre-warmed containers. | 9 | main.py, api\deployment.py, api\sandbox.py (+6 more) |
+| 87 | `acquire` | Acquire a sandbox for a project. | 2 | orchestration\state.py, sandbox\pool.py |
+| 124 | `release` | Release a sandbox back to the pool or stop it. | 2 | orchestration\state.py, sandbox\pool.py |
+| 155 | `shutdown` | Shutdown the pool and all containers. | 2 | main.py, arbormind\router.py |
+| 171 | `stats` | Get pool statistics. | 9 | arbormind\evolution.py, arbormind\__init__.py, handlers\archetype_guidance.py (+6 more) |
+| 181 | `_maintain_pool` | Background task to maintain pool size. | 1 | sandbox\pool.py |
+| 193 | `_refill_pool` | Refill the pool to maintain target size. | 1 | sandbox\pool.py |
+| 205 | `_warm_container` | Create and warm a new container. | 1 | sandbox\pool.py |
+| 242 | `_create_on_demand` | Fallback: Create sandbox on-demand using existing SandboxManager. | 1 | sandbox\pool.py |
+| 272 | `_is_healthy` | Check if a sandbox container is healthy. | 1 | sandbox\pool.py |
+| 278 | `_stop_sandbox` | Stop a sandbox container. | 1 | sandbox\pool.py |
+| 286 | `_sandbox_to_dict` | Convert PooledSandbox to dict. | 1 | sandbox\pool.py |
+| 302 | `get_sandbox_pool` | Get the global sandbox pool instance. | 1 | sandbox\pool.py |
+| 310 | `initialize_pool` | Initialize the sandbox pool on app startup. | 0 | - |
+
+## Module: `sandbox\preview_manager.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 15 | `create_preview` | Return Traefik preview URL (no tunnel needed) | 0 | - |
+| 37 | `stop_preview` | Stop a preview (optional - Traefik continues routing) | 0 | - |
+| 54 | `list_previews` | List all active preview URLs | 0 | - |
+
+## Module: `sandbox\sandbox_config.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 40 | `to_dict` | Convert config to dictionary | 8 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, core\types.py (+5 more) |
+| 60 | `from_dict` | Create config from dictionary | 4 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, orchestration\healing_pipeline.py (+1 more) |
+
+## Module: `sandbox\sandbox_manager.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 37 | `get_status` | No docstring | 5 | api\sandbox.py, handlers\backend.py, orchestration\budget_manager.py (+2 more) |
+| 50 | `create_sandbox` | No docstring | 4 | api\sandbox.py, handlers\backend.py, sandbox\pool.py (+1 more) |
+| 91 | `start_sandbox` | Start Docker-based backend/frontend containers for a project. | 4 | api\sandbox.py, handlers\backend.py, handlers\testing_backend.py (+1 more) |
+| 174 | `stop_sandbox` | Stop Docker containers for this sandbox. | 6 | api\sandbox.py, handlers\backend.py, handlers\testing_backend.py (+3 more) |
+| 206 | `destroy_sandbox` | Stop containers and remove sandbox metadata. | 0 | - |
+| 228 | `run_backend_tests` | Run backend tests using Docker Compose. | 0 | - |
+| 275 | `run_frontend_tests` | Run frontend tests (Playwright) using Docker Compose. | 0 | - |
+| 325 | `_run_compose_command` | No docstring | 1 | sandbox\sandbox_manager.py |
+| 335 | `run_sync_cmd` | No docstring | 1 | sandbox\sandbox_manager.py |
+| 367 | `_get_compose_logs` | No docstring | 1 | sandbox\sandbox_manager.py |
+| 378 | `_validate_project_structure` | Ensure golden backend/frontend/docker files exist before we start containers | 1 | sandbox\sandbox_manager.py |
+| 410 | `_get_compose_command` | No docstring | 1 | sandbox\sandbox_manager.py |
+| 429 | `_get_project_containers_async` | Async version of _get_project_containers. | 0 | - |
+| 434 | `run_docker_ps` | No docstring | 1 | sandbox\sandbox_manager.py |
+| 473 | `_get_project_containers` | No docstring | 1 | sandbox\sandbox_manager.py |
+| 520 | `execute_command` | Execute a command inside a service container (Docker) - async version. | 2 | sandbox\sandbox_manager.py, tools\implementations.py |
+| 544 | `run_sync_cmd` | No docstring | 1 | sandbox\sandbox_manager.py |
+| 576 | `exec_in_container` | Alias for execute_command (API compatibility). | 1 | api\sandbox.py |
+| 586 | `get_preview_url` | Get the frontend preview URL for a running sandbox. | 1 | api\sandbox.py |
+| 616 | `get_backend_url` | Get the backend API URL for a running sandbox (dynamic port detection). | 1 | orchestration\backend_probe.py |
+
+## Module: `supervision\quality_gate.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 24 | `check_quality_gate` | Check if workflow should be blocked due to quality issues. | 2 | supervision\supervisor.py, supervision\__init__.py |
+| 75 | `override_quality_gate` | Allow user to override quality gate. | 1 | supervision\__init__.py |
+| 81 | `is_blocked` | Check if project is blocked by quality gate. | 0 | - |
+| 86 | `get_block_reason` | Get the reason for quality gate block. | 0 | - |
+
+## Module: `supervision\supervisor.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 26 | `marcus_supervise` | Marcus reviews an agent's output for quality and correctness. | 3 | supervision\supervisor.py, supervision\tiered_review.py, supervision\__init__.py |
+| 401 | `categorize_issue_severity` | Categorize Marcus's issues into 'critical' or 'warning' using Universal Attention. | 1 | supervision\supervisor.py |
+| 424 | `postprocess_marcus_issues` | Split issues into critical (must fix) and warnings (nice-to-have). | 1 | supervision\supervisor.py |
+| 445 | `_extract_archetype` | Extract an archetype identifier from the user request. | 1 | supervision\supervisor.py |
+| 484 | `supervised_agent_call` | Call an agent with Marcus supervision and auto-retry. | 9 | handlers\architecture.py, handlers\backend.py, handlers\frontend_integration.py (+6 more) |
+| 572 | `_read_project_files` | Synchronous file reading, to be called via asyncio.to_thread. | 1 | supervision\supervisor.py |
+
+## Module: `supervision\tiered_review.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 72 | `get_review_level` | Determine the review level needed for a file. | 2 | supervision\supervisor.py, supervision\tiered_review.py |
+| 104 | `classify_files` | Classify files by their review level. | 1 | supervision\tiered_review.py |
+| 124 | `get_review_summary` | Get a summary of review levels for logging. | 1 | supervision\tiered_review.py |
+| 137 | `tiered_review` | Apply tiered review to a list of files. | 2 | supervision\supervisor.py, supervision\tiered_review.py |
+| 254 | `parallel_tiered_review` | Run tiered reviews in parallel for multiple agent outputs. | 0 | - |
+| 270 | `review_one` | No docstring | 1 | supervision\tiered_review.py |
+
+## Module: `tools\implementations.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 51 | `_async_run_command` | Run a command asynchronously using asyncio.to_thread + subprocess.run. | 1 | tools\implementations.py |
+| 63 | `run_sync` | No docstring | 2 | sandbox\sandbox_manager.py, tools\implementations.py |
+| 161 | `tool_sub_agent_caller` | Call Marcus â†’ Derek/Victoria/Luna sub-agents and normalize their | 2 | agents\sub_agents.py, tools\implementations.py |
+| 220 | `normalize_files_schema` | Normalize arbitrary dict into {'files': [...]}, if possible. | 1 | tools\implementations.py |
+| 318 | `tool_file_writer_batch` | Write multiple files at once to a base path. | 1 | tools\implementations.py |
+| 343 | `tool_file_reader` | Read a single file. | 1 | tools\implementations.py |
+| 367 | `tool_file_deleter` | Delete a file or directory tree. | 1 | tools\implementations.py |
+| 390 | `tool_file_lister` | List files recursively or non-recursively. | 1 | tools\implementations.py |
+| 416 | `tool_code_viewer` | Return file contents with some metadata, used for in-UI preview. | 1 | tools\implementations.py |
+| 444 | `tool_bash_runner` | Run a shell command with timeout (async, non-blocking). | 1 | tools\implementations.py |
+| 459 | `tool_python_executor` | Execute a snippet of Python code in a temp file (async, non-blocking). | 1 | tools\implementations.py |
+| 482 | `tool_npm_runner` | Run an npm command, e.g. 'install', 'run build', etc. (async, non-blocking). | 1 | tools\implementations.py |
+| 500 | `tool_pytest_runner` | Run pytest in a given directory (async, non-blocking). | 1 | tools\implementations.py |
+| 520 | `tool_playwright_runner` | Run Playwright E2E tests (async, non-blocking). | 1 | tools\implementations.py |
+| 534 | `tool_test_generator` | Generate simple pytest or Playwright test template. | 1 | tools\implementations.py |
+| 570 | `tool_sandbox_exec` | Execute a command inside a sandbox container using real Python calls. | 1 | tools\implementations.py |
+| 769 | `validate_deployment` | Validate both frontend and backend deployments. | 1 | tools\implementations.py |
+| 809 | `tool_deployment_validator` | Tool wrapper for validate_deployment. | 1 | tools\implementations.py |
+| 826 | `tool_key_validator` | Check presence of important API keys. | 1 | tools\implementations.py |
+| 845 | `tool_cross_llm_validator` | Stub cross-LLM consistency validator (can be extended later). | 1 | tools\implementations.py |
+| 853 | `tool_syntax_validator` | Validate Python / basic JS/TS syntax. | 1 | tools\implementations.py |
+| 885 | `tool_ux_visualizer` | Take a Playwright screenshot of the frontend. | 1 | tools\implementations.py |
+| 911 | `tool_screenshot_comparer` | Compare two screenshots pixel-by-pixel. | 1 | tools\implementations.py |
+| 937 | `tool_api_tester` | Perform a simple HTTP API call (GET or POST). | 1 | tools\implementations.py |
+| 972 | `tool_web_researcher` | Basic stub for web research (no external API yet). | 1 | tools\implementations.py |
+| 983 | `tool_health_checker` | Hit a health endpoint and return status. | 1 | tools\implementations.py |
+| 1003 | `tool_user_confirmer` | Ask user a question (auto-answers with first option in non-interactive mode). | 1 | tools\implementations.py |
+| 1017 | `tool_user_prompter` | Prompt the user for input (returns default in non-interactive mode). | 1 | tools\implementations.py |
+| 1033 | `tool_db_schema_reader` | No docstring | 1 | tools\implementations.py |
+| 1043 | `tool_db_query_runner` | No docstring | 1 | tools\implementations.py |
+| 1058 | `tool_docker_builder` | Build a Docker image using docker CLI (async, non-blocking). | 1 | tools\implementations.py |
+| 1074 | `tool_vercel_deployer` | Deploy a project using `vercel --prod` (async, non-blocking). | 1 | tools\implementations.py |
+| 1089 | `tool_unified_patch_applier` | No docstring | 1 | tools\implementations.py |
+| 1113 | `tool_json_patch_applier` | No docstring | 1 | tools\implementations.py |
+| 1202 | `_run_tool_impl` | No docstring | 1 | tools\registry.py |
+| 1229 | `_validate_singleton` | No docstring | 1 | tools\implementations.py |
+
+## Module: `tools\patching.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 16 | `apply_unified_patch` | Apply a unified diff patch to the workspace. | 1 | tools\implementations.py |
+| 41 | `_split_into_file_patches` | Split a full multi-file unified diff into file-level diffs. | 1 | tools\patching.py |
+| 60 | `_apply_single_file_patch` | Apply unified diff to a single file. | 1 | tools\patching.py |
+| 112 | `_apply_hunks` | Apply each @@ hunk to file content. | 1 | tools\patching.py |
+| 163 | `apply_patches` | Applies LLM patches (JSON-based) across multiple files. | 1 | tools\implementations.py |
+
+## Module: `tools\registry.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 242 | `get_available_tools` | Return list of available tool names dynamically. | 1 | tools\__init__.py |
+| 247 | `run_tool` | Execute a tool by name. | 8 | handlers\refine.py, handlers\screenshot_verify.py, handlers\testing_backend.py (+5 more) |
+| 253 | `get_relevant_tools_for_query` | Select tools using V!=K Attention with strict Context constraints. | 1 | agents\sub_agents.py |
+| 342 | `_get_standard_tools` | Return only the essential tools. | 1 | tools\registry.py |
+| 350 | `_ensure_essentials` | Ensure essential tools are present in the list. | 1 | tools\registry.py |
+
+## Module: `tracking\memory.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 23 | `_init_db` | Initialize SQLite database schema | 4 | learning\failure_store.py, learning\pattern_store.py, learning\v_vector_store.py (+1 more) |
+| 48 | `save_memory` | Save a memory entry | 1 | tracking\memory.py |
+| 78 | `recall_patterns` | Recall successful patterns for an agent/step | 1 | tracking\memory.py |
+| 110 | `get_store` | No docstring | 1 | tracking\memory.py |
+| 118 | `remember_success` | Remember a successful pattern. | 1 | supervision\supervisor.py |
+| 143 | `recall_patterns` | Recall successful patterns (convenience wrapper). | 1 | tracking\memory.py |
+| 159 | `get_memory_hint` | Get a hint from memory to include in agent instructions. | 2 | agents\sub_agents.py, supervision\supervisor.py |
+
+## Module: `tracking\metrics.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 11 | `update_code_metrics` | Update code metrics for generated files. | 0 | - |
+| 43 | `get_code_metrics` | Get code metrics for a project. | 0 | - |
+
+## Module: `tracking\quality.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 11 | `track_quality_score` | Track quality score for an agent. | 1 | supervision\supervisor.py |
+| 27 | `get_quality_summary` | Get average quality scores per agent. | 0 | - |
+
+## Module: `utils\component_copier.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 33 | `get_used_components` | Scan frontend source files for @/components/ui/* imports. | 1 | utils\component_copier.py |
+| 69 | `get_all_required_components` | Expand component set to include dependencies. | 1 | utils\component_copier.py |
+| 84 | `copy_used_components` | Copy only the used Shadcn components to the project. | 1 | handlers\frontend_mock.py |
+| 144 | `copy_component_by_name` | Copy a single component by name (for on-demand copying). | 0 | - |
+
+## Module: `utils\dependency_fixer.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 11 | `detect_missing_dependencies` | Parse pytest/pip error output to detect missing dependencies. | 2 | utils\dependency_fixer.py, utils\__init__.py |
+| 56 | `_module_to_package` | Convert Python module name to pip package name. | 1 | utils\dependency_fixer.py |
+| 91 | `add_dependencies_to_requirements` | Add missing dependencies to requirements.txt. | 2 | utils\dependency_fixer.py, utils\__init__.py |
+| 170 | `auto_fix_backend_dependencies` | Automatically detect and fix missing backend dependencies. | 1 | utils\__init__.py |
+
+## Module: `utils\entity_discovery.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 34 | `to_dict` | No docstring | 9 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, core\types.py (+6 more) |
+| 55 | `to_dict` | No docstring | 9 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, core\types.py (+6 more) |
+| 76 | `to_dict` | No docstring | 9 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, core\types.py (+6 more) |
+| 87 | `from_dict` | Create EntitySpec from dictionary. | 5 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, orchestration\healing_pipeline.py (+2 more) |
+| 107 | `to_dict` | No docstring | 9 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, core\types.py (+6 more) |
+| 115 | `from_dict` | Create EntityPlan from dictionary. | 5 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, orchestration\healing_pipeline.py (+2 more) |
+| 125 | `save` | Save entity plan to JSON file. | 20 | api\deployment.py, api\workspace.py, arbormind\router.py (+17 more) |
+| 132 | `load` | Load entity plan from JSON file. | 40 | main.py, agents\sub_agents.py, api\deployment.py (+37 more) |
+| 142 | `clear_discovery_cache` | Clear the entity discovery cache for a project. | 1 | handlers\contracts.py |
+| 164 | `discover_primary_entity` | Discover the primary entity from project artifacts. | 16 | handlers\backend.py, handlers\contracts.py, handlers\frontend_integration.py (+13 more) |
+| 227 | `_extract_from_contracts` | Extract entity from contracts.md API endpoints. | 1 | utils\entity_discovery.py |
+| 258 | `_extract_from_architecture` | No docstring | 1 | utils\entity_discovery.py |
+| 272 | `_extract_from_models` | Extract entity from models.py Document class definitions. | 1 | utils\entity_discovery.py |
+| 306 | `extract_all_models_from_models_py` | Extract ALL Beanie Document model class names that ACTUALLY EXIST in models.py. | 8 | handlers\backend.py, handlers\frontend_integration.py, handlers\testing_backend.py (+5 more) |
+| 357 | `_extract_from_mock` | No docstring | 1 | utils\entity_discovery.py |
+| 372 | `_extract_from_routers` | No docstring | 1 | utils\entity_discovery.py |
+| 385 | `_extract_from_user_request` | No docstring | 1 | utils\entity_discovery.py |
+| 405 | `singularize` | Convert a plural word to singular form. | 3 | handlers\contracts.py, utils\entity_discovery.py, utils\__init__.py |
+| 451 | `extract_entity_from_request` | Dynamically extract a potential entity name from the user request. | 7 | handlers\analysis.py, handlers\backend.py, handlers\contracts.py (+4 more) |
+| 518 | `discover_db_function` | Discover the database initialization function name from database.py. | 2 | orchestration\self_healing_manager.py, utils\__init__.py |
+| 560 | `discover_routers` | No docstring | 2 | orchestration\self_healing_manager.py, utils\__init__.py |
+| 570 | `get_entity_plural` | Get the plural form of an entity name. | 7 | orchestration\contract_parser.py, orchestration\fallback_api_agent.py, orchestration\fallback_model_agent.py (+4 more) |
+| 584 | `discover_all_entities` | Discover ALL entities from project artifacts or user request. | 1 | handlers\backend_models.py |
+| 686 | `_extract_all_entities_from_contracts` | Parse contracts.md for ALL entities (from /api/{entity} endpoints). | 1 | utils\entity_discovery.py |
+| 715 | `_extract_all_entities_from_architecture` | Parse architecture.md for ALL entities in 'Data Models' section. | 1 | utils\entity_discovery.py |
+| 770 | `detect_relationships` | Detect relationships from contracts.md and architecture.md. | 0 | - |
+
+## Module: `utils\integration_playbooks.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 46 | `apply_playbook` | Apply integration playbook to project | 0 | - |
+
+## Module: `utils\parser.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 24 | `extract_files_from_pseudo_json` | Try to salvage file entries of the form: | 2 | utils\parser.py, utils\__init__.py |
+| 83 | `normalize_llm_output` | Universal parser that converts any LLM output (JSON, markdown, or plain code) | 7 | handlers\analysis.py, handlers\contracts.py, handlers\refine.py (+4 more) |
+| 106 | `_normalize_llm_output_inner` | Inner implementation without recursion guard. | 1 | utils\parser.py |
+| 215 | `_attempt_force_repair` | Force-close brackets if JSON is truncated or incomplete. | 1 | utils\parser.py |
+| 233 | `_find_json_object` | Isolates the outermost JSON object in the text. | 1 | utils\parser.py |
+| 275 | `sanitize_marcus_output` | Cleans and normalizes messy model output before JSON parsing. | 3 | supervision\supervisor.py, utils\parser.py, utils\__init__.py |
+| 305 | `validate_qa_report_shape` | Validates structure of QA report against TestReport type. | 1 | utils\parser.py |
+| 340 | `log_api_error` | Logs API failures with provider and model context. | 0 | - |
+| 349 | `_replace_newlines_outside_strings` | Replace newlines with spaces ONLY outside of JSON string literals. | 1 | utils\parser.py |
+| 395 | `parse_json` | Production-grade JSON parser with multi-pass sanitization, repair, and salvage. | 3 | supervision\supervisor.py, utils\parser.py, utils\__init__.py |
+| 460 | `_fix_unterminated_strings` | Fix unterminated strings by finding the last open quote and closing it. | 1 | utils\parser.py |
+| 505 | `_salvage_complete_functions` | Extract only complete function/class definitions from truncated Python code. | 1 | utils\parser.py |
+| 600 | `_extract_partial_files` | Extract files array from partially broken JSON. | 1 | utils\parser.py |
+| 611 | `_is_truncated_code` | Detect if code content appears to be truncated mid-statement. | 1 | utils\parser.py |
+| 757 | `parse_kenji` | Specialized parser for Kenji (QA agent) outputs. | 1 | utils\parser.py |
+
+## Module: `utils\path_utils.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 19 | `get_project_path` | Get the absolute path to a project workspace. | 7 | api\projects.py, api\sandbox.py, api\workspace.py (+4 more) |
+| 39 | `get_backend_path` | Get the backend directory path for a project. | 1 | utils\__init__.py |
+| 44 | `get_frontend_path` | Get the frontend directory path for a project. | 1 | utils\__init__.py |
+| 49 | `get_backend_app_path` | Get the backend app directory path for a project. | 1 | utils\__init__.py |
+| 54 | `get_routers_path` | Get the routers directory path for a project. | 1 | utils\__init__.py |
+| 59 | `get_models_path` | Get the models.py file path for a project. | 1 | utils\__init__.py |
+| 64 | `get_main_py_path` | Get the main.py file path for a project. | 1 | utils\__init__.py |
+| 69 | `get_contracts_path` | Get the contracts.md file path for a project. | 1 | utils\__init__.py |
+| 74 | `get_tests_path` | Get the backend tests directory path for a project. | 1 | utils\__init__.py |
+| 79 | `is_valid_project_path` | Check if a path is within the workspaces directory. | 1 | utils\__init__.py |
+| 93 | `ensure_project_directories` | Ensure all required project directories exist. | 1 | utils\__init__.py |
+
+## Module: `utils\regex_healer.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 64 | `analyze_failure` | Identify applicable fixes. | 1 | handlers\testing_frontend.py |
+| 72 | `attempt_healing` | Attempt to heal a failing test. | 2 | handlers\testing_frontend.py, orchestration\fast_orchestrator.py |
+| 93 | `_fix_relative_url` | Fix page.goto('/') to use absolute URL. | 1 | utils\regex_healer.py |
+| 107 | `_fix_visibility_timeout` | Increase timeout for visibility checks. | 1 | utils\regex_healer.py |
+| 116 | `_fix_loading_assertion` | Remove flaky loading assertions. | 1 | utils\regex_healer.py |
+| 129 | `_fix_connection_retry` | Add retry configuration. | 1 | utils\regex_healer.py |
+| 152 | `_fix_strict_mode` | Add .first() to selectors hit by strict mode. | 1 | utils\regex_healer.py |
+| 166 | `_fix_hidden_element` | Fix empty container visibility issues. | 1 | utils\regex_healer.py |
+
+## Module: `utils\test_scaffolding.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 10 | `create_robust_smoke_test` | Create a robust smoke test using the standard testing contract testids (ESM friendly). | 1 | utils\test_scaffolding.py |
+| 58 | `extract_testids_from_project` | Extract all data-testid values from JSX/TSX files in the project. | 1 | utils\test_scaffolding.py |
+| 90 | `create_matching_smoke_test` | Create a smoke test that checks for elements that ACTUALLY exist in the UI. | 1 | handlers\testing_frontend.py |
+| 186 | `get_available_selectors` | Analyze the project to find all available selectors for testing. | 1 | handlers\testing_frontend.py |
+
+## Module: `utils\ui_beautifier.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 12 | `beautify_frontend_files` | Post-process frontend files to ensure UI consistency. | 2 | persistence\writer.py, utils\__init__.py |
+| 68 | `_beautify_jsx` | Apply beautification rules to JSX content. | 1 | utils\ui_beautifier.py |
+| 81 | `_normalize_spacing` | Normalize inconsistent spacing classes for consistency. | 1 | utils\ui_beautifier.py |
+| 102 | `_ensure_page_testids` | Ensure required testids are present in page components. | 1 | utils\ui_beautifier.py |
+| 145 | `ensure_page_shell` | Ensure page has standard shell wrapper classes. | 0 | - |
+
+## Module: `validation\syntax_validator.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 39 | `to_dict` | No docstring | 8 | arbormind\t_am_operators.py, arbormind\v_value_schema.py, core\types.py (+5 more) |
+| 52 | `assert_no_empty_defs` | Check for empty function/class definitions (only pass/docstring). | 2 | validation\syntax_validator.py, validation\__init__.py |
+| 77 | `validate_python_syntax` | Validate Python code using AST parsing. | 3 | persistence\validator.py, validation\syntax_validator.py, validation\__init__.py |
+| 127 | `fix_index_tuple` | No docstring | 1 | validation\syntax_validator.py |
+| 172 | `validate_javascript_syntax` | Basic JavaScript/JSX validation without a full parser. | 2 | validation\syntax_validator.py, validation\__init__.py |
+| 278 | `check_duplicate_attributes` | Check for duplicate HTML/JSX attributes on the same element. | 2 | validation\syntax_validator.py, validation\__init__.py |
+| 322 | `validate_syntax` | Validate file syntax based on its extension. | 4 | persistence\writer.py, supervision\tiered_review.py, validation\syntax_validator.py (+1 more) |
+| 339 | `validate_files_batch` | Validate a batch of files from LLM output. | 2 | validation\syntax_validator.py, validation\__init__.py |
+| 385 | `preflight_check` | Pre-flight validation gate for agent output. | 2 | supervision\supervisor.py, validation\__init__.py |
+
+## Module: `workflow\engine.py`
+
+| Line | Function Name | Purpose (Docstring) | Usage Count | Used In (Sample) |
+|------|---------------|---------------------|-------------|------------------|
+| 104 | `run` | Execute the workflow loop. | 64 | main.py, agents\sub_agents.py, agents\__init__.py (+61 more) |
+| 181 | `_pause_workflow` | Pause the workflow for user input. | 1 | workflow\engine.py |
+| 207 | `_complete_workflow` | Complete the workflow successfully. | 1 | workflow\engine.py |
+| 223 | `_fail_workflow` | Handle workflow failure. | 1 | workflow\engine.py |
+| 239 | `_cleanup` | Clean up workflow state atomically. | 1 | workflow\engine.py |
+| 247 | `run_workflow` | Start a new workflow for a project. | 3 | api\workspace.py, workflow\engine.py, workflow\__init__.py |
+| 449 | `autonomous_agent_workflow` | Backwards-compatible wrapper. | 1 | workflow\__init__.py |
+| 461 | `resume_workflow` | Resume a paused workflow OR start a refine workflow for completed projects. | 6 | main.py, api\workspace.py, handlers\refine.py (+3 more) |

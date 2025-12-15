@@ -90,14 +90,14 @@ from app.models import {model_name}
 router = APIRouter()
 
 
-@router.post("", response_model={model_name}, status_code=201)
+@router.post("/", response_model={model_name}, status_code=201)
 async def create({entity_lower}: {model_name}):
     """Create a new {entity_lower}."""
     await {entity_lower}.create()
     return {entity_lower}
 
 
-@router.get("", response_model=List[{model_name}])
+@router.get("/", response_model=List[{model_name}])
 async def get_all(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),

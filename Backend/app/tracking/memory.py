@@ -144,7 +144,14 @@ def recall_patterns(
     agent_name: str,
     step_name: str,
 ) -> List[Dict[str, Any]]:
-    """Recall successful patterns."""
+    """
+    Recall successful patterns (convenience wrapper).
+    
+    This is a module-level convenience function that wraps the
+    PersistentMemoryStore.recall_patterns() method. It exists to
+    provide a simpler API for callers who don't need direct
+    access to the store instance.
+    """
     store = get_store()
     return store.recall_patterns(agent_name, step_name)
 

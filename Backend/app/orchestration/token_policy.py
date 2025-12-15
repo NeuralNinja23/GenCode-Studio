@@ -82,8 +82,8 @@ STEP_TOKEN_POLICIES = {
     },
     
     "backend_implementation": {
-        "max_tokens": 20000,     # ATOMIC: Models + Routers + Manifest
-        "retry_tokens": 24000,   # Retry with more space for completeness
+        "max_tokens": 30000,     # PHASE 6: Increased from 20000 to prevent truncation
+        "retry_tokens": 40000,   # PHASE 6: Increased from 24000 for retry robustness
         "description": "Complete backend vertical (Models + Routers + Manifest)"
     },
     
@@ -97,8 +97,8 @@ STEP_TOKEN_POLICIES = {
     # TESTING STEPS (Need space for multiple test files)
     # ───────────────────────────────────────────────────
     "testing_backend": {
-        "max_tokens": 12000,     # Pytest test files
-        "retry_tokens": 16000,   # More comprehensive tests
+        "max_tokens": 16000,     # PHASE 6: Increased from 12000
+        "retry_tokens": 20000,   # PHASE 6: Increased from 16000 for comprehensive tests
         "description": "Backend testing with pytest"
     },
     
@@ -224,3 +224,117 @@ def get_all_policies() -> dict:
 # For code that still uses DEFAULT_MAX_TOKENS, provide sensible defaults
 DEFAULT_MAX_TOKENS = DEFAULT_FALLBACK_TOKENS
 TEST_FILE_MIN_TOKENS = 12000  # For test generation (pytest/playwright)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TEMPERATURE MANAGEMENT (Lower = Consistent, Higher = Creative)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+STEP_TEMPERATURES = {
+    # Low temperatures for critical code generation
+    "backend_models": 0.15,          # Data models need consistency
+    "backend_routers": 0.15,         # API routes need correctness
+    "backend_implementation": 0.2,   # Complete backend generation
+    "system_integration": 0.1,       # Critical wiring, be very careful
+    "testing_backend": 0.1,          # Tests need precision
+    "testing_frontend": 0.15,        # E2E tests need to be accurate
+    
+    # Medium temperatures for design/architecture
+    "architecture": 0.3,             # Allow some creativity in design
+    "frontend_mock": 0.4,            # UI can be more creative
+    "frontend_integration": 0.25,    # API calls need carefulness
+    
+    # Higher temperatures for analysis/planning
+    "analysis": 0.3,                 # Analysis can explore options
+    "contracts": 0.2,                # Contract definition needs consistency
+    "screenshot_verify": 0.3,        # UI review can be subjective
+    "refine": 0.25,                  # Refinements need balance
+}
+
+RETRY_TEMPERATURE_REDUCTION = 0.1  # Lower temperature on retry (more conservative)
+
+
+def get_temperature(step_name: str, is_retry: bool = False, failure_reason: str = "") -> float:
+    """
+    Get appropriate temperature for a workflow step.
+    
+    Args:
+        step_name: Workflow step identifier
+        is_retry: Whether this is a retry attempt
+        failure_reason: Reason for previous failure (if retry)
+    
+    Returns:
+        Temperature value (0.0-1.0)
+    
+    Examples:
+        >>> get_temperature("backend_implementation")
+        0.2
+        >>> get_temperature("backend_implementation", is_retry=True)
+        0.1
+        >>> get_temperature("backend_implementation", is_retry=True, failure_reason="truncated output")
+        0.05
+    """
+    # Normalize step name
+    normalized_step = step_name.lower().strip().replace(" ", "_")
+    
+    # Get base temperature
+    base_temp = STEP_TEMPERATURES.get(normalized_step, 0.3)
+    
+    # Reduce on retry
+    if is_retry:
+        base_temp = max(0.05, base_temp - RETRY_TEMPERATURE_REDUCTION)
+    
+    # Further reduce for specific failure types
+    if failure_reason:
+        reason_lower = failure_reason.lower()
+        
+        if "truncated" in reason_lower or "incomplete" in reason_lower:
+            # Be very concise for truncation issues
+            base_temp = max(0.05, base_temp - 0.1)
+        elif "syntax" in reason_lower or "error" in reason_lower:
+            # Be very careful for syntax issues
+            base_temp = max(0.05, base_temp - 0.05)
+    
+    return round(base_temp, 2)
+
+
+def get_retry_parameters(step_name: str, base_tokens: int, failure_reason: str = "") -> dict:
+    """
+    Get adjusted parameters for retry attempts.
+    
+    Increases tokens and reduces temperature for better results.
+    
+    Args:
+        step_name: Workflow step being retried
+        base_tokens: Original token limit
+        failure_reason: Why the previous attempt failed
+    
+    Returns:
+        {
+            "max_tokens": int,
+            "temperature": float,
+            "retry_multiplier": float
+        }
+    
+    Examples:
+        >>> get_retry_parameters("backend_implementation", 30000, "output truncated")
+        {"max_tokens": 40000, "temperature": 0.05, "retry_multiplier": 1.33}
+    """
+    from app.orchestration.token_policy import get_tokens_for_step
+    
+    # Get retry tokens (uses policy's retry_tokens value)
+    retry_tokens = get_tokens_for_step(step_name, is_retry=True)
+    
+    # Get adjusted temperature
+    retry_temp = get_temperature(step_name, is_retry=True, failure_reason=failure_reason)
+    
+    # Calculate multiplier
+    multiplier = retry_tokens / base_tokens if base_tokens > 0 else 1.5
+    
+    return {
+        "max_tokens": retry_tokens,
+        "temperature": retry_temp,
+        "retry_multiplier": round(multiplier, 2),
+        "reason_analyzed": bool(failure_reason)
+    }
+

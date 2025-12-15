@@ -30,21 +30,20 @@ import { getWebSocketUrl } from "../config/env";
 // Note: Cleaned up on component unmount and on error to prevent memory leaks
 const startedWorkspaces = new Set<string>();
 
-// Workflow stages with agent names - Emergent E1 Frontend-First pattern
+// Workflow stages with agent names - Matches backend TaskGraph (11 steps)
 // Marcus supervises all agents (3 retries each)
 const WORKFLOW_STAGES = [
   { step: 1, agent: "Marcus", stage: "Analysis", description: "Understanding requirements" },
-  { step: 2, agent: "Victoria ↔ Marcus", stage: "Architecture", description: "Design + Supervision (3 tries)" },
-  { step: 3, agent: "Derek ↔ Marcus", stage: "Frontend Mock", description: "Frontend with mock data (aha moment!)" },
+  { step: 2, agent: "Victoria ↔ Marcus", stage: "Architecture", description: "Design + Supervision" },
+  { step: 3, agent: "Derek ↔ Marcus", stage: "Frontend Mock", description: "Frontend with mock data" },
   { step: 4, agent: "Marcus", stage: "Screenshot Verify", description: "Visual QA of frontend" },
-  { step: 5, agent: "Marcus", stage: "Contracts", description: "Defining API contracts from mock" },
-  { step: 6, agent: "Derek ↔ Marcus", stage: "Backend Models", description: "Database models + Supervision" },
-  { step: 7, agent: "Derek", stage: "Backend Routers", description: "Building API endpoints" },
-  { step: 8, agent: "Derek", stage: "Backend Main", description: "Configuring FastAPI server" },
-  { step: 9, agent: "Derek", stage: "Testing Backend", description: "Running pytest tests" },
-  { step: 10, agent: "Derek ↔ Marcus", stage: "Frontend Integration", description: "Replace mock with real API" },
-  { step: 11, agent: "Luna ↔ Marcus", stage: "Testing Frontend", description: "Playwright E2E tests" },
-  { step: 12, agent: "Marcus", stage: "Preview", description: "Final preview ready!" },
+  { step: 5, agent: "Marcus", stage: "Contracts", description: "Defining API contracts" },
+  { step: 6, agent: "Derek ↔ Marcus", stage: "Backend Implementation", description: "Models + Routers + Wiring" },
+  { step: 7, agent: "System", stage: "System Integration", description: "Wiring everything together" },
+  { step: 8, agent: "Derek", stage: "Testing Backend", description: "Running pytest tests" },
+  { step: 9, agent: "Derek ↔ Marcus", stage: "Frontend Integration", description: "Replace mock with API" },
+  { step: 10, agent: "Luna ↔ Marcus", stage: "Testing Frontend", description: "Playwright E2E tests" },
+  { step: 11, agent: "Marcus", stage: "Preview", description: "Final preview ready!" },
 ];
 
 const WorkspacePage: React.FC = () => {

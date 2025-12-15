@@ -22,7 +22,7 @@ from app.supervision import supervised_agent_call
 from app.persistence import persist_agent_output
 from app.persistence.validator import validate_file_output
 
-from app.utils.entity_discovery import discover_primary_entity
+from app.utils.entity_discovery import discover_primary_entity, extract_all_models_from_models_py
 
 
 
@@ -175,15 +175,23 @@ async def step_frontend_integration(
     entities_list = intent.get("entities", [])
     
     # Use centralized discovery as fallback with dynamic last-resort
+    # BUG FIX: For integration, prefer actual models from models.py over
+    # discover_primary_entity which may return wrong entity from mock.js
     if entities_list:
         primary_entity = entities_list[0]
     else:
-        entity_name, _ = discover_primary_entity(project_path)
-        if entity_name:
-            primary_entity = entity_name
+        # First try to get actual models from models.py (what Derek generated)
+        actual_models = extract_all_models_from_models_py(project_path)
+        if actual_models:
+            primary_entity = actual_models[0].lower()
         else:
-            # Dynamic last resort: extract from user request
-            primary_entity = _extract_entity_from_request(user_request) or "entity"
+            # Fallback to discover_primary_entity
+            entity_name, _ = discover_primary_entity(project_path)
+            if entity_name:
+                primary_entity = entity_name
+            else:
+                # Dynamic last resort: extract from user request
+                primary_entity = _extract_entity_from_request(user_request) or "entity"
     
     primary_entity_capitalized = primary_entity.capitalize()
 

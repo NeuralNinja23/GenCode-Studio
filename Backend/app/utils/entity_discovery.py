@@ -7,7 +7,9 @@ NEVER falls back to hardcoded values like "Item" or "Note".
 """
 import re
 from pathlib import Path
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict, Any
+from dataclasses import dataclass, field
+import json
 
 from app.core.logging import log
 
@@ -19,9 +21,160 @@ _discovery_warnings_logged: set = set()
 _discovery_cache: dict = {}
 
 
+@dataclass
+class Field:
+    """Field specification for an entity."""
+    name: str
+    type: str  # "str", "int", "bool", "datetime", "float", "Optional[str]", etc.
+    required: bool = True
+    enum_values: List[str] = field(default_factory=list)
+    description: str = ""
+    default: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "type": self.type,
+            "required": self.required,
+            "enum_values": self.enum_values,
+            "description": self.description,
+            "default": self.default
+        }
+
+
+@dataclass
+class Relationship:
+    """Relationship between entities."""
+    from_entity: str
+    to_entity: str
+    type: str  # "one_to_many", "many_to_many", "one_to_one"
+    foreign_key: str = ""
+    cascade_delete: bool = False
+    description: str = ""
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "from_entity": self.from_entity,
+            "to_entity": self.to_entity,
+            "type": self.type,
+            "foreign_key": self.foreign_key,
+            "cascade_delete": self.cascade_delete,
+            "description": self.description
+        }
+
+
+@dataclass
+class EntitySpec:
+    """Complete specification for an entity."""
+    name: str  # "Task", "User", "Note"
+    plural: str  # "tasks", "users", "notes"
+    type: str = "AGGREGATE"  # "AGGREGATE" (Document, has collection) or "EMBEDDED" (BaseModel, nested only)
+    description: str = ""
+    fields: List[Field] = field(default_factory=list)
+    is_primary: bool = True
+    generation_order: int = 999  # Lower = generated first
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "plural": self.plural,
+            "type": self.type,  # NEW: Include in serialization
+            "description": self.description,
+            "fields": [f.to_dict() for f in self.fields],
+            "is_primary": self.is_primary,
+            "generation_order": self.generation_order
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EntitySpec":
+        """Create EntitySpec from dictionary."""
+        fields = [Field(**f) if isinstance(f, dict) else f for f in data.get("fields", [])]
+        return cls(
+            name=data["name"],
+            plural=data["plural"],
+            type=data.get("type", "AGGREGATE"),  # NEW: Default to AGGREGATE for backward compat
+            description=data.get("description", ""),
+            fields=fields,
+            is_primary=data.get("is_primary", True),
+            generation_order=data.get("generation_order", 999)
+        )
+
+
+@dataclass
+class EntityPlan:
+    """Complete entity generation plan."""
+    entities: List[EntitySpec]
+    relationships: List[Relationship]
+    warnings: List[str] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "entities": [e.to_dict() for e in self.entities],
+            "relationships": [r.to_dict() for r in self.relationships],
+            "warnings": self.warnings
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EntityPlan":
+        """Create EntityPlan from dictionary."""
+        entities = [EntitySpec.from_dict(e) for e in data.get("entities", [])]
+        relationships = [Relationship(**r) if isinstance(r, dict) else r for r in data.get("relationships", [])]
+        return cls(
+            entities=entities,
+            relationships=relationships,
+            warnings=data.get("warnings", [])
+        )
+    
+    def save(self, path) -> None:
+        """Save entity plan to JSON file."""
+        from pathlib import Path
+        path = Path(path)
+        path.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
+    
+    @classmethod
+    def load(cls, path) -> "EntityPlan":
+        """Load entity plan from JSON file."""
+        from pathlib import Path
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Entity plan not found: {path}")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return cls.from_dict(data)
+
+
+def clear_discovery_cache(project_path: Path = None):
+    """
+    Clear the entity discovery cache for a project.
+    
+    Call this after generating new artifacts (contracts.md, models.py, etc.)
+    to ensure fresh discovery results don't use stale cache.
+    
+    Args:
+        project_path: If provided, clear only this project's cache.
+                     If None, clear entire cache.
+    """
+    global _discovery_cache, _discovery_warnings_logged
+    
+    if project_path:
+        cache_key = str(project_path)
+        _discovery_cache.pop(cache_key, None)
+        _discovery_warnings_logged.discard(cache_key)
+    else:
+        _discovery_cache.clear()
+        _discovery_warnings_logged.clear()
+
+
 def discover_primary_entity(project_path: Path, suppress_warning: bool = False) -> Tuple[Optional[str], Optional[str]]:
     """
     Discover the primary entity from project artifacts.
+    
+    PRIORITY ORDER (authoritative sources only):
+    1. entity_plan.json (if exists, use first entity)
+    2. contracts.md
+    3. models.py (actual generated models)
+    4. routers/ directory
+    
+    REMOVED: mock.js, architecture.md (too ambiguous, caused confusion)
     
     Args:
         project_path: Path to the project directory
@@ -32,46 +185,39 @@ def discover_primary_entity(project_path: Path, suppress_warning: bool = False) 
     if cache_key in _discovery_cache:
         return _discovery_cache[cache_key]
     
-    # Priority 1: contracts.md
+    # Priority 1: entity_plan.json (generated by contracts step)
+    entity_plan_path = project_path / "entity_plan.json"
+    if entity_plan_path.exists():
+        try:
+            plan = EntityPlan.load(entity_plan_path)
+            if plan.entities:
+                first_entity = plan.entities[0]
+                result = (first_entity.plural.rstrip('s'), first_entity.name)
+                _discovery_cache[cache_key] = result
+                log("DISCOVERY", f"✅ Found entity from entity_plan.json: {result}")
+                return result
+        except Exception as e:
+            log("DISCOVERY", f"⚠️ Failed to load entity_plan.json: {e}")
+    
+    # Priority 2: contracts.md
     result = _extract_from_contracts(project_path / "contracts.md")
     if result[0]:
         _discovery_cache[cache_key] = result
         log("DISCOVERY", f"✅ Found entity from contracts.md: {result}")
         return result
     
-    # Priority 2: architecture.md
-    result = _extract_from_architecture(project_path / "architecture.md")
-    if result[0]:
-        _discovery_cache[cache_key] = result
-        log("DISCOVERY", f"✅ Found entity from architecture.md: {result}")
-        return result
-    
-    # Priority 3: models.py
+    # Priority 3: models.py (actual generated code)
     result = _extract_from_models(project_path / "backend" / "app" / "models.py")
     if result[0]:
         _discovery_cache[cache_key] = result
         log("DISCOVERY", f"✅ Found entity from models.py: {result}")
         return result
     
-    # Priority 4: mock.js
-    result = _extract_from_mock(project_path / "frontend" / "src" / "data" / "mock.js")
-    if result[0]:
-        _discovery_cache[cache_key] = result
-        log("DISCOVERY", f"✅ Found entity from mock.js: {result}")
-        return result
-    
-    # Priority 5: routers/ directory
+    # Priority 4: routers/ directory
     result = _extract_from_routers(project_path / "backend" / "app" / "routers")
     if result[0]:
         _discovery_cache[cache_key] = result
         log("DISCOVERY", f"✅ Found entity from routers/: {result}")
-        return result
-    
-    # Priority 6: User Request
-    result = _extract_from_user_request(project_path / "user_request.txt")
-    if result[0]:
-        _discovery_cache[cache_key] = result
-        log("DISCOVERY", f"✅ Found entity from user_request.txt: {result}")
         return result
     
     # Issue #5 Fix: Only warn once per project to avoid log spam
@@ -83,13 +229,30 @@ def discover_primary_entity(project_path: Path, suppress_warning: bool = False) 
 
 
 def _extract_from_contracts(path: Path) -> Tuple[Optional[str], Optional[str]]:
+    """Extract entity from contracts.md API endpoints.
+    
+    Handles various markdown formats:
+    - GET /api/expenses
+    - **GET `/api/expenses`**
+    - GET `/api/expenses`
+    - - **GET `/api/expenses`**
+    """
     if not path.exists():
         return (None, None)
     try:
         content = path.read_text(encoding="utf-8")
-        match = re.search(r'(?:GET|POST|PUT|DELETE|PATCH)\s+/api/(\w+)', content, re.IGNORECASE)
+        
+        # Updated regex to handle markdown formatting:
+        # - [^/]* matches any non-slash chars between method and /api/
+        # - This handles `, **, whitespace, etc.
+        # Matches: "GET /api/expenses", "**GET `/api/expenses`**", etc.
+        match = re.search(
+            r'(GET|POST|PUT|DELETE|PATCH)[^/]*/api/(\w+)',
+            content, 
+            re.IGNORECASE
+        )
         if match:
-            plural = match.group(1).lower()
+            plural = match.group(2).lower()  # Group 2 is the entity name
             return (singularize(plural), singularize(plural).capitalize())
     except Exception:
         pass
@@ -142,6 +305,124 @@ def _extract_from_models(path: Path) -> Tuple[Optional[str], Optional[str]]:
         log("DISCOVERY", f"Error reading models.py: {e}")
     
     return (None, None)
+
+
+def extract_all_models_from_models_py(project_path: Path) -> List[str]:
+    """
+    Extract ALL Beanie Document model class names that ACTUALLY EXIST in models.py.
+    
+    This is used during system_integration to wire only models that Derek generated,
+    NOT entities discovered from mock.js (which may be different).
+    
+    BUG FIX: Previously, entity discovery from mock.js could return "Category"
+    when Derek actually generated "Expense", causing ImportError crashes.
+    
+    Returns:
+        List of model class names (e.g., ["Expense", "Category"])
+    """
+    models_path = project_path / "backend" / "app" / "models.py"
+    
+    if not models_path.exists():
+        log("DISCOVERY", "⚠️ models.py not found")
+        return []
+    
+    try:
+        content = models_path.read_text(encoding="utf-8")
+        models = []
+        
+        # Process line-by-line to properly skip comments
+        for line in content.splitlines():
+            stripped = line.lstrip()
+            
+            # Skip empty lines and comments
+            if not stripped or stripped.startswith('#'):
+                continue
+            
+            # Match actual class definitions that inherit from Document
+            # Updated to handle multiple inheritance: class X(Document, BaseClass)
+            match = re.match(r'class\s+(\w+)\s*\([^)]*Document[^)]*\)', stripped)
+            if match:
+                model_name = match.group(1)
+                # Skip base classes
+                if model_name not in ["BaseDocument", "BaseModel", "Document"]:
+                    models.append(model_name)
+        
+        if models:
+            log("DISCOVERY", f"✅ Found {len(models)} models in models.py: {models}")
+        else:
+            log("DISCOVERY", "⚠️ No Document classes found in models.py")
+        
+        return models
+        
+    except Exception as e:
+        log("DISCOVERY", f"Error reading models.py: {e}")
+        return []
+
+
+def extract_document_models_only(project_path: Path) -> List[str]:
+    """
+    Extract ONLY aggregate Document models (excludes embedded BaseModel classes).
+    
+    CRITICAL FIX: Prevents wiring embedded models to Beanie, which causes crashes.
+    
+    Uses entity_plan.json to filter:
+    - If entity_plan.json exists: Return only AGGREGATE entities
+    - If entity_plan.json missing: Return all Document classes (backward compat)
+    
+    This works with ANY project - completely dynamic based on entity_plan.json!
+    
+    Returns:
+        List of Document class names that should be wired to Beanie
+        Empty list if models don't exist yet
+    
+    Example:
+        For kanban board:
+        - All models found: ["Task", "Assignee", "Tag", "Subtasks"]
+        - Filtered: ["Task"] (only AGGREGATE)
+        - Wired to Beanie: document_models = [Task]
+        - Result: Server doesn't crash!
+    """
+    entity_plan_path = project_path / "entity_plan.json"
+    
+    # Get all Document classes from models.py
+    all_documents = extract_all_models_from_models_py(project_path)
+    
+    if not all_documents:
+        return []  # No models exist yet
+    
+    # If no entity plan, return all (backward compatibility)
+    if not entity_plan_path.exists():
+        log("DISCOVERY", "⚠️ No entity_plan.json - wiring all Document models (backward compat)")
+        return all_documents
+    
+    try:
+        plan = EntityPlan.load(entity_plan_path)
+        
+        # Filter: only entities with type="AGGREGATE" (or missing type field = default AGGREGATE)
+        aggregate_names = [
+            entity.name 
+            for entity in plan.entities 
+            if entity.type == "AGGREGATE"  # Uses default from FIX #1
+        ]
+        
+        # Return only models that are in aggregates list
+        filtered = [m for m in all_documents if m in aggregate_names]
+        
+        # Log filtering action
+        if len(filtered) < len(all_documents):
+            embedded = set(all_documents) - set(filtered)
+            log("DISCOVERY", f"🔒 Filtered out {len(embedded)} EMBEDDED models: {list(embedded)}")
+            log("DISCOVERY", f"   These are BaseModel classes, NOT Document collections")
+            log("DISCOVERY", f"✅ Wiring {len(filtered)} AGGREGATE models: {filtered}")
+        else:
+            log("DISCOVERY", f"✅ All {len(filtered)} models are AGGREGATE: {filtered}")
+        
+        return filtered
+        
+    except Exception as e:
+        log("DISCOVERY", f"⚠️ Error loading entity_plan.json: {e}")
+        log("DISCOVERY", "   Falling back to all Document models (could cause crashes if embedded models exist)")
+        return all_documents  # Fallback to all
 
 
 def _extract_from_mock(path: Path) -> Tuple[Optional[str], Optional[str]]:
@@ -391,7 +672,7 @@ def discover_all_entities(project_path: Path, user_request: str = "") -> List["E
     Returns:
         List of EntitySpec objects (1-MAX_ENTITIES)
     """
-    from app.utils.entity_specs import EntitySpec
+
     from app.core.constants import MAX_ENTITIES
     
     entities = []
@@ -475,7 +756,7 @@ def discover_all_entities(project_path: Path, user_request: str = "") -> List["E
 
 def _extract_all_entities_from_contracts(contracts_path: Path) -> List["EntitySpec"]:
     """Parse contracts.md for ALL entities (from /api/{entity} endpoints)."""
-    from app.utils.entity_specs import EntitySpec
+
     
     try:
         content = contracts_path.read_text(encoding="utf-8")
@@ -504,7 +785,7 @@ def _extract_all_entities_from_contracts(contracts_path: Path) -> List["EntitySp
 
 def _extract_all_entities_from_architecture(architecture_path: Path) -> List["EntitySpec"]:
     """Parse architecture.md for ALL entities in 'Data Models' section."""
-    from app.utils.entity_specs import EntitySpec
+
     
     try:
         content = architecture_path.read_text(encoding="utf-8")
@@ -575,7 +856,7 @@ def detect_relationships(
     Returns:
         List of Relationship objects
     """
-    from app.utils.entity_specs import Relationship
+
     
     relationships = []
     contracts_path = project_path / "contracts.md"

@@ -54,6 +54,7 @@ containers.json
 .agent
 .gemini
 
+
 # Allow specific files even in ignored directories
 !**/conftest.py
 !**/models.py
@@ -69,3 +70,6 @@ Emergent Prompt.txt
 
 # GitHub pretraining data (contains API keys/responses)
 GitHub
+workspaces
+
+commands

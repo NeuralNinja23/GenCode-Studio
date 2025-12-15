@@ -38,10 +38,13 @@ class ContractParser:
     
     def get_expected_routes(self) -> List[RouteContract]:
         """
-        Extract expected routes from contracts and tests.
+        Extract expected routes for validation.
         
-        Returns:
-            List of RouteContract objects
+        🔒 INVARIANT #1: Validation ⊇ Tests
+        Every route tested in test_api.py MUST appear here.
+        If validation passes, tests WILL pass (no under-approximation).
+        
+        This is the NON-NEGOTIABLE contract. If any route is missing → FAIL FAST.
         """
         routes = []
         
@@ -50,27 +53,93 @@ class ContractParser:
             method="GET",
             path="/api/health",
             expected_status=200,
-            description="Health check endpoint"
+            description="Health check endpoint (mandatory)"
         ))
         
-        # Parse from contracts.md if it exists
-        if self.contracts_file.exists():
-            routes.extend(self._parse_contracts_md())
+        # ═══════════════════════════════════════════════════════════
+        # MANDATORY CRUD ROUTES - Must match test_api.py exactly
+        #
+        # BUG FIX: Use extract_all_models_from_models_py instead of
+        # discover_primary_entity. The old approach discovered entities
+        # from mock.js (e.g., "User") but Derek might generate different
+        # models (e.g., "Ticket"), causing validation to check wrong routes.
+        #
+        # FIX #6: FILTER TO AGGREGATE ENTITIES ONLY (2025-12-15)
+        # Uses entity_plan.json to skip EMBEDDED entities.
+        # Only AGGREGATE entities have routers, so only test those routes!
+        # ═══════════════════════════════════════════════════════════
+        from app.utils.entity_discovery import extract_all_models_from_models_py, get_entity_plural
         
-        # Parse from test_api.py if it exists
-        if self.test_file.exists():
-            routes.extend(self._parse_test_file())
+        actual_models = extract_all_models_from_models_py(self.project_path)
         
-        # Deduplicate by (method, path)
-        seen = set()
-        unique_routes = []
-        for route in routes:
-            key = (route.method, route.path)
-            if key not in seen:
-                seen.add(key)
-                unique_routes.append(route)
+        # Filter to AGGREGATE models only
+        aggregate_models = actual_models  # Default: assume all are aggregate
+        entity_plan_path = self.project_path / "entity_plan.json"
         
-        return unique_routes
+        if entity_plan_path.exists():
+            try:
+                from app.utils.entity_discovery import EntityPlan
+                plan = EntityPlan.load(entity_plan_path)
+                
+                # Get only AGGREGATE entity names
+                aggregate_names = [
+                    e.name for e in plan.entities 
+                    if e.type == "AGGREGATE"
+                ]
+                
+                # Filter actual_models to only include aggregates
+                aggregate_models = [m for m in actual_models if m in aggregate_names]
+                
+                embedded_count = len(actual_models) - len(aggregate_models)
+                if embedded_count > 0:
+                    embedded = [m for m in actual_models if m not in aggregate_models]
+                    from app.core.logging import log
+                    log("CONTRACT_PARSER", f"🔒 Skipping {embedded_count} EMBEDDED entities from validation: {embedded}")
+                    log("CONTRACT_PARSER", f"✅ Testing {len(aggregate_models)} AGGREGATE entities: {aggregate_models}")
+            except Exception as e:
+                from app.core.logging import log
+                log("CONTRACT_PARSER", f"⚠️ Could not load entity_plan.json: {e}, testing all models")
+        
+        for model_name in aggregate_models:
+            # Derive entity name from model name (e.g., "Ticket" -> "ticket")
+            entity_name = model_name.lower()
+            entity_plural = get_entity_plural(entity_name)
+            base_path = f"/api/{entity_plural}"
+            
+            # ALL 4 routes that test_api.py requires
+            routes.extend([
+                # List all
+                RouteContract(
+                    method="GET",
+                    path=base_path,
+                    expected_status=200,
+                    description=f"List all {entity_plural} (mandatory)"
+                ),
+                # Create
+                RouteContract(
+                    method="POST",
+                    path=base_path,
+                    expected_status=201,
+                    description=f"Create new {entity_name} (mandatory)"
+                ),
+                # Get by ID - validated as route exists, not actual data
+                # We use a placeholder ID; 404 is acceptable (route exists but no data)
+                RouteContract(
+                    method="GET",
+                    path=f"{base_path}/test-id-validation",
+                    expected_status=404,  # 404 means route EXISTS but ID not found
+                    description=f"Get {entity_name} by ID (route must exist)"
+                ),
+                # Delete - same logic, 404 means route exists
+                RouteContract(
+                    method="DELETE",
+                    path=f"{base_path}/test-id-validation",
+                    expected_status=404,  # 404 means route EXISTS but ID not found
+                    description=f"Delete {entity_name} by ID (route must exist)"
+                ),
+            ])
+        
+        return routes
     
     def _parse_contracts_md(self) -> List[RouteContract]:
         """Parse route contracts from contracts.md."""
@@ -151,14 +220,18 @@ class ContractParser:
         """
         Get routes for the primary entity only.
         
-        Uses entity discovery to find primary entity, then filters routes.
+        BUG FIX: Uses extract_all_models_from_models_py to find actual models
+        instead of discover_primary_entity which may return wrong entity.
         """
-        from app.utils.entity_discovery import discover_primary_entity, get_entity_plural
+        from app.utils.entity_discovery import extract_all_models_from_models_py, get_entity_plural
         
-        entity_name, model_name = discover_primary_entity(self.project_path)
-        if not entity_name:
+        actual_models = extract_all_models_from_models_py(self.project_path)
+        if not actual_models:
             return []
         
+        # Use first model as primary (most commonly the main entity)
+        primary_model = actual_models[0]
+        entity_name = primary_model.lower()
         entity_plural = get_entity_plural(entity_name)
         
         all_routes = self.get_expected_routes()

@@ -10,6 +10,8 @@ Refactored: Uses centralized entity discovery and FallbackModelAgent.
 
 from pathlib import Path
 from typing import Optional, Callable, Dict, Tuple
+from datetime import datetime
+import json
 import re
 
 from app.core.logging import log
@@ -24,38 +26,87 @@ from app.arbormind.t_am_operators import build_default_tam_operators
 from app.arbormind.v_value_schema import VValue
 
 # CENTRALIZED ENTITY DISCOVERY (fallback only)
-from app.utils.entity_discovery import discover_primary_entity, get_entity_plural
+from app.utils.entity_discovery import discover_primary_entity, get_entity_plural, extract_all_models_from_models_py
 
 
 class HealingPipeline:
     """Coordinates self-healing: error → strategy → repair → evolution"""
     
-    def __init__(self, project_path: Path, llm_caller: Optional[Callable[[str, str], str]] = None):
+    def __init__(self, project_path: Path, llm_caller: Optional[Callable[[str, str], str]] = None, project_id: Optional[str] = None):
         self.project_path = project_path
+        self.project_id = project_id or project_path.name  # LOOP CONSOLIDATION: For budget lookup
         self.llm_caller = llm_caller
         self.error_router = ErrorRouter()
-        self.healing_manager = SelfHealingManager(project_path, llm_caller)
+        self.healing_manager = SelfHealingManager(project_path, llm_caller, project_id=self.project_id)
         self.tam_ops = build_default_tam_operators()
         self.fallback_router = FallbackRouterAgent()
         self.fallback_api = FallbackAPIAgent()
         self.fallback_model = FallbackModelAgent()
         self.last_repair_decision_id = None
         self.last_archetype = "unknown"
+        
+        # PHASE 5: Healing memory - track attempts and prevent duplicates
+        self.attempt_history: list = []  # Track all healing attempts
+        self.code_hashes: set = set()     # Track code hashes to detect duplicates
+        
+        # PERSISTENT MEMORY: Load from JSON file
+        self.memory_path = project_path / ".gencode" / "healing_memory.json"
+        self._load_healing_memory()
     
-    async def attempt_heal(self, step: str, error_log: str = "", archetype: str = "unknown", retries: int = 0) -> Optional[str]:
-        """Attempt to heal failed step. Returns SELF_HEALED or generated code."""
-        artifact = self.error_router.route(step)
+    async def attempt_heal(
+        self, 
+        step: str, 
+        error_log: str = "", 
+        archetype: str = "unknown", 
+        test_failures: Optional[str] = None  # Test output feedback for Derek
+    ) -> Optional[str]:
+        """
+        Attempt to heal failed step. Returns SELF_HEALED or generated code.
+        
+        LOOP CONSOLIDATION:
+        - Single attempt, no internal retries
+        - Budget-controlled (fails fast when exhausted)
+        - ArborMind selects strategy once (no escalation)
+        - Caller (testing_backend) is the only retry loop
+        """
+        from app.orchestration.healing_budget import get_healing_budget
+        
+        # ════════════════════════════════════════════════════════════════
+        # LOOP CONSOLIDATION: Check budget FIRST
+        # ════════════════════════════════════════════════════════════════
+        budget = get_healing_budget(self.project_id) if hasattr(self, 'project_id') else None
+        if budget and budget.is_exhausted():
+            log("HEAL", "🛑 Healing budget exhausted - failing fast")
+            log("HEAL", budget.get_exhaustion_diagnostic())
+            return None
+        
+        artifact = self.error_router.get_repair_artifact(step)
         if artifact == "noop":
             log("HEAL", f"⚠️ No repair route for step {step}")
             return None
         
-        # 🎯 SELF-EVOLUTION: ErrorRouter + T-AM
+        # Store test failures in healing manager for Derek feedback
+        if test_failures and hasattr(self.healing_manager, 'latest_test_failures'):
+            self.healing_manager.latest_test_failures = test_failures
+            log("HEAL", f"📋 Stored {len(test_failures)} chars of test output for Derek")
+        
+        # ════════════════════════════════════════════════════════════════
+        # LOOP CONSOLIDATION: ArborMind SELECTS once (no escalation)
+        # Strategy selection is now based on error depth, not retry count
+        # ════════════════════════════════════════════════════════════════
         strategy_id = "generic_fix"
         strategy_params = {}
         repair_decision_id = ""
         
         try:
-            result = await self.error_router.decide_repair_strategy(error_log, archetype=archetype, retries=retries)
+            # Pass error_log for depth analysis, archetype for context
+            # retries=0 always - no escalation, just selection
+            result = await self.error_router.decide_repair_strategy(
+                error_log, 
+                archetype=archetype, 
+                retries=0,  # LOOP CONSOLIDATION: No escalation
+                context={"test_failures": test_failures} if test_failures else None
+            )
             strategy_id = result.get("selected", "generic_fix")
             strategy_params = result.get("value", {})
             repair_decision_id = result.get("decision_id", "")
@@ -64,14 +115,7 @@ class HealingPipeline:
             self.last_repair_decision_id = repair_decision_id
             self.last_archetype = archetype
             
-            if am_mode != "standard":
-                log("HEAL", f"🤖 AM Mode {am_mode.upper()}")
-                if am_mode == "exploratory" and result.get("source_archetypes"):
-                    log("HEAL", f"   📚 Foreign patterns from: {result['source_archetypes']}")
-                if am_mode == "transformational" and result.get("mutation"):
-                    log("HEAL", f"   🔮 Mutation: {result['mutation'].get('description', 'N/A')}")
-            
-            log("HEAL", f"🧠 Attention selected strategy: '{strategy_id}'")
+            log("HEAL", f"🧠 Strategy selected: '{strategy_id}' (mode: {am_mode})")
             log("HEAL", f"   ⚙️ Params: {strategy_params}")
             if result.get("evolved"):
                 log("HEAL", "   🧬 Strategy parameters evolved from learning")
@@ -79,38 +123,54 @@ class HealingPipeline:
         except Exception as e:
             log("HEAL", f"⚠️ Strategy selection failed: {e}")
         
-        # 🎯 T-AM: Mutate strategy after failures
-        if retries >= 2:
-            strategy_params = self._maybe_mutate_config_after_failures(strategy_params, retries)
+        log("HEAL", f"🔧 Healing {step} → {artifact} (Strategy: {strategy_id})")
         
-        log("HEAL", f"🔧 Attempting to heal {step} → {artifact} (Strategy: {strategy_id})")
-        
-        # 🩹 Attempt explicit self-healing FIRST
+        # ════════════════════════════════════════════════════════════════
+        # SINGLE ATTEMPT: Self-healing (no internal retries)
+        # ════════════════════════════════════════════════════════════════
         try:
-            healed = self.healing_manager.repair(artifact, strategy_id=strategy_id, params=strategy_params)
+            healed = await self.healing_manager.repair(artifact, strategy_id=strategy_id, params=strategy_params)
         except TypeError:
-            # Backward compat: repair() doesn't support params yet
-            healed = self.healing_manager.repair(artifact)
+            # Backward compat: repair() doesn't support params yet or async
+            try:
+                healed = await self.healing_manager.repair(artifact)
+            except TypeError:
+                healed = self.healing_manager.repair(artifact)
         
         if healed:
-            log("HEAL", f"✅ Self-healing succeeded for {artifact}")
+            log("HEAL", f"✅ Healing succeeded for {artifact}")
+            
+            # Record successful attempt
+            self._record_healing_attempt(step, artifact, strategy_id, "self_heal", success=True)
+            
             self._report_healing_outcome(repair_decision_id, success=True, quality_score=8.0, 
-                                        details=f"Self-healing succeeded for {artifact} using {strategy_id}")
+                                        details=f"Healing succeeded for {artifact} using {strategy_id}")
             return "SELF_HEALED"
         
-        log("HEAL", f"⚠️ Self-healing failed for {artifact}, trying fallback agent")
+        # ════════════════════════════════════════════════════════════════
+        # FALLBACK: Only for non-critical/boilerplate files
+        # ════════════════════════════════════════════════════════════════
+        if not self._is_critical_step(step):
+            log("HEAL", f"⚠️ Primary healing failed, trying fallback (non-critical step)")
+            fallback_code = self._fallback(step)
+            if fallback_code:
+                # Check for duplicate fallback code
+                if self._is_duplicate_code(fallback_code):
+                    log("HEAL", f"⏭️ Skipping fallback - identical to previous attempt")
+                    return None
+                
+                log("HEAL", f"✅ Fallback succeeded for {step}")
+                self._record_healing_attempt(step, artifact, strategy_id, "fallback", success=True, code=fallback_code)
+                self._report_healing_outcome(repair_decision_id, success=True, quality_score=6.0,
+                                            details=f"Fallback succeeded for {step}")
+                return fallback_code
+        else:
+            log("HEAL", f"⚠️ Primary healing failed for CRITICAL step {step} - no fallback allowed")
         
-        # 🛠️ FALLBACK: DYNAMIC entity from mock.js → contracts → generic
-        fallback_code = self._fallback(step)
-        if fallback_code:
-            log("HEAL", f"✅ Fallback agent succeeded for {step}")
-            self._report_healing_outcome(repair_decision_id, success=True, quality_score=6.0,
-                                        details=f"Fallback succeeded for {step} after self-healing failed")
-            return fallback_code
-        
-        log("HEAL", f"❌ All healing options exhausted for {step}")
+        log("HEAL", f"❌ Healing failed for {step} - outer loop will decide next action")
+        self._record_healing_attempt(step, artifact, strategy_id, "none", success=False)
         self._report_healing_outcome(repair_decision_id, success=False, quality_score=2.0,
-                                    details=f"All healing options failed for {step}")
+                                    details=f"Healing failed for {step}")
         return None
     
     # NOTE: Entity discovery methods (_get_primary_entity_safe, _extract_entity_from_mock, 
@@ -118,76 +178,100 @@ class HealingPipeline:
     # from app.utils.entity_discovery. This eliminates duplication and ensures consistency.
     
     # ════════════════════════════════════════════════════════════════════════
-    # FALLBACK GENERATION
+    # FALLBACK GENERATION (PHASE 3: SELECTIVE - BOILERPLATE ONLY)
     # ═════════════════════════════════════════════════════════════════════════
     
     def _fallback(self, step: str) -> Optional[str]:
-        """Fallback generation using centralized entity discovery."""
+        """
+        PHASE 3: Selective fallback - ONLY for boilerplate files.
+        
+        Critical files (models, routers, tests) should NEVER use fallback.
+        Only safe boilerplate files (database.py, __init__.py) can use templates.
+        
+        Returns:
+            Generated code if fallback is allowed, None if step needs Derek
+        """
         step_lower = step.lower()
         
+        # PHASE 3: Check if this step is for a critical file
+        if self._is_critical_step(step):
+            log("HEAL", f"⚠️ FALLBACK BLOCKED for critical step: {step}")
+            log("HEAL", f"   Critical files MUST be generated by Derek")
+            return None  # Force Derek retry instead
+        
+        # PHASE 3: Only allow fallback for boilerplate steps
+        if not self._is_boilerplate_step(step):
+            log("HEAL", f"⚠️ FALLBACK not applicable for step: {step}")
+            return None
+        
+        log("HEAL", f"✅ Fallback ALLOWED for boilerplate step: {step}")
+        
+        # Original fallback logic for safe files only
         if "router" in step_lower or "implementation" in step_lower or "backend_vertical" in step_lower:
-            # Use centralized entity discovery
-            entity_name, model_name = discover_primary_entity(self.project_path)
-            if not entity_name:
-                log("HEAL", "❌ Cannot generate fallback - no entity found!")
-                return None
-            
-            entity_plural = get_entity_plural(entity_name)
-            log("HEAL", f"🎯 FALLBACK: {entity_name} → {entity_plural}")
-            
-            # Models - check if model class is ACTUALLY defined
-            models_path = self.project_path / "backend" / "app" / "models.py"
-            needs_model = True
-            if models_path.exists():
-                content = models_path.read_text(encoding='utf-8')
-                for line in content.splitlines():
-                    stripped = line.lstrip()
-                    if not stripped or stripped.startswith('#'):
-                        continue
-                    if re.match(rf'class\s+{model_name}\s*\(', stripped):
-                        needs_model = False
-                        log("HEAL", f"✅ Model {model_name} already exists in models.py")
-                        break
-            
-            if needs_model:
-                model_code = self.fallback_model.generate_for_entity(entity_name, model_name)
-                models_path.parent.mkdir(parents=True, exist_ok=True)
-                models_path.write_text(model_code, encoding='utf-8')
-                log("HEAL", f"📋 Fallback model written: {model_name} ({len(model_code)} chars)")
-            
-            # Router - check if valid router already exists
-            router_path = self.project_path / "backend" / "app" / "routers" / f"{entity_plural}.py"
-            if router_path.exists():
-                existing_content = router_path.read_text(encoding='utf-8')
-                if re.search(r'router\s*=\s*APIRouter', existing_content):
-                    log("HEAL", f"✅ Valid router {entity_plural}.py already exists - skipping")
-                    return existing_content
-            
-            router_code = self.fallback_router.generate_for_entity(entity_name, model_name)
-            router_path.parent.mkdir(parents=True, exist_ok=True)
-            router_path.write_text(router_code, encoding='utf-8')
-            log("HEAL", f"📋 Fallback router written: {entity_plural}.py ({len(router_code)} chars)")
-            
-            self._generate_fallback_tests(entity_name, entity_plural)
-            return router_code
+            # This should not happen since routers are critical, but keep for safety
+            log("HEAL", "❌ Router/implementation steps should use Derek, not fallback")
+            return None
         
         elif "integration" in step_lower or "api" in step_lower:
-            # Use centralized entity discovery
-            entity_name, model_name = discover_primary_entity(self.project_path)
-            if not entity_name:
-                log("HEAL", "❌ Cannot generate API fallback - no entity found!")
-                return None
+            # Frontend API client - boilerplate OK
+            #
+            # BUG FIX: Use actual models from models.py instead of
+            # discover_primary_entity which may return wrong entity from mock.js
+            actual_models = extract_all_models_from_models_py(self.project_path)
+            if actual_models:
+                model_name = actual_models[0]
+                entity_name = model_name.lower()
+            else:
+                # Fallback to discover_primary_entity
+                entity_name, model_name = discover_primary_entity(self.project_path)
+                if not entity_name:
+                    log("HEAL", "❌ Cannot generate fallback - no entity found!")
+                    return None
             
             entity_plural = get_entity_plural(entity_name)
+            
             api_code = self.fallback_api.generate_for_entity(entity_name, entity_plural)
-            api_path = self.project_path / "frontend" / "src" / "lib" / "api.js"
+            api_path = self.project_path / "frontend" / "src" / "lib" / "api.ts"
             api_path.parent.mkdir(parents=True, exist_ok=True)
             api_path.write_text(api_code, encoding='utf-8')
-            log("HEAL", f"📋 Fallback API client written for {entity_plural} ({len(api_code)} chars)")
+            log("HEAL", f"📋 Fallback API written: api.ts ({len(api_code)} chars)")
             return api_code
         
-        log("HEAL", f"⚠️ No fallback agent for step: {step}")
+        log("HEAL", f"⚠️ No fallback handler for step: {step}")
         return None
+    
+    def _is_critical_step(self, step: str) -> bool:
+        """
+        PHASE 3: Check if step involves critical files.
+        
+        Critical steps MUST use Derek, never fallback.
+        """
+        critical_keywords = [
+            "backend_implementation",
+            "backend_vertical", 
+            "model",
+            "router",
+            "test",
+        ]
+        
+        step_lower = step.lower()
+        return any(keyword in step_lower for keyword in critical_keywords)
+    
+    def _is_boilerplate_step(self, step: str) -> bool:
+        """
+        PHASE 3: Check if step involves boilerplate files.
+        
+        Boilerplate steps CAN use fallback templates safely.
+        """
+        boilerplate_keywords = [
+            "integration",  # Frontend API client
+            "api",          # API utilities
+            "database",     # Database init
+            "db",           # DB utilities
+        ]
+        
+        step_lower = step.lower()
+        return any(keyword in step_lower for keyword in boilerplate_keywords)
     
     # NOTE: _generate_fallback_model was removed - now using FallbackModelAgent
     # This consolidates model generation into a single source of truth
@@ -319,3 +403,142 @@ async def test_get_{entity}_not_found(client):
                 "method": "self_healed" if result == "SELF_HEALED" else ("fallback" if result else "failed"),
             }
         return results
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # PHASE 5: HEALING MEMORY HELPERS
+    # ════════════════════════════════════════════════════════════════════════
+    
+    def _record_healing_attempt(
+        self, 
+        step: str, 
+        artifact: str, 
+        strategy: str, 
+        method: str,  # "self_heal", "fallback", "none"
+        success: bool,
+        code: Optional[str] = None
+    ):
+        """
+        PHASE 5: Record a healing attempt in memory.
+        
+        Tracks what was tried to prevent duplicate work.
+        """
+        from datetime import datetime
+        import hashlib
+        
+        attempt = {
+            "timestamp": datetime.now().isoformat(),
+            "step": step,
+            "artifact": artifact,
+            "strategy": strategy,
+            "method": method,
+            "success": success,
+        }
+        
+        if code:
+            # Hash code to detect duplicates
+            code_hash = hashlib.md5(code.encode()).hexdigest()
+            attempt["code_hash"] = code_hash
+            self.code_hashes.add(code_hash)
+        
+        self.attempt_history.append(attempt)
+        
+        # PERSISTENT: Save to disk after each attempt
+        self._save_healing_memory()
+        
+        # Show summary if we have multiple attempts
+        if len(self.attempt_history) > 1:
+            log("HEAL", f"📊 Healing History: {len(self.attempt_history)} attempts")
+    
+    def _is_duplicate_code(self, code: str) -> bool:
+        """
+        PHASE 5: Check if code is identical to a previous attempt.
+        
+        Returns True if we've already tried this exact code.
+        """
+        import hashlib
+        
+        code_hash = hashlib.md5(code.encode()).hexdigest()
+        return code_hash in self.code_hashes
+    
+    def get_healing_summary(self) -> dict:
+        """
+        PHASE 5: Get summary of healing attempts.
+        
+        Useful for debugging and metrics.
+        """
+        if not self.attempt_history:
+            return {"total": 0, "successful": 0, "failed": 0}
+        
+        successful = sum(1 for a in self.attempt_history if a["success"])
+        failed = len(self.attempt_history) - successful
+        
+        methods_used = {}
+        for attempt in self.attempt_history:
+            method = attempt["method"]
+            methods_used[method] = methods_used.get(method, 0) + 1
+        
+        return {
+            "total": len(self.attempt_history),
+            "successful": successful,
+            "failed": failed,
+            "methods_used": methods_used,
+            "unique_code_variants": len(self.code_hashes)
+        }
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # PERSISTENT MEMORY - Load/Save from JSON
+    # ════════════════════════════════════════════════════════════════════════
+    
+    def _load_healing_memory(self):
+        """Load healing memory from JSON file (persistent across runs)."""
+        if not self.memory_path.exists():
+            log("HEAL", "📂 No healing memory found - starting fresh")
+            return
+        
+        try:
+            data = json.loads(self.memory_path.read_text(encoding="utf-8"))
+            
+            # Restore attempt history
+            self.attempt_history = data.get("attempt_history", [])
+            
+            # Restore code hashes
+            self.code_hashes = set(data.get("code_hashes", []))
+            
+            log("HEAL", f"📂 Loaded healing memory: {len(self.attempt_history)} attempts, {len(self.code_hashes)} code variants")
+            
+        except Exception as e:
+            log("HEAL", f"⚠️ Could not load healing memory: {e}")
+            # Start fresh on error
+            self.attempt_history = []
+            self.code_hashes = set()
+    
+    def _save_healing_memory(self):
+        """Save healing memory to JSON file (persistent across runs)."""
+        try:
+            self.memory_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            data = {
+                "attempt_history": self.attempt_history,
+                "code_hashes": list(self.code_hashes),
+                "last_updated": datetime.now().isoformat()
+            }
+            
+            self.memory_path.write_text(
+                json.dumps(data, indent=2),
+                encoding="utf-8"
+            )
+            
+        except Exception as e:
+            log("HEAL", f"⚠️ Could not save healing memory: {e}")
+    
+    def clear_healing_memory(self):
+        """
+        Clear healing memory (call after successful workflow completion).
+        
+        This prevents memory from previous runs affecting new projects.
+        """
+        self.attempt_history = []
+        self.code_hashes = set()
+        self._save_healing_memory()
+        log("HEAL", "🔄 Cleared healing memory")
+

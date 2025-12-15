@@ -62,6 +62,7 @@ class StructuralCompiler:
     
     # FLEXIBLE CRUD patterns - accept common naming conventions
     # Derek might use list_items, get_item, etc. instead of get_all, get_one
+    # FIX: Made patterns more flexible to avoid false validation failures
     CRUD_PATTERNS = {
         "create": [
             r"async\s+def\s+create\b",           # create()
@@ -75,15 +76,16 @@ class StructuralCompiler:
             r"async\s+def\s+get_all_\w+",         # get_all_items()
             r"async\s+def\s+list_?\w*",           # list(), list_items()
             r"async\s+def\s+get_\w+s\b",          # get_items() (plural)
-            r"@router\.get\s*\(\s*[\"']/[\"']",   # GET "/" endpoint (fallback)
+            r"@router\.get.*[\"']/[\"']",         # FIX: GET "/" (multi-line safe)
         ],
         "read_one": [
             r"async\s+def\s+get_one\b",          # get_one()
             r"async\s+def\s+get_one_\w+",         # get_one_item()
             r"async\s+def\s+get_\w+\b(?!s\b)",    # get_item() but NOT get_items()
-            r"async\s+def\s+get_by_id",           # get_by_id()
+            r"async\s+def\s+get_\w*by_id",        # FIX: get_by_id() or get_ticket_by_id()
+            r"async\s+def\s+get_\w+_by_\w+",      # FIX: get_item_by_id() (flexible)
             r"async\s+def\s+read_?\w*",           # read(), read_item()
-            r"@router\.get\s*\(\s*[\"']/\{",      # GET "/{id}" endpoint (fallback)
+            r"@router\.get.*[\"']/\{",            # FIX: GET "/{id}" (multi-line safe)
         ],
         "update": [
             r"async\s+def\s+update\b",           # update()

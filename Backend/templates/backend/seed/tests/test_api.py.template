@@ -1,109 +1,139 @@
-# backend/tests/test_api.py
 """
-API Tests Template - Generated from Golden Seed
-================================================
-Derek uses this as a base and customizes it for project-specific entities.
+AUTHORITATIVE BACKEND CONTRACT – DO NOT MODIFY AT RUNTIME
 
-This template includes:
-1. Health check test (always passes)
-2. Placeholder CRUD tests for the primary entity
+This test file DEFINES the required API surface for the backend.
+If any test fails, the backend implementation is INVALID.
 
-To customize:
-- Replace {{ENTITY}} with the primary entity name (e.g., "expense", "task")
-- Replace {{ENTITY_PLURAL}} with the plural form (e.g., "expenses", "tasks")
-- Replace {{MODEL_NAME}} with the model class name (e.g., "Expense", "Task")
+⚠️ Healing rules:
+- Backend code MAY be modified to satisfy these tests
+- Tests MUST NOT be modified or relaxed
+- Route prefixes, methods, and status codes are STRICT
 """
+
 import pytest
 from faker import Faker
 
-# Initialize Faker for realistic test data
 fake = Faker()
 
+# ============================================================
+# 🔒 CONTRACT CONSTANTS (machine-readable, authoritative)
+# ============================================================
 
-# ═══════════════════════════════════════════════════════
-# HEALTH CHECK (Always include - validates API is running)
-# ═══════════════════════════════════════════════════════
-
-@pytest.mark.anyio
-async def test_health_check(client):
-    """Test the health check endpoint."""
-    response = await client.get("/api/health")
-    assert response.status_code == 200
-    data = response.json()
-    assert data.get("status") == "healthy"
+TASKS_BASE = "/api/tasks"
 
 
-# ═══════════════════════════════════════════════════════
-# {{ENTITY}} CRUD TESTS
-# Replace {{ENTITY}}, {{ENTITY_PLURAL}}, {{MODEL_NAME}} with actual values
-# ═══════════════════════════════════════════════════════
+# ============================================================
+# 📋 LIST TASKS
+# ============================================================
 
 @pytest.mark.anyio
-async def test_list_{{ENTITY_PLURAL}}_empty(client):
-    """Test listing {{ENTITY_PLURAL}} when none exist."""
-    response = await client.get("/api/{{ENTITY_PLURAL}}")
-    assert response.status_code == 200
-    data = response.json()
-    # Response should have data array (may be empty or contain items)
-    assert "data" in data or isinstance(data, list)
+async def test_list_tasks_empty(client):
+    """
+    GET /api/tasks
+    Must return 200 with an empty list when no tasks exist.
+    """
+    response = await client.get(TASKS_BASE)
 
+    assert response.status_code == 200, "GET /api/tasks MUST return 200"
+    assert isinstance(response.json(), list), "Response MUST be a list"
+    assert response.json() == [], "Initial task list MUST be empty"
+
+
+# ============================================================
+# ➕ CREATE TASK
+# ============================================================
 
 @pytest.mark.anyio
-async def test_create_{{ENTITY}}(client):
-    """Test creating a new {{ENTITY}}."""
-    # Use generic fields that match standard contract schema
-    {{ENTITY}}_data = {
+async def test_create_task(client):
+    """
+    POST /api/tasks
+    Must create a task and return 201 Created.
+    """
+    task_data = {
         "title": fake.sentence(nb_words=4),
-        "content": fake.paragraph(nb_sentences=2),
-        "status": "active"
+        "description": fake.paragraph(nb_sentences=2),
+        "status": "active",
     }
-    response = await client.post("/api/{{ENTITY_PLURAL}}", json={{ENTITY}}_data)
-    assert response.status_code in [200, 201]
-    data = response.json()
-    # Response should contain the created entity or a data wrapper
-    if "data" in data:
-        assert "title" in data["data"] or "id" in data["data"]
-    else:
-        assert "title" in data or "id" in data or "_id" in data
 
+    response = await client.post(TASKS_BASE, json=task_data)
+
+    assert response.status_code == 201, "POST /api/tasks MUST return 201 Created"
+
+    data = response.json()
+
+    assert "id" in data, "Created task MUST have an id"
+    assert data["title"] == task_data["title"]
+    assert data["description"] == task_data["description"]
+    assert data["status"] == task_data["status"]
+
+
+# ============================================================
+# 🔍 GET TASK BY ID
+# ============================================================
 
 @pytest.mark.anyio
-async def test_get_{{ENTITY}}_not_found(client):
-    """Test getting a non-existent {{ENTITY}} returns 404."""
-    # Use a valid but non-existent ObjectId
-    fake_id = "507f1f77bcf86cd799439011"
-    response = await client.get(f"/api/{{ENTITY_PLURAL}}/{fake_id}")
-    assert response.status_code == 404
+async def test_get_task_success(client):
+    """
+    GET /api/tasks/{task_id}
+    Must return 200 for an existing task.
+    """
+    task_data = {
+        "title": fake.sentence(nb_words=4),
+        "description": fake.paragraph(nb_sentences=2),
+        "status": "active",
+    }
+
+    create_response = await client.post(TASKS_BASE, json=task_data)
+    assert create_response.status_code == 201
+
+    task_id = create_response.json()["id"]
+
+    response = await client.get(f"{TASKS_BASE}/{task_id}")
+
+    assert response.status_code == 200, "GET /api/tasks/{id} MUST return 200"
+    assert response.json()["id"] == task_id
 
 
-# ═══════════════════════════════════════════════════════
-# Additional Tests (Uncomment and customize as needed)
-# ═══════════════════════════════════════════════════════
+# ============================================================
+# ❌ GET MISSING TASK
+# ============================================================
 
-# @pytest.mark.anyio
-# async def test_update_{{ENTITY}}(client):
-#     """Test updating an existing {{ENTITY}}."""
-#     # First create a {{ENTITY}}
-#     create_data = {"title": fake.sentence(), "content": fake.paragraph()}
-#     create_response = await client.post("/api/{{ENTITY_PLURAL}}", json=create_data)
-#     created = create_response.json()
-#     {{ENTITY}}_id = created.get("id") or created.get("_id") or created.get("data", {}).get("id")
-#     
-#     # Then update it
-#     update_data = {"title": fake.sentence()}
-#     response = await client.put(f"/api/{{ENTITY_PLURAL}}/{{{ENTITY}}_id}", json=update_data)
-#     assert response.status_code == 200
+@pytest.mark.anyio
+async def test_get_task_not_found(client):
+    """
+    GET /api/tasks/{task_id}
+    Must return 404 for a non-existent task.
+    """
+    response = await client.get(f"{TASKS_BASE}/nonexistent-id")
+
+    assert response.status_code == 404, "Missing task MUST return 404"
 
 
-# @pytest.mark.anyio
-# async def test_delete_{{ENTITY}}(client):
-#     """Test deleting a {{ENTITY}}."""
-#     # First create
-#     create_data = {"title": fake.sentence()}
-#     create_response = await client.post("/api/{{ENTITY_PLURAL}}", json=create_data)
-#     created = create_response.json()
-#     {{ENTITY}}_id = created.get("id") or created.get("_id") or created.get("data", {}).get("id")
-#     
-#     # Then delete
-#     response = await client.delete(f"/api/{{ENTITY_PLURAL}}/{{{ENTITY}}_id}")
-#     assert response.status_code in [200, 204]
+# ============================================================
+# 🗑️ DELETE TASK
+# ============================================================
+
+@pytest.mark.anyio
+async def test_delete_task(client):
+    """
+    DELETE /api/tasks/{task_id}
+    Must delete the task and return 204 No Content.
+    """
+    task_data = {
+        "title": fake.sentence(nb_words=4),
+        "description": fake.paragraph(nb_sentences=2),
+        "status": "active",
+    }
+
+    create_response = await client.post(TASKS_BASE, json=task_data)
+    assert create_response.status_code == 201
+
+    task_id = create_response.json()["id"]
+
+    delete_response = await client.delete(f"{TASKS_BASE}/{task_id}")
+
+    assert delete_response.status_code == 204, "DELETE MUST return 204 No Content"
+
+    # Verify deletion
+    get_response = await client.get(f"{TASKS_BASE}/{task_id}")
+    assert get_response.status_code == 404, "Deleted task MUST return 404"

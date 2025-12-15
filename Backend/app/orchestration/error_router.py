@@ -51,7 +51,7 @@ class ErrorRouter:
     _last_archetype: str = "unknown"
     _last_mode: str = "standard"
 
-    def route(self, step: str) -> Artifact:
+    def get_repair_artifact(self, step: str) -> Artifact:
         """Get the artifact name to repair for a failed step."""
         return self.STEP_TO_ARTIFACT.get(step, Artifact.NOOP)
 
@@ -61,7 +61,7 @@ class ErrorRouter:
 
     def get_repair_priority(self, step: str) -> int:
         """Get repair priority (lower = higher priority)."""
-        artifact = self.route(step)
+        artifact = self.get_repair_artifact(step)
         return self.REPAIR_PRIORITY.get(artifact, 99)
 
     def get_repair_order(self, failed_steps: list) -> list:
@@ -72,24 +72,27 @@ class ErrorRouter:
         self, 
         error_log: str,
         archetype: str = "unknown",
-        retries: int = 0,
-        max_retries: int = 3,
+        retries: int = 0,  # LOOP CONSOLIDATION: Ignored, kept for API compat
+        max_retries: int = 3,  # LOOP CONSOLIDATION: Ignored
         context: Dict[str, Any] = None
     ) -> dict:
         """
-        Use Attention + AM to decide the best repair strategy.
+        LOOP CONSOLIDATION: Select strategy based on ERROR DEPTH, not retry count.
         
-        ESCALATION LADDER:
-        - retries=0-1: Standard routing (sharp attention)
-        - retries=2: E-AM (inject foreign patterns)
-        - retries=3+: T-AM (mutate constraints)
+        BEFORE: Escalation ladder based on retries (0-1: standard, 2: E-AM, 3+: T-AM)
+        AFTER:  Single selection based on error analysis
+        
+        Error Depth Levels:
+        - SURFACE: Simple issues (syntax, missing file) → Standard routing
+        - INTEGRATION: Schema/routing issues → Exploratory (blend patterns)
+        - ARCHITECTURAL: Fundamental design issues → Transformational (mutate)
         
         Args:
             error_log: The error message to analyze
-            archetype: Project archetype for context-aware evolution
-            retries: Current retry count (for AM escalation)
-            max_retries: Maximum retries before T-AM
-            context: Additional context for decision making
+            archetype: Project archetype for context-aware selection
+            retries: IGNORED (kept for backward compatibility)
+            max_retries: IGNORED
+            context: Additional context (e.g., test_failures)
         
         Returns:
             Dict with 'selected' strategy ID, 'value' configuration,
@@ -98,37 +101,99 @@ class ErrorRouter:
         context = context or {}
         self._last_archetype = archetype
         
-        # ═══════════════════════════════════════════════════════
-        # CONVERGENT PATH (Standard Routing)
-        # ═══════════════════════════════════════════════════════
-        if retries < settings.am.eam_retry_threshold:
+        # ════════════════════════════════════════════════════════════════
+        # LOOP CONSOLIDATION: Analyze error depth to select mode ONCE
+        # ════════════════════════════════════════════════════════════════
+        error_depth = self._analyze_error_depth(error_log, context)
+        log("AM", f"📊 Error depth analysis: {error_depth}")
+        
+        if error_depth == "surface":
+            # Simple issues - standard routing
             return await self._standard_route(error_log, archetype)
         
-        # ═══════════════════════════════════════════════════════
-        # E-AM PATH (Exploratory - Foreign Patterns)
-        # ═══════════════════════════════════════════════════════
-        if retries < settings.am.tam_retry_threshold:
+        elif error_depth == "integration":
+            # Schema/routing issues - try exploratory blend
             if settings.am.enable_eam:
-                log("AM", f"🔄 Retry {retries}: Escalating to E-AM (Exploratory)")
+                log("AM", "🔄 Integration-level error: Using E-AM (Exploratory)")
                 eam_result = await self._exploratory_route(error_log, archetype)
                 if eam_result.get("patterns"):
                     self._last_mode = "exploratory"
                     return eam_result
-            
-            # Fallback to standard if E-AM didn't find patterns
+            # Fallback to standard if E-AM didn't help
             return await self._standard_route(error_log, archetype)
         
-        # ═══════════════════════════════════════════════════════
-        # T-AM PATH (Transformational - Constraint Mutation)
-        # ═══════════════════════════════════════════════════════
-        if settings.am.enable_tam:
-            log("AM", f"🔮 Retry {retries}: Escalating to T-AM (Transformational)")
-            self._last_mode = "transformational"
-            return await self._transformational_route(error_log, archetype, context)
+        elif error_depth == "architectural":
+            # Fundamental issues - transformational mutation
+            if settings.am.enable_tam:
+                log("AM", "🔮 Architectural-level error: Using T-AM (Transformational)")
+                self._last_mode = "transformational"
+                return await self._transformational_route(error_log, archetype, context)
+            # T-AM disabled, fall back to standard
+            log("AM", "⚠️ T-AM disabled for architectural error, using standard")
+            return await self._standard_route(error_log, archetype)
         
-        # T-AM disabled, fall back to standard
-        log("AM", "⚠️ T-AM disabled, using standard route")
+        # Default to standard
         return await self._standard_route(error_log, archetype)
+    
+    def _analyze_error_depth(self, error_log: str, context: Dict[str, Any]) -> str:
+        """
+        Analyze error to determine depth level.
+        
+        Returns one of:
+        - "surface": Simple, fixable issues
+        - "integration": Schema/routing/connection issues
+        - "architectural": Fundamental design problems
+        """
+        error_lower = error_log.lower()
+        
+        # Get test failures from context for richer analysis
+        test_failures = context.get("test_failures", "") or ""
+        test_lower = test_failures.lower() if test_failures else ""
+        combined = error_lower + " " + test_lower
+        
+        # ════════════════════════════════════════════════════════════════
+        # ARCHITECTURAL INDICATORS (fundamental design issues)
+        # ════════════════════════════════════════════════════════════════
+        architectural_patterns = [
+            "circular import",
+            "recursive call",
+            "design pattern",
+            "refactor",
+            "incompatible",
+            "cannot coexist",
+            "fundamentally",
+        ]
+        if any(pattern in combined for pattern in architectural_patterns):
+            return "architectural"
+        
+        # Multiple different 404s = likely architectural (routes not designed right)
+        if combined.count("404") >= 3:
+            return "architectural"
+        
+        # ════════════════════════════════════════════════════════════════
+        # INTEGRATION INDICATORS (schema/routing/connection issues)
+        # ════════════════════════════════════════════════════════════════
+        integration_patterns = [
+            "404",
+            "not found",
+            "schema",
+            "validation",
+            "pydantic",
+            "enum",
+            "type error",
+            "connection refused",
+            "router",
+            "prefix",
+            "include_router",
+        ]
+        if any(pattern in combined for pattern in integration_patterns):
+            return "integration"
+        
+        # ════════════════════════════════════════════════════════════════
+        # SURFACE INDICATORS (simple fixable issues)
+        # ════════════════════════════════════════════════════════════════
+        # Default for syntax errors, missing imports, etc.
+        return "surface"
 
     async def _standard_route(self, error_log: str, archetype: str) -> dict:
         """Standard attention-based routing."""

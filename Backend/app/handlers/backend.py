@@ -233,12 +233,29 @@ async def _step_backend_multi_entity(
        d. Validate wiring
     3. Return success
     """
-    from app.utils.entity_specs import EntityPlan
+    from app.utils.entity_discovery import EntityPlan
     from app.handlers.base import broadcast_agent_log
+    from app.handlers.backend_models import step_backend_models
     import re
     
     # V3: Cumulative token tracking
     step_token_usage = {"input": 0, "output": 0}
+    
+    # 0. Generate Models First (Multi-entity models phase)
+    log("BACKEND", "🏗️ Generating database models first...")
+    models_result = await step_backend_models(
+        project_id, user_request, manager, project_path,
+        chat_history, provider, model, current_turn, max_turns
+    )
+    
+    if models_result.status == "error":
+        log("BACKEND", f"❌ Model generation failed: {models_result.error}")
+        return models_result
+
+    # Accumulate token usage
+    if models_result.token_usage:
+        step_token_usage["input"] += models_result.token_usage.get("input", 0)
+        step_token_usage["output"] += models_result.token_usage.get("output", 0)
     
     # Load entity plan
     try:
@@ -257,7 +274,15 @@ async def _step_backend_multi_entity(
     # Sort entities by generation_order
     entities_sorted = sorted(entities, key=lambda e: e.generation_order)
     
-    log("BACKEND", f"📋 Generating {len(entities_sorted)} routers: {[e.name for e in entities_sorted]}")
+    # FIX #5: FILTER TO AGGREGATE ENTITIES ONLY FOR ROUTER GENERATION
+    # EMBEDDED entities don't need routers - they're nested in other models!
+    aggregate_entities = [e for e in entities_sorted if e.type == "AGGREGATE"]
+    embedded_entities = [e for e in entities_sorted if e.type == "EMBEDDED"]
+    
+    if embedded_entities:
+        log("BACKEND", f"🔒 Skipping {len(embedded_entities)} EMBEDDED entities (no routers needed): {[e.name for e in embedded_entities]}")
+    
+    log("BACKEND", f"📋 Generating {len(aggregate_entities)} routers for AGGREGATE entities: {[e.name for e in aggregate_entities]}")
     
     # Load contracts
     try:
@@ -268,7 +293,7 @@ async def _step_backend_multi_entity(
     # Generate each router
     routers_generated = []
     
-    for entity in entities_sorted:
+    for entity in aggregate_entities:
         log("BACKEND", f"🔧 Generating router for {entity.name}...")
         
         await broadcast_agent_log(
@@ -286,7 +311,7 @@ async def _step_backend_multi_entity(
                 project_id=project_id,
                 manager=manager,
                 agent_name="Derek",
-                step_name=f"Backend Router: {entity.name}",
+                step_name="Backend Implementation",
                 base_instructions=entity_instruction,
                 project_path=project_path,
                 user_request=user_request,
@@ -427,7 +452,43 @@ FILES TO GENERATE:
    - Include proper error handling
    - 🚨 CRITICAL: Do NOT use `prefix` or `tags` in APIRouter(). Just `router = APIRouter()`.
      (The system integrator handles routing prefixes globally)
-   - 🚨 CRITICAL: Define endpoints at root ('/') (e.g., `@router.get("/")` NOT `@router.get("/users")`).
+   - 🚨 CRITICAL: Define endpoints at root ('/').
+     - `@router.get("/")` (List)
+     - `@router.post("/")` (Create)
+     - `@router.get("/{{id}}")` (Get One)
+     - `@router.put("/{{id}}")` (Update)
+     - `@router.delete("/{{id}}")` (Delete)
+
+═══════════════════════════════════════════════════════════
+🚨 NON-NEGOTIABLE API RESPONSE CONTRACT
+═══════════════════════════════════════════════════════════
+These rules are MANDATORY. Violations cause test failures.
+
+1. **STATUS CODES (Strict)**:
+   - GET /  → 200
+   - POST / → 201 (use `status_code=status.HTTP_201_CREATED`)
+   - GET /{{id}} → 200 (or 404 if not found)
+   - PUT /{{id}} → 200 (or 404 if not found)
+   - DELETE /{{id}} → 204 No Content (use `status_code=status.HTTP_204_NO_CONTENT`)
+
+2. **RESPONSE SHAPE (Strict)**:
+   - GET / must return a LIST of objects: `[{{"id": "...", "title": "...", "status": "..."}}]`
+   - POST / must return the created object: `{{"id": "...", "title": "...", "status": "..."}}`
+   - GET /{{id}} must return the object: `{{"id": "...", "title": "...", "status": "..."}}`
+   - PUT /{{id}} must return the updated object: `{{"id": "...", "title": "...", "status": "..."}}`
+   - DELETE /{{id}} must return NOTHING (empty response body)
+   
+   🚨 Do NOT wrap responses in `{{"data": ...}}`. Return flat objects/arrays directly.
+   
+3. **FIELD NAMES (Strict)**:
+   - Use "id" (string) NOT "_id"
+   - Use "title" (string)
+   - Use "status" (string, either "active" or "completed")
+
+4. **FILTERING (Mandatory)**:
+   - GET / must accept `?status=active` or `?status=completed` query param
+   - Filter server-side and return only matching items
+   - Return 200 with empty list for invalid status values
 
 ═══════════════════════════════════════════════════════════
 🚫 FORBIDDEN FILES (DO NOT TOUCH)
@@ -565,12 +626,18 @@ def _build_single_router_prompt(entity, contracts: str) -> str:
     """
     Build prompt for generating a single entity's router.
     
-    Used in multi-entity mode to generate one router at a time.
+    CONTRACT-AWARE: Extracts entity-specific section from contracts.md
+    and includes it in Derek's prompt so he knows exact requirements
+    (pagination, filters, query params, response format).
     """
+    import re
     from app.orchestration.utils import pluralize
     
     entity_name = entity.name
     entity_plural = entity.plural
+    
+    # Extract entity-specific contract section
+    entity_contract = _extract_entity_contract(contracts, entity_plural)
     
     return f"""Generate a FastAPI router for the {entity_name} entity.
 
@@ -578,28 +645,63 @@ ENTITY: {entity_name}
 ENDPOINT PREFIX: /api/{entity_plural}
 
 ═══════════════════════════════════════════════════════
-CONTRACTS (Reference)
+CONTRACT SPECIFICATION FOR {entity_name.upper()}
 ═══════════════════════════════════════════════════════
 
-{contracts[:2000]}
+{entity_contract}
 
 ═══════════════════════════════════════════════════════
 YOUR TASK
 ═══════════════════════════════════════════════════════
 
-Generate a complete FastAPI router for {entity_name} with CRUD operations.
+Generate a complete FastAPI router that implements the EXACT specification above.
 
-REQUIREMENTS:
-1. Import the {entity_name} model: `from app.models import {entity_name}`
-2. Create router: `router = APIRouter()` (NO prefix or tags)
-3. Implement endpoints:
-   - GET / - List all {entity_plural}
-   - POST / - Create new {entity_name}
-   - GET /{{id}} - Get single {entity_name}
-   - PUT /{{id}} - Update {entity_name}
-   - DELETE /{{id}} - Delete {entity_name}
-4. Use proper error handling (HTTPException for not found, etc.)
-5. Use Beanie async methods (await {entity_name}.find_all(), etc.)
+🚨 CRITICAL REQUIREMENTS:
+
+1. **Import model**: `from app.models import {entity_name}`
+
+2. **Create router**: `router = APIRouter()` (NO prefix or tags)
+
+3. **PATH DEFINITIONS** (THIS IS CRITICAL - READ CAREFULLY):
+   
+   ✅ CORRECT - Use these paths:
+   ```python
+   @router.get("/", ...)           # List all {entity_plural}
+   @router.post("/", ...)          # Create new {entity_name}
+   @router.get("/{{id}}", ...)      # Get one {entity_name}
+   @router.put("/{{id}}", ...)      # Update {entity_name}
+   @router.delete("/{{id}}", ...)   # Delete {entity_name}
+   ```
+   
+   ❌ WRONG - DO NOT use these paths:
+   ```python
+   @router.get("/{entity_plural}", ...)         # WRONG - creates /api/{entity_plural}/{entity_plural}
+   @router.post("/{entity_plural}", ...)        # WRONG - double prefix
+   @router.get("/{entity_plural}/{{id}}", ...)   # WRONG - triple nesting
+   ```
+   
+   **WHY:** The main.py includes the router with `prefix='/api/{entity_plural}'`
+   So path "/" becomes "/api/{entity_plural}/" automatically!
+   
+   **REMEMBER:** Always use "/" and "/{{id}}" - NEVER use "/{entity_plural}"
+
+4. **Implement ALL endpoints from the contract** with EXACT signatures:
+   - If contract shows pagination (page, limit), implement it
+   - If contract shows filters (category, status, search), implement them
+   - If contract shows query params, add them as FastAPI Query() parameters
+   - Use the EXACT response format from contract (data/total/page/limit wrapper)
+
+5. **Response Format** (from contract):
+   - List endpoints: {{"data": [...], "total": int, "page": int, "limit": int}}
+   - Single item: {{"data": {{...}}}}
+   - Errors: {{"error": {{"code": str, "message": str}}}}
+
+6. **Implementation**:
+   - Use Beanie async methods (await {entity_name}.find_all(), etc.)
+   - For pagination: use .skip((page-1)*limit).limit(limit)
+   - For filters: use Beanie query filters
+   - Return proper HTTP status codes (200, 201, 404, etc.)
+   - Use HTTPException for errors
 
 ═══════════════════════════════════════════════════════
 OUTPUT FORMAT
@@ -608,17 +710,67 @@ OUTPUT FORMAT
 Return ONLY valid JSON:
 
 {{
-  "thinking": "Brief explanation...",
+  "thinking": "I will implement {entity_name} router following the contract specification, including pagination/filters...",
   "files": [
     {{
       "path": "backend/app/routers/{entity_plural}.py",
-      "content": "from fastapi import APIRouter\\nfrom app.models import {entity_name}\\n\\nrouter = APIRouter()\\n..."
+      "content": "from fastapi import APIRouter, Query, HTTPException\\nfrom app.models import {entity_name}\\n\\nrouter = APIRouter()\\n..."
     }}
   ]
 }}
 
-Generate the complete router now!
+Generate the complete, contract-compliant router now!
 """
+
+
+def _extract_entity_contract(contracts: str, entity_plural: str) -> str:
+    """
+    Extract the entity-specific section from contracts.md.
+    
+    Finds headings like "### Expenses" or "## Expenses" and extracts
+    everything until the next heading of same/higher level.
+    
+    Returns the full specification for that entity including all endpoints.
+    """
+    import re
+    
+    if not contracts:
+        return f"No contract found. Implement standard CRUD for {entity_plural}."
+    
+    # Normalize entity name for matching (handle "Expense" vs "Expenses")
+    entity_singular = entity_plural.rstrip('s')  # Simple singularization
+    
+    # Try to find section with entity name (case-insensitive)
+    # Patterns: "### Expenses", "## Expenses", "### Expense", etc.
+    pattern = rf"(?:^|\n)(#{1,3})\s+({entity_plural}|{entity_singular})\b"
+    match = re.search(pattern, contracts, re.IGNORECASE | re.MULTILINE)
+    
+    if not match:
+        # Fallback: return first 1500 chars (general context)
+        return f"Full contracts (entity section not found):\n\n{contracts[:1500]}"
+    
+    # Extract heading level and start position
+    heading_level = len(match.group(1))  # Number of # chars
+    start_pos = match.start()
+    
+    # Find next heading of same or higher level (fewer # chars)
+    # E.g., if we matched "### Expenses", stop at next ##, ###, or #
+    next_heading_pattern = rf"\n#{{{1,{heading_level}}}}\s+"
+    next_match = re.search(next_heading_pattern, contracts[start_pos + 1:], re.MULTILINE)
+    
+    if next_match:
+        end_pos = start_pos + 1 + next_match.start()
+        entity_section = contracts[start_pos:end_pos]
+    else:
+        # No next heading - take rest of document
+        entity_section = contracts[start_pos:]
+    
+    # Trim to reasonable length (leave room for rest of prompt)
+    if len(entity_section) > 3000:
+        entity_section = entity_section[:3000] + "\n\n[... contract continues ...]"
+    
+    return entity_section.strip()
+
 
 
 async def step_system_integration(
@@ -653,64 +805,57 @@ async def step_system_integration(
     
     main_py_path = project_path / "backend/app/main.py"
     if main_py_path.exists() and existing_routers:
-        content = main_py_path.read_text(encoding="utf-8")
-        
-        import re
-        
-        # Build import and route blocks, but ONLY for routers not already registered
-        imports_block = ""
-        routes_block = ""
+        # ═══════════════════════════════════════════════════════════
+        # USE CENTRALIZED WIRING UTILS
+        # This ensures both routers AND models are wired correctly.
+        # ═══════════════════════════════════════════════════════════
+        from app.orchestration.wiring_utils import wire_router, wire_model
         
         for router in existing_routers:
-            import_line = f"from app.routers import {router}"
-            route_line = f"app.include_router({router}.router, prefix='/api/{router}', tags=['{router}'])"
-            
-            # Check if this router is already imported/registered (idempotency check)
-            # Uses shared utilities for consistency with healing manager
-            from app.orchestration.router_utils import is_router_imported, is_router_registered
-            router_already_imported = is_router_imported(content, router)
-            router_already_registered = is_router_registered(content, router)
-            
-            if not router_already_imported:
-                imports_block += f"{import_line}\n"
-            
-            if not router_already_registered:
-                routes_block += f"{route_line}\n"
+            wire_router(project_path, router)
         
-        # If using markers, we do a CLEAN replacement (removes old registrations within marker blocks)
-        # This is the safest approach - markers define the canonical location for registrations
-        if "# @ROUTER_IMPORTS" in content:
-            # Build fresh import block for ALL routers (marker approach = clean slate)
-            all_imports = "\n".join([f"from app.routers import {r}" for r in existing_routers])
-            # FIXED: Preserve full marker line (including "- DO NOT REMOVE THIS LINE")
-            content = re.sub(
-                r'^(# @ROUTER_IMPORTS[^\n]*)\n((?:from app\.routers[^\n]*\n)*)',
-                f"\\1\n{all_imports}\n",
-                content,
-                flags=re.MULTILINE
-            )
-        elif imports_block:
-            # No markers - just prepend new imports
-            content = f"{imports_block}\n{content}"
+        # ═══════════════════════════════════════════════════════════
+        # WIRE MODELS (CRITICAL - Fixes Beanie 500 Error)
+        # Without this, init_beanie() gets an empty list and all
+        # collection operations fail with 500 Server Error.
+        #
+        # BUG FIX: Use extract_all_models_from_models_py instead of
+        # discover_primary_entity. The old approach discovered entities
+        # from mock.js (e.g., "Category") but Derek might generate
+        # different models (e.g., "Expense"), causing ImportError crashes.
+        #
+        # FIX #7: FILTER OUT EMBEDDED MODELS (2025-12-15)
+        # Use extract_document_models_only() instead of extract_all_models_from_models_py()
+        # to prevent wiring embedded BaseModel classes to Beanie.
+        # Only AGGREGATE entities (Document) should be wired!
+        # ═══════════════════════════════════════════════════════════
+        from app.utils.entity_discovery import extract_document_models_only
+        
+        actual_models = extract_document_models_only(project_path)
+        for model_name in actual_models:
+            wire_model(project_path, model_name)
+            log("BACKEND", f"🔗 Wired AGGREGATE model: {model_name}")
+        
+        # Re-read content for audit log injection
+        content = main_py_path.read_text(encoding="utf-8")
+        
+        # ---------------------------------------------------------------------------
+        # INJECT ROUTE AUDIT LOG
+        # ---------------------------------------------------------------------------
+        audit_marker = "print(\"📊 [Route Audit] Registered Routes:\")"
+        if audit_marker not in content:
+            log("BACKEND", "📊 Injecting Runtime Route Audit Log into main.py")
+            content += "\n\n" + """# ---------------------------------------------------------------------------
+# ROUTE AUDIT LOG
+# ---------------------------------------------------------------------------
+print("📊 [Route Audit] Registered Routes:")
+for route in app.routes:
+    if hasattr(route, "path") and hasattr(route, "methods"):
+        methods = ", ".join(route.methods)
+        print(f"   - {methods} {route.path}")
+"""
+            main_py_path.write_text(content, encoding="utf-8")
             
-        if "# @ROUTER_REGISTER" in content:
-            # Build fresh route block for ALL routers (marker approach = clean slate)
-            all_routes = "\n".join([
-                f"app.include_router({r}.router, prefix='/api/{r}', tags=['{r}'])" 
-                for r in existing_routers
-            ])
-            # FIXED: Preserve full marker line (including "- DO NOT REMOVE THIS LINE")
-            content = re.sub(
-                r'^(# @ROUTER_REGISTER[^\n]*)\n((?:app\.include_router[^\n]*\n)*)',
-                f"\\1\n{all_routes}\n",
-                content,
-                flags=re.MULTILINE
-            )
-        elif routes_block:
-            # No markers - append only new routes
-            content += f"\n{routes_block}"
-            
-        main_py_path.write_text(content, encoding="utf-8")
         log("BACKEND", "✅ Main.py wired successfully.")
         
         # ════════════════════════════════════════════════════════════

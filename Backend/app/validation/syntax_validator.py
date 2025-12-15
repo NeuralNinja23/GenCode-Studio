@@ -74,6 +74,141 @@ def assert_no_empty_defs(path: str, content: str) -> None:
         # Let SyntaxError propagate or be handled by caller
         raise
 
+
+def check_undefined_names(code: str, filename: str) -> List[str]:
+    """
+    Check for undefined names in Python code (missing imports).
+    
+    Uses AST to:
+    1. Collect all defined names (imports, classes, functions, variables)
+    2. Find all referenced names in type annotations and expressions
+    3. Report names that are used but never defined
+    
+    Returns:
+        List of error messages for undefined names
+    """
+    issues = []
+    
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []  # Syntax errors handled elsewhere
+    
+    # Python builtins that are always available
+    builtins = {
+        'True', 'False', 'None', 'str', 'int', 'float', 'bool', 'list', 'dict',
+        'set', 'tuple', 'bytes', 'object', 'type', 'range', 'enumerate', 'zip',
+        'map', 'filter', 'sorted', 'reversed', 'len', 'min', 'max', 'sum', 'any',
+        'all', 'abs', 'round', 'print', 'input', 'open', 'super', 'property',
+        'staticmethod', 'classmethod', 'isinstance', 'issubclass', 'hasattr',
+        'getattr', 'setattr', 'delattr', 'callable', 'repr', 'hash', 'id', 'dir',
+        'vars', 'globals', 'locals', 'iter', 'next', 'slice', 'format', 'chr',
+        'ord', 'hex', 'bin', 'oct', 'pow', 'divmod', 'complex', 'memoryview',
+        'bytearray', 'frozenset', 'Exception', 'BaseException', 'ValueError',
+        'TypeError', 'KeyError', 'IndexError', 'AttributeError', 'ImportError',
+        'RuntimeError', 'StopIteration', 'NotImplementedError', 'AssertionError',
+    }
+    
+    # Common typing module names (often imported with *)
+    typing_names = {
+        'List', 'Dict', 'Set', 'Tuple', 'Optional', 'Union', 'Any', 'Callable',
+        'Type', 'Sequence', 'Mapping', 'Iterable', 'Iterator', 'Generator',
+        'Literal', 'ClassVar', 'Final', 'TypeVar', 'Generic', 'Protocol',
+    }
+    
+    # Collect all defined names
+    defined_names = builtins | typing_names
+    
+    for node in ast.walk(tree):
+        # Import statements
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                name = alias.asname if alias.asname else alias.name.split('.')[0]
+                defined_names.add(name)
+        
+        # From imports
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == '*':
+                    # Can't track * imports - assume they provide what's needed
+                    continue
+                name = alias.asname if alias.asname else alias.name
+                defined_names.add(name)
+        
+        # Class definitions
+        elif isinstance(node, ast.ClassDef):
+            defined_names.add(node.name)
+        
+        # Function definitions
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            defined_names.add(node.name)
+        
+        # Variable assignments
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    defined_names.add(target.id)
+        
+        # Annotated assignments
+        elif isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name):
+                defined_names.add(node.target.id)
+    
+    # Now check for undefined names in type annotations
+    undefined_names = set()
+    
+    def extract_names_from_annotation(annotation_node):
+        """Recursively extract all names from a type annotation."""
+        names = []
+        if isinstance(annotation_node, ast.Name):
+            names.append((annotation_node.id, annotation_node.lineno))
+        elif isinstance(annotation_node, ast.Subscript):
+            # Handle List[X], Optional[X], etc.
+            names.extend(extract_names_from_annotation(annotation_node.value))
+            names.extend(extract_names_from_annotation(annotation_node.slice))
+        elif isinstance(annotation_node, ast.Tuple):
+            for elt in annotation_node.elts:
+                names.extend(extract_names_from_annotation(elt))
+        elif isinstance(annotation_node, ast.BinOp):
+            # Handle X | Y (union type in Python 3.10+)
+            names.extend(extract_names_from_annotation(annotation_node.left))
+            names.extend(extract_names_from_annotation(annotation_node.right))
+        elif isinstance(annotation_node, ast.Attribute):
+            # Handle module.Name - we only check the base for simplicity
+            pass
+        return names
+    
+    # Check class field annotations
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AnnAssign) and node.annotation:
+            for name, lineno in extract_names_from_annotation(node.annotation):
+                if name not in defined_names:
+                    undefined_names.add((name, lineno))
+        
+        # Check function parameter and return type annotations
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # Check return annotation
+            if node.returns:
+                for name, lineno in extract_names_from_annotation(node.returns):
+                    if name not in defined_names:
+                        undefined_names.add((name, lineno))
+            
+            # Check argument annotations
+            for arg in node.args.args + node.args.kwonlyargs:
+                if arg.annotation:
+                    for name, lineno in extract_names_from_annotation(arg.annotation):
+                        if name not in defined_names:
+                            undefined_names.add((name, lineno))
+    
+    # Generate error messages
+    for name, lineno in sorted(undefined_names, key=lambda x: x[1]):
+        issues.append(
+            f"Undefined name '{name}' at line {lineno} in {filename}. "
+            f"Did you forget to import it?"
+        )
+    
+    return issues
+
 def validate_python_syntax(code: str, filename: str = "unknown.py") -> ValidationResult:
     """
     Validate Python code using AST parsing.
@@ -115,6 +250,28 @@ def validate_python_syntax(code: str, filename: str = "unknown.py") -> Validatio
             warnings.append("Auto-fixed malformed import statements")
             log("VALIDATION", f"🔧 Auto-fixed imports in {filename}")
 
+    # AUTO-FIX: Invalid Beanie index tuples like ("date", -1)
+    # Beanie's indexes list doesn't support tuples with sort order directly.
+    # They cause: TypeError: str.format() argument after * must be an iterable, not int
+    # Fix: Convert ("field", -1) or ("field", 1) to just "field"
+    beanie_index_tuple_pattern = r'(\s*)\(\s*["\'](\w+)["\']\s*,\s*-?\d+\s*\)\s*,?'
+    if 'class Settings:' in code and re.search(beanie_index_tuple_pattern, code):
+        fixed_code = code if fixed_content is None else fixed_content
+        
+        # Replace tuples with just the field name as a string
+        def fix_index_tuple(match):
+            indent = match.group(1)
+            field_name = match.group(2)
+            return f'{indent}"{field_name}",'
+        
+        fixed_code = re.sub(beanie_index_tuple_pattern, fix_index_tuple, fixed_code)
+        
+        if fixed_code != (fixed_content or code):
+            code = fixed_code
+            fixed_content = fixed_code
+            warnings.append("Auto-fixed invalid Beanie index tuples (converted to simple string indexes)")
+            log("VALIDATION", f"🔧 Auto-fixed Beanie index tuples in {filename}")
+
     # Try to parse the AST + check for empty defs
     try:
         assert_no_empty_defs(filename, code)
@@ -128,6 +285,15 @@ def validate_python_syntax(code: str, filename: str = "unknown.py") -> Validatio
         return ValidationResult(False, errors)
     except Exception as e:
         errors.append(f"Failed to parse Python code: {str(e)}")
+        return ValidationResult(False, errors)
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # NEW: Check for undefined names (missing imports)
+    # ═══════════════════════════════════════════════════════════════════
+    undefined_issues = check_undefined_names(code, filename)
+    if undefined_issues:
+        for issue in undefined_issues:
+            errors.append(issue)
         return ValidationResult(False, errors)
     
     # Additional checks for common issues

@@ -600,7 +600,7 @@ class SandboxManager:
             if ports:
                 # Try to find mapped port
                 import re
-                match = re.search(r"0\.0\.0\.0:(\d+)->", ports)
+                match = re.search(r"(?:0\.0\.0\.0|127\.0\.0\.1|::):(\d+)->", ports)
                 if match:
                     port = match.group(1)
                     return f"http://localhost:{port}"
@@ -617,6 +617,7 @@ class SandboxManager:
         """Get the backend API URL for a running sandbox (dynamic port detection)."""
         try:
             if project_id not in self.active_sandboxes:
+                print(f"[SANDBOX] ⚠️ get_backend_url: Project {project_id} not in active sandboxes")
                 return None
             
             info = self.active_sandboxes[project_id]
@@ -626,15 +627,26 @@ class SandboxManager:
             backend = containers.get("backend", {})
             ports = backend.get("ports", "")
             
-            # Parse ports string like "0.0.0.0:32783->8001/tcp"
+            print(f"[SANDBOX] 🔍 get_backend_url for {project_id}")
+            print(f"[SANDBOX]    Ports string: '{ports}'")
+            
+            # Parse ports string like "0.0.0.0:32783->8001/tcp" or "[::]:32768->8001/tcp"
             if ports:
                 import re
-                match = re.search(r"0\.0\.0\.0:(\d+)->", ports)
+                match = re.search(r"(?:0\.0\.0\.0|127\.0\.0\.1|::):(\d+)->", ports)
                 if match:
                     port = match.group(1)
-                    return f"http://localhost:{port}"
+                    url = f"http://localhost:{port}"
+                    print(f"[SANDBOX]    ✅ Regex matched! Port: {port}, URL: {url}")
+                    return url
+                else:
+                    print(f"[SANDBOX]    ❌ Regex did NOT match ports string")
+                    print(f"[SANDBOX]    Expected format: '0.0.0.0:PORT->' or '127.0.0.1:PORT->' or '::PORT->'")
+            else:
+                print(f"[SANDBOX]    ⚠️ Ports string is empty")
             
             # Default backend port if not found in ports
+            print(f"[SANDBOX]    📍 Falling back to http://localhost:8001")
             return "http://localhost:8001"
             
         except Exception as e:

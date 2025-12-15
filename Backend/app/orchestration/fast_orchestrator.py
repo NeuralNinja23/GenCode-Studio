@@ -31,7 +31,7 @@ from .checkpoint import CheckpointManagerV2
 from .budget_manager import get_budget_manager
 
 # Centralized entity discovery for dynamic fallback
-from app.utils.entity_discovery import discover_primary_entity
+from app.utils.entity_discovery import discover_primary_entity, extract_all_models_from_models_py
 
 # Pipeline metrics for honest tracking
 from app.arbormind.metrics_collector import (
@@ -154,7 +154,6 @@ class FASTOrchestratorV2:
             step_testing_frontend,
             step_preview_final,
         )
-        from app.handlers.entity_planning import step_entity_planning  # Multi-entity support
         from app.handlers.backend_models import step_backend_models  # Multi-entity models
         from app.orchestration.utils import broadcast_to_project
         from app.orchestration.state import CURRENT_MANAGERS
@@ -165,7 +164,6 @@ class FASTOrchestratorV2:
 
         HANDLERS = {
             "analysis": step_analysis,
-            "entity_planning": step_entity_planning,  # NEW: Multi-entity support
             "backend_models": step_backend_models,  # NEW: Multi-entity models
             "architecture": step_architecture,
             "frontend_mock": step_frontend_mock,
@@ -602,12 +600,20 @@ class FASTOrchestratorV2:
         V2 Feature: Post-step validation using structural compiler.
         """
         # Get primary entity for dynamic validation
+        # BUG FIX: Use actual models from models.py for post-backend validation,
+        # not discover_primary_entity which may return wrong entity from mock.js cache
         entities = self.cross_ctx._ctx.get("entities", [])
         if entities:
             primary_entity = entities[0]
         else:
-            entity_name, _ = discover_primary_entity(self.project_path)
-            primary_entity = entity_name if entity_name else "item"  # Last resort
+            # For post-backend steps, prefer actual models from models.py
+            actual_models = extract_all_models_from_models_py(self.project_path)
+            if actual_models:
+                primary_entity = actual_models[0].lower()
+            else:
+                # Fallback to discover_primary_entity
+                entity_name, _ = discover_primary_entity(self.project_path)
+                primary_entity = entity_name if entity_name else "item"  # Last resort
         from app.orchestration.utils import pluralize
         primary_plural = pluralize(primary_entity)
 
@@ -667,8 +673,13 @@ class FASTOrchestratorV2:
             if entities:
                 primary_entity = entities[0]
             else:
-                entity_name, _ = discover_primary_entity(self.project_path)
-                primary_entity = entity_name if entity_name else "item"  # Last resort
+                # BUG FIX: Use actual models from models.py
+                actual_models = extract_all_models_from_models_py(self.project_path)
+                if actual_models:
+                    primary_entity = actual_models[0].lower()
+                else:
+                    entity_name, _ = discover_primary_entity(self.project_path)
+                    primary_entity = entity_name if entity_name else "item"  # Last resort
             return self.compiler.api_is_complete(content, entity_name=primary_entity)
         
         return True
@@ -699,8 +710,13 @@ class FASTOrchestratorV2:
             if entities:
                 primary_entity = entities[0]
             else:
-                entity_name, _ = discover_primary_entity(self.project_path)
-                primary_entity = entity_name if entity_name else "item"  # Last resort
+                # BUG FIX: Use actual models from models.py for checkpointing
+                actual_models = extract_all_models_from_models_py(self.project_path)
+                if actual_models:
+                    primary_entity = actual_models[0].lower()
+                else:
+                    entity_name, _ = discover_primary_entity(self.project_path)
+                    primary_entity = entity_name if entity_name else "item"  # Last resort
             from app.orchestration.utils import pluralize
             primary_plural = pluralize(primary_entity)
 
@@ -769,8 +785,13 @@ class FASTOrchestratorV2:
                     if entities:
                         primary = entities[0]
                     else:
-                        entity_name, _ = discover_primary_entity(self.project_path)
-                        primary = entity_name if entity_name else "item"  # Last resort
+                        # BUG FIX: Use actual models from models.py for context recording
+                        actual_models = extract_all_models_from_models_py(self.project_path)
+                        if actual_models:
+                            primary = actual_models[0].lower()
+                        else:
+                            entity_name, _ = discover_primary_entity(self.project_path)
+                            primary = entity_name if entity_name else "item"  # Last resort
                     from app.orchestration.utils import pluralize
                     plural = pluralize(primary)
                     summary = {

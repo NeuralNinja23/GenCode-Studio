@@ -37,8 +37,8 @@ class PromptAdapter:
     def __init__(self):
         self.history: Dict[str, int] = {}
 
-    def record_failure(self, step: str):
-        """Record a failure for a step."""
+    def increment_failure_count(self, step: str):
+        """Increment the failure counter for a step."""
         self.history[step] = self.history.get(step, 0) + 1
 
     def record_success(self, step: str):

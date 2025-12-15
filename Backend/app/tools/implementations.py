@@ -33,8 +33,7 @@ from app.core.types import GeneratedFile  # noqa: F401 (kept for type compatibil
 # Sandbox system (Python-native, no HTTP)
 from app.sandbox import SandboxManager, SandboxConfig  # type: ignore[import]
 from app.utils.path_utils import get_project_path
-from app.lib.patch_writer import apply_patch as apply_unified_patch
-from app.lib.patch_engine import PatchEngine
+from app.tools.patching import PatchEngine, apply_unified_patch
 from app.core.logging import log
 # =====================================================================
 # Global Sandbox Singleton
@@ -191,6 +190,10 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
         errors: Optional[List[str]] = args.get("errors")
         # files would be extracted here if passed by handlers (future enhancement)
         files: Optional[List[Dict[str, str]]] = args.get("files")
+        
+        # Optional overrides for healing (progressive token scaling)
+        max_tokens_override: Optional[int] = args.get("max_tokens_override")
+        temperature_override: Optional[float] = args.get("temperature_override")
 
         if not sub_agent or not instructions:
             raise ValueError("tool_sub_agent_caller requires 'sub_agent' and 'instructions'")
@@ -207,6 +210,8 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
             contracts=contracts,  # API contracts summary
             is_retry=is_retry,  # Retry flag for differential context
             errors=errors,  # Errors from previous attempt
+            max_tokens_override=max_tokens_override,  # Healing override
+            temperature_override=temperature_override,  # Healing override
         )
         
         # V3: Extract token usage for cost tracking

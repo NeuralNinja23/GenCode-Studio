@@ -25,19 +25,67 @@ Personal Finance Dashboard
 Ticketing System
 Build a customer support ticketing tool with: dashboard stats, ticket list, filters by status/priority, and a detailed ticket view page.
 
+Team Kanban Board
+Build a kanban board for managing tasks across columns (Backlog, In Progress, Review, Done). Users should be able to create tasks, drag and drop between columns, and filter by assignee and tag.
+
+Lightweight CRM
+Create a simple CRM for tracking leads and customers. Include a leads table, a customer detail page, status stages (New, Contacted, Qualified, Won, Lost), and a notes timeline on each customer.
+
+Content Calendar
+Build a content calendar tool where users can schedule posts on a monthly calendar. Each item should have title, channel (Blog, YouTube, Twitter), status, and owner, with a sidebar list of upcoming content.
+
+Inventory Manager
+Create an inventory management app with products, stock levels, and low-stock alerts. Include views for product list, product detail, and a dashboard showing items that need restocking.
+
+Habit Tracker
+Build a habit tracker where users define habits and log completion per day. Show a weekly and monthly heatmap, streak counters, and simple charts indicating consistency.
+
 Advanced (Showcase "Refine Mode")
 Self-Healing CI/CD Monitor
-"Build a dashboard that connects to GitHub Actions logs. When a build fails, I want an agent to analyze the error log and propose a code fix automatically."
-(Refinement Idea: "Now make it send the fix as a Pull Request.")
+Build a dashboard that connects to GitHub Actions logs. When a build fails, I want an agent to analyze the error log and propose a code fix automatically.
+(Refinement Idea: Now make it send the fix as a Pull Request.)
 
 Conversational SQL Admin
-"Create a tool where I can chat with my database in plain English. For example, 'Show me the top 5 users by spend'. The system should generate and run the SQL."
-(Refinement Idea: "Now group the results by city.")
+Create a tool where I can chat with my database in plain English. For example, 'Show me the top 5 users by spend'. The system should generate and run the SQL.
+(Refinement Idea: Now group the results by city.)
 
 API from JSON (Mock-to-Real)
-"I will upload a JSON file with sample data. Build a fully functional FastAPI backend that serves this data with proper CRUD endpoints."
-(Refinement Idea: "Add JWT authentication to the POST endpoints.")
+I will upload a JSON file with sample data. Build a fully functional FastAPI backend that serves this data with proper CRUD endpoints.
+(Refinement Idea: Add JWT authentication to the POST endpoints.)
 
 AI Ghost Blogger
-"Build a blog platform where the 'Admin' is an AI. If I upload a text file with bullet points, the system should automatically write a full article and publish it."
-(Refinement Idea: "Change the writing tone to be more sarcastic.")
+Build a blog platform where the 'Admin' is an AI. If I upload a text file with bullet points, the system should automatically write a full article and publish it.
+(Refinement Idea: Change the writing tone to be more sarcastic.)
+
+Multi-Tenant SaaS Starter
+Create a multi-tenant SaaS starter where each workspace has its own users, projects, and billing settings. Include a minimal tenant switcher UI and ensure tenant isolation in all API endpoints.
+Refinement idea: Add role-based access control with Admin, Member, and Readonly roles.
+
+AI Code Review Assistant
+Build a code review dashboard that connects to a Git repository. For each pull request, show diff summaries, an AI-generated review, and a list of suggested refactors."
+Refinement idea: "Add a 'Apply suggestion' button that patches the codebase and opens a new branch.
+
+Incident Response Runbook App
+Create an incident management tool where each incident has severity, timeline of events, and attached runbooks. Include a page that suggests next actions based on incident type and severity.
+Refinement idea: Add a 'post-mortem generator' that creates a markdown summary from the incident timeline.
+
+Data Import & Mapping Wizard
+Build a CSV import wizard where users upload a file, map columns to known fields (name, email, amount, etc.), preview parsed data, and then import into a table with validation errors surfaced.
+Refinement idea: "Add saved mapping templates that can be reused across imports."
+
+AI Product Spec Generator
+Create a product requirements tool where I can describe a feature in one text box and the system generates a structured spec: user stories, acceptance criteria, and API endpoints."
+Refinement idea: "Add a 'compare versions' view that shows diff between two generated specs.
+
+Specialized / Backend-Heavy
+Webhook Relay & Inspector
+Build a webhook relay dashboard. It should expose a test endpoint, store incoming payloads, show request history with headers/body, and allow replaying a payload to another URL.
+
+Background Jobs Monitor
+Create a background job monitor for a queue (e.g., email sends, report generation). Show job status (Queued, Running, Failed, Completed), retry counts, and a detail view with logs.
+
+Feature Flag Console
+Build a feature flag management console with flags, environments (dev/stage/prod), and targeting rules (by user ID or percentage rollout). Include an audit log of changes.
+
+Schema-Aware Form Builder
+Create a form builder that takes a JSON schema and renders a dynamic form. Allow saving and loading schemas, and show a live preview of the form with validation errors.

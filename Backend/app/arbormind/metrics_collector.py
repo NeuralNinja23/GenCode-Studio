@@ -52,6 +52,22 @@ def init_metrics_db():
             )
         ''')
         
+        # Table: classification_metrics
+        # Tracks Marcus's entity classification accuracy for learning
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS classification_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                project_id TEXT,
+                entity_name TEXT,
+                marcus_classification TEXT,
+                final_classification TEXT,
+                was_correct BOOLEAN,
+                mock_evidence TEXT,
+                contracts_evidence TEXT
+            )
+        ''')
+        
         conn.commit()
         conn.close()
         # log("METRICS", f"✅ Initialized Routing Metrics DB at {METRICS_DB_PATH}")
@@ -81,6 +97,12 @@ def init_metrics_db():
             )
         ''')
         
+        # MIGRATION: Ensure completed_at column exists (for older DBs)
+        try:
+            c.execute("ALTER TABLE pipeline_runs ADD COLUMN completed_at DATETIME")
+        except sqlite3.OperationalError:
+            pass # Column likely exists already
+            
         # Table: step_outcomes
         # Tracks individual step performance within a run
         c.execute('''
@@ -195,8 +217,8 @@ def complete_step(run_id: str, step_name: str, success: bool, attempts: int = 1,
 # ROUTING METRICS (Low-level decision reinforcement)
 # ----------------------------------------------------------------------------
 
-def record_routing_decision(decision_id: str, archetype: str, context: str, strategy: str, tam_used: bool):
-    """Record a routing decision made by ArborMind."""
+def record_arbormind_metrics(decision_id: str, archetype: str, context: str, strategy: str, tam_used: bool):
+    """Record ArborMind routing decision metrics to the metrics database."""
     try:
         conn = get_db_connection(METRICS_DB_PATH)
         c = conn.cursor()
@@ -223,3 +245,132 @@ def report_routing_outcome_db(decision_id: str, success: bool, quality_score: fl
         conn.close()
     except Exception as e:
         log("METRICS", f"⚠️ Failed to report routing outcome: {e}")
+
+
+# ----------------------------------------------------------------------------
+# CLASSIFICATION METRICS (Marcus Learning Loop)
+# ----------------------------------------------------------------------------
+
+def store_classification_decision(
+    project_id: str,
+    entity_name: str,
+    marcus_classification: Optional[str],
+    final_classification: str,
+    mock_evidence: str = "",
+    contracts_evidence: str = ""
+):
+    """
+    Store a classification decision for Marcus's learning.
+    
+    Args:
+        project_id: Project identifier
+        entity_name: Name of the entity classified
+        marcus_classification: What Marcus said (or None if no classification)
+        final_classification: Code-validated ground truth
+        mock_evidence: Evidence from mock.js structure
+        contracts_evidence: Evidence from contracts.md endpoints
+    """
+    was_correct = (marcus_classification == final_classification) if marcus_classification else False
+    
+    try:
+        conn = get_db_connection(METRICS_DB_PATH)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO classification_metrics 
+            (project_id, entity_name, marcus_classification, final_classification, 
+             was_correct, mock_evidence, contracts_evidence)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (project_id, entity_name, marcus_classification or "UNKNOWN", 
+              final_classification, was_correct, mock_evidence, contracts_evidence))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log("METRICS", f"⚠️ Failed to store classification decision: {e}")
+
+
+def get_successful_classification_examples(limit: int = 10) -> list:
+    """
+    Retrieve successful classification examples for Marcus to learn from.
+    
+    Returns examples where Marcus was correct, to reinforce good patterns.
+    
+    Returns:
+        List of dicts with entity_name, classification, and evidence
+    """
+    try:
+        conn = get_db_connection(METRICS_DB_PATH)
+        c = conn.cursor()
+        
+        # Get recent successful classifications, prioritizing diverse examples
+        c.execute('''
+            SELECT DISTINCT 
+                entity_name, 
+                final_classification, 
+                mock_evidence,
+                contracts_evidence
+            FROM classification_metrics
+            WHERE was_correct = 1
+              AND mock_evidence != ''
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (limit,))
+        
+        rows = c.fetchall()
+        conn.close()
+        
+        examples = []
+        for row in rows:
+            examples.append({
+                "entity": row[0],
+                "type": row[1],
+                "mock_evidence": row[2],
+                "contracts_evidence": row[3]
+            })
+        
+        return examples
+        
+    except Exception as e:
+        log("METRICS", f"⚠️ Failed to get classification examples: {e}")
+        return []
+
+
+def get_classification_accuracy_stats() -> dict:
+    """
+    Get overall classification accuracy statistics.
+    
+    Returns:
+        Dict with total, correct, incorrect counts and accuracy percentage
+    """
+    try:
+        conn = get_db_connection(METRICS_DB_PATH)
+        c = conn.cursor()
+        
+        # Get overall stats
+        c.execute('''
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN was_correct = 1 THEN 1 ELSE 0 END) as correct,
+                SUM(CASE WHEN was_correct = 0 THEN 1 ELSE 0 END) as incorrect
+            FROM classification_metrics
+            WHERE marcus_classification != 'UNKNOWN'
+        ''')
+        
+        row = c.fetchone()
+        conn.close()
+        
+        total = row[0] or 0
+        correct = row[1] or 0
+        incorrect = row[2] or 0
+        accuracy = (correct / total * 100) if total > 0 else 0
+        
+        return {
+            "total": total,
+            "correct": correct,
+            "incorrect": incorrect,
+            "accuracy": accuracy
+        }
+        
+    except Exception as e:
+        log("METRICS", f"⚠️ Failed to get classification stats: {e}")
+        return {"total": 0, "correct": 0, "incorrect": 0, "accuracy": 0}
+

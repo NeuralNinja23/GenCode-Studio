@@ -6,7 +6,7 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 
@@ -15,7 +15,7 @@ from app.llm import call_llm
 from app.llm.prompts import MARCUS_SUPERVISION_PROMPT
 # NOTE: Quality tracking kept, cost tracking moved to BudgetManager
 from app.tracking.quality import track_quality_score
-from app.tracking.snapshots import save_snapshot
+from app.orchestration.checkpoint import CheckpointManagerV2
 from app.tracking.memory import remember_success, get_memory_hint
 # NOTE: Removed DEFAULT_MAX_TOKENS - now using get_tokens_for_step() from token_policy
 
@@ -491,16 +491,24 @@ async def supervised_agent_call(
     user_request: str,
     contracts: str = "",
     max_retries: int = 3,
+    max_tokens: Optional[int] = None,  # Override for token policy (used by healing)
+    temperature: Optional[float] = None,  # Override for temperature (used by healing)
+    healing_mode: bool = False,  # LOOP CONSOLIDATION: When True, forces single attempt, no retries
 ) -> Dict[str, Any]:
     """
     Call an agent with Marcus supervision and auto-retry.
     
     PHASE 1-2 OPTIMIZATION: Now passes optimization parameters to reduce token usage.
     
+    LOOP CONSOLIDATION: When healing_mode=True:
+    - Forces max_retries=0 (single attempt)
+    - Skips Marcus review (healing must be decisive)
+    - Uses healing budget for LLM calls
+    
     Flow:
     1. Build progressive context
     2. Call agent with optimized parameters
-    3. Marcus reviews output
+    3. Marcus reviews output (unless healing_mode)
     4. If rejected, retry with minimal feedback (differential)
     5. After max_retries, return best effort
     
@@ -511,10 +519,29 @@ async def supervised_agent_call(
     from app.orchestration.utils import broadcast_to_project
     
     # ============================================================
+    # LOOP CONSOLIDATION: Enforce healing mode constraints
+    # ============================================================
+    if healing_mode:
+        max_retries = 1  # Force single attempt
+        log("SUPERVISION", f"🩺 Healing mode: single attempt, no Marcus review", project_id=project_id)
+        
+        # Check healing budget before proceeding
+        from app.orchestration.healing_budget import get_healing_budget
+        budget = get_healing_budget(project_id)
+        if not budget.can_call_llm():
+            log("SUPERVISION", f"🛑 Healing budget exhausted - aborting call", project_id=project_id)
+            return {
+                "output": None,
+                "approved": False,
+                "attempt": 0,
+                "error": "Healing budget exhausted",
+                "budget_exhausted": True,
+            }
+        budget.use_llm_call(caller=f"{agent_name}/{step_name}", reason="healing")
+    
+    # ============================================================
     # PRIORITY 1: Check for rate limiting BEFORE making LLM calls
     # ============================================================
-    # Rate limits are now handled by BudgetManager and LLMAdapter throwing exceptions
-    
     # Rate limits are now handled by BudgetManager and LLMAdapter throwing exceptions
     
     # ============================================================
@@ -607,22 +634,31 @@ async def supervised_agent_call(
             # PHASE 1-2: Call agent with OPTIMIZATION PARAMETERS
             # ============================================================
             
+            # Build tool args with optional overrides
+            tool_args = {
+                "sub_agent": agent_name,
+                "instructions": current_instructions,
+                "project_path": str(project_path),
+                "project_id": project_id,
+                # OPTIMIZATION PARAMETERS:
+                "step_name": step_id,  # For context filtering
+                "archetype": archetype,  # For archetype-aware generation
+                "vibe": vibe,  # For UI vibe awareness
+                "files": relevant_files,  # CRITICAL: Filtered files!
+                "contracts": contracts[:500] if contracts else "",  # Summary only
+                "is_retry": (attempt > 1),  # Flag for differential context
+                "errors": errors_from_previous if attempt > 1 else None,  # Differential retry
+            }
+            
+            # Add optional overrides (used by healing for progressive scaling)
+            if max_tokens is not None:
+                tool_args["max_tokens_override"] = max_tokens
+            if temperature is not None:
+                tool_args["temperature_override"] = temperature
+            
             tool_result = await run_tool(
                 name="subagentcaller",
-                args={
-                    "sub_agent": agent_name,
-                    "instructions": current_instructions,
-                    "project_path": str(project_path),
-                    "project_id": project_id,
-                    # NEW OPTIMIZATION PARAMETERS:
-                    "step_name": step_id,  # For context filtering
-                    "archetype": archetype,  # For archetype-aware generation
-                    "vibe": vibe,  # For UI vibe awareness
-                    "files": relevant_files,  # CRITICAL: Filtered files!
-                    "contracts": contracts[:500] if contracts else "",  # Summary only
-                    "is_retry": (attempt > 1),  # Flag for differential context
-                    "errors": errors_from_previous if attempt > 1 else None,  # Differential retry
-                },
+                args=tool_args,
             )
             
             raw_output = tool_result.get("output", {})
@@ -648,7 +684,7 @@ async def supervised_agent_call(
             if files_content and not integrity_checker.validate(files_content):
                 issues = integrity_checker.get_issues(files_content)
                 log("V2-INTEGRITY", f"⚠️ Output integrity failed: {issues}", project_id=project_id)
-                prompt_adapter.record_failure(step_name)
+                prompt_adapter.increment_failure_count(step_name)
                 errors_from_previous = issues[:3]
                 if attempt < max_retries:
                     # Use adapted prompt for retry
@@ -684,7 +720,16 @@ async def supervised_agent_call(
             if review["approved"]:
                 quality = review.get("quality_score", 7)
                 track_quality_score(project_id, agent_name, quality, True)
-                await save_snapshot(project_id, project_path, step_name, agent_name, quality, True)
+                
+                # V2 Checkpoint (Persistence)
+                ckpt_mgr = CheckpointManagerV2(base_dir=str(project_path / ".fast_checkpoints"))
+                await ckpt_mgr.save_project_snapshot(
+                    project_path, 
+                    step_name, 
+                    agent_name=agent_name, 
+                    quality_score=quality, 
+                    approved=True
+                )
                 
                 if quality >= 7:
                     # Store in existing memory system
@@ -854,7 +899,7 @@ async def supervised_agent_call(
                     # Check Context Regeneration
                     if regenerate_context:
                         log("SUPERVISION", "🔄 Policy requests context regeneration/reset")
-                        prompt_adapter.record_failure(step_name)
+                        prompt_adapter.increment_failure_count(step_name)
                         errors_from_previous = []
 
                 except Exception as e:
@@ -906,7 +951,7 @@ Corrections: {correction_text}
                 # which triggers differential context in marcus_call_sub_agent
                 
                 # V2: Record failure and use adapted prompt
-                prompt_adapter.record_failure(step_name)
+                prompt_adapter.increment_failure_count(step_name)
                 adapted_base = prompt_adapter.adapt(step_name, base_instructions)
                 hint = prompt_adapter.get_context_hint(step_name)
                 if hint:
@@ -927,7 +972,16 @@ Corrections: {correction_text}
     
     # Max retries reached
     quality = last_review.get("quality_score", 5) if last_review else 5
-    await save_snapshot(project_id, project_path, step_name, agent_name, quality, False)
+    # Max retries reached
+    ckpt_mgr = CheckpointManagerV2(base_dir=str(project_path / ".fast_checkpoints"))
+    await ckpt_mgr.save_project_snapshot(
+        project_path, 
+        step_name, 
+        project_id=project_id, 
+        agent_name=agent_name, 
+        quality_score=quality, 
+        approved=False
+    )
     
     # PHASE 1 CHANGE: Critical steps fail hard
     # We don't want to proceed with broken router or integration code

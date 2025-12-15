@@ -148,11 +148,19 @@ def get_entity_context(project_id: str, user_request: str = "", project_path: Pa
     entities = intent.get("entities", [])
     
     # Use centralized discovery as fallback instead of hardcoded "item"
+    # BUG FIX: For post-backend steps, prefer actual models from models.py
     if entities:
         primary_entity = entities[0]
     elif project_path:
-        entity_name, _ = discover_primary_entity(project_path)
-        primary_entity = entity_name if entity_name else "item"  # Last resort
+        # First try to get actual models from models.py (what Derek generated)
+        from app.utils.entity_discovery import extract_all_models_from_models_py
+        actual_models = extract_all_models_from_models_py(project_path)
+        if actual_models:
+            primary_entity = actual_models[0].lower()
+        else:
+            # Fallback to discover_primary_entity
+            entity_name, _ = discover_primary_entity(project_path)
+            primary_entity = entity_name if entity_name else "item"  # Last resort
     else:
         primary_entity = "item"  # No project path available
     
