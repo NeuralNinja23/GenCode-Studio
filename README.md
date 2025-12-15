@@ -149,64 +149,85 @@ GenCode Studio orchestrates a complete software development lifecycle:
 
 ---
 
-## 🌳 ArborMind — System Diagram
+## 🌳 ArborMind — Neural Orchestration Engine
 
-**ArborMind (AM)** is GenCode Studio's next-generation orchestration engine, featuring self-evolving intelligence and attention-based routing.
+<div align="center">
 
-```mermaid
-flowchart TD
-    UserRequest[User Request]
-    AM[ArborMind Orchestrator]
+<img src="docs/images/arbormind_architecture.png" alt="ArborMind Architecture" width="800" />
 
-    UserRequest --> AM
+<br />
+<sub><i>ArborMind's tree-inspired neural architecture enables intelligent, self-evolving code generation</i></sub>
 
-    subgraph TreeBranches
-        direction TB
-        BranchA[Branch A Hybrid Workflow]
-        BranchB[Branch B Self Evolution]
-        BranchC[Branch C Attention Exploration]
-        AM --> BranchA
-        AM --> BranchB
-        AM --> BranchC
-    end
+</div>
 
-    subgraph HybridWorkflow [Hybrid Workflow Engine]
-        direction TB
-        HW1[Sequential Steps]
-        HW2[Parallel Steps]
-        HW3[Combinational Mode Soft Blending]
-        HW4[Self Healing Layer]
-        BranchA --> HW1 --> HW2 --> HW3 --> HW4
-    end
+<br />
 
-    subgraph Evolver [Self Evolving Engine]
-        direction TB
-        E1[Prompt Mutation]
-        E2[Step Reordering]
-        E3[Tool or Model Selection]
-        E4[Alternative Reasoning]
-        BranchB --> E1 --> E2 --> E3 --> E4
-    end
+**ArborMind (AM)** is GenCode Studio's next-generation orchestration engine that mimics how a tree grows — branching intelligently, pruning ineffective paths, and evolving based on outcomes.
 
-    subgraph AttentionSysGroup [Attention Manager]
-        direction TB
-        AttentionEntry[Attention Manager Entry]
-        A1[Node Scoring]
-        A2[Prune Low Attention Paths]
-        A3[Expand High Attention Paths]
-        A4[Winner Selection]
-        AttentionEntry --> A1 --> A2
-        A1 --> A3
-        A3 --> A4
-    end
+<table>
+<tr>
+<td width="33%" align="center">
 
-    BranchC --> AttentionEntry
+### 🧠 Attention Manager
+**Semantic Decision Making**
 
-    Output[Final Output]
-    A4 --> Output
-    HW4 --> Output
-    E4 --> Output
 ```
+┌─────────────────┐
+│  Node Scoring   │
+│       ↓         │
+│ ┌─────┴─────┐   │
+│ │Prune│Expand│  │
+│ └─────┬─────┘   │
+│       ↓         │
+│ Winner Select   │
+└─────────────────┘
+```
+
+*Routes requests to the optimal agent based on semantic similarity scores*
+
+</td>
+<td width="33%" align="center">
+
+### ⚡ Hybrid Workflow
+**Flexible Execution**
+
+```
+┌─────────────────┐
+│   Sequential    │
+│       ↓         │
+│    Parallel     │
+│       ↓         │
+│  Combinational  │
+│       ↓         │
+│  Self-Healing   │
+└─────────────────┘
+```
+
+*Blends sequential and parallel execution with automatic error recovery*
+
+</td>
+<td width="33%" align="center">
+
+### 🧬 Self Evolution
+**Continuous Learning**
+
+```
+┌─────────────────┐
+│ Prompt Mutation │
+│       ↓         │
+│ Step Reordering │
+│       ↓         │
+│ Model Selection │
+│       ↓         │
+│ Alt. Reasoning  │
+└─────────────────┘
+```
+
+*Learns from successes and failures via EMA-adjusted V-vectors*
+
+</td>
+</tr>
+</table>
 
 ### The V≠K Attention Architecture
 
