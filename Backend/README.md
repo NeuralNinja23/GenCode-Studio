@@ -1,6 +1,5 @@
 <div align="center">
 
-<img src="docs/images/hero_banner.png" alt="GenCode Studio Backend" width="100%" />
 
 <br />
 <br />
@@ -26,7 +25,7 @@ The **Backend** is where the magic happens — a sophisticated orchestration sys
 
 <br />
 
-[⚡ Pipeline](#-the-fast-v2-pipeline) • [🌳 ArborMind](#-arbormind-intelligence) • [🤖 Agents](#-ai-agents) • [🛡️ Reliability](#-evidence-based-reliability) • [🚀 Quick Start](#-quick-start)
+[⚡ Pipeline](#-the-fast-v2-pipeline) • [🛡️ Reliability](#-evidence-based-reliability) • [🚀 Quick Start](#-quick-start)
 
 <br />
 
