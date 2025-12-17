@@ -104,8 +104,6 @@ The FAST V2 Orchestrator executes a carefully designed sequence of steps:
 
 <div align="center">
 
-<img src="../docs/images/arbormind_architecture.png" alt="ArborMind" width="700" />
-
 <br />
 <sub><i>Neural orchestration engine with attention-based routing and self-evolution</i></sub>
 
