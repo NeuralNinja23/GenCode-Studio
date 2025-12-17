@@ -181,27 +181,6 @@ explorer.inject_patterns(
 
 ---
 
-<br />
-
-## 🤖 AI Agents
-
-<div align="center">
-
-<img src="../docs/images/agents_showcase.png" alt="AI Agents" width="700" />
-
-</div>
-
-<br />
-
-| Agent | Role | Responsibility | Steps |
-|:-----:|:-----|:---------------|:------|
-| 🔵 **Marcus** | Senior Architect | Code review, quality gates, supervision | Analysis, Contracts, Screenshot, Preview |
-| 🟣 **Victoria** | System Architect | Designs architecture, data models, API contracts | Architecture |
-| 🟢 **Derek** | Full-Stack Dev | Implements React frontends, FastAPI backends | Frontend, Backend, Testing Backend |
-| 🟡 **Luna** | QA Engineer | Writes Playwright E2E tests, validates flows | Testing Frontend |
-
-<br />
-
 ---
 
 <br />
