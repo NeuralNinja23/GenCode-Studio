@@ -38,7 +38,7 @@
 A specialized team of AI agents work together: **Code Review & Quality Gates** · **Architecture Design & Planning** · **Full-Stack Implementation** · **Automated E2E Testing**
 
 ### 🌳 Self-Evolving AI  
-ArborMind orchestration engine: **Learns from every generation** · **Adapts strategies in real-time** · **Attention-based smart routing** · **Automatic error recovery**
+ArborMind orchestration engine: **Learns from every generation** · **Adapts strategies in real-time** · **Attention-based smart routing** · **Evidence-based reliability**
 
 ### 🛡️ Production-Grade Output
 Enterprise-quality code generation: **AST validation before write** · **Pre-flight syntax checks** · **Docker sandbox testing** · **Automatic rollback on failure**
@@ -120,7 +120,7 @@ Writes and runs Playwright E2E tests, catches bugs before deployment.
 <img src="docs/images/workflow_pipeline.png" alt="Workflow Pipeline" width="900" />
 
 <br />
-<sub><i>12-step intelligent pipeline transforms your idea into tested, deployable code</i></sub>
+<sub><i>4-Phase Linear Pipeline — One-Shot execution with strict separation of Causal and Evidence steps</i></sub>
 
 </div>
 
@@ -148,7 +148,7 @@ Writes and runs Playwright E2E tests, catches bugs before deployment.
 <img src="docs/images/arbormind_architecture.png" alt="ArborMind Architecture" width="800" />
 
 <br />
-<sub><i>Tree-inspired neural architecture — branches intelligently, prunes ineffective paths, evolves from outcomes</i></sub>
+<sub><i>ArborMind One-Shot Pipeline — Linear causal chain with evidence-based observation branches</i></sub>
 
 </div>
 
@@ -329,12 +329,12 @@ ws.onmessage = (event) => {
 </td>
 <td width="50%">
 
-### Self-Healing Pipeline
-- 🔄 Semantic error classification
-- 🎯 Targeted repair strategies
-- 📦 Differential context injection
-- 🆘 Automatic fallback generation
-- ↩️ Rollback on critical failures
+### Evidence-Based Reliability
+- 🛡️ Strict Environment vs Cognitive separation
+- ⛔ One-Shot Policy for causal logic (no loops)
+- ↩️ Selective retries for infrastructure only
+- 🏥 Automatic environment recovery
+- 🔒 Cognitive failure quarantine
 
 </td>
 </tr>

@@ -26,7 +26,7 @@ The **Backend** is where the magic happens — a sophisticated orchestration sys
 
 <br />
 
-[⚡ Pipeline](#-the-fast-v2-pipeline) • [🌳 ArborMind](#-arbormind-intelligence) • [🤖 Agents](#-ai-agents) • [🩹 Self-Healing](#-self-healing-system) • [🚀 Quick Start](#-quick-start)
+[⚡ Pipeline](#-the-fast-v2-pipeline) • [🌳 ArborMind](#-arbormind-intelligence) • [🤖 Agents](#-ai-agents) • [🛡️ Reliability](#-evidence-based-reliability) • [🚀 Quick Start](#-quick-start)
 
 <br />
 
@@ -46,8 +46,8 @@ The intelligent workflow engine: **12 atomic steps** with dependency barriers ·
 ### 🌳 ArborMind Intelligence
 Self-evolving AI routing: **V≠K attention** architecture · **Semantic decision** making · **Pattern learning** from outcomes · **Adaptive strategies**
 
-### 🩹 Self-Healing Pipeline
-Automatic error recovery: **Semantic error** classification · **Targeted repair** strategies · **Fallback templates** for edge cases · **Rollback** on critical failures
+### 🛡️ Evidence-Based Reliability
+Automatic reliability enforcement: **Environment** vs **Cognitive** failure separation · **Selective retries** for infra (evidence steps) · **Quarantine** for logic failures · **One-Shot Policy** for causal steps (no infinite loops)
 
 ### 🐳 Docker Sandbox
 Isolated testing environment: **Containerized** pytest runs · **Playwright E2E** testing · **MongoDB** test instances · **Full isolation** per project
@@ -67,7 +67,7 @@ Isolated testing environment: **Containerized** pytest runs · **Playwright E2E*
 <img src="docs/images/fast_pipeline.png" alt="FAST V2 Pipeline" width="900" />
 
 <br />
-<sub><i>12-step intelligent pipeline with dependency barriers, budget management, and self-healing</i></sub>
+<sub><i>4-Phase Linear Pipeline — One-Shot execution with strict separation of Causal and Evidence steps</i></sub>
 
 </div>
 
@@ -209,73 +209,71 @@ explorer.inject_patterns(
 
 <br />
 
-## 🩹 Self-Healing System
-
-<div align="center">
-
-<img src="docs/images/self_healing.png" alt="Self-Healing" width="600" />
-
-<br />
-<sub><i>Automatic error detection, classification, and targeted repair</i></sub>
-
-</div>
-
-<br />
-
-When steps fail, the system automatically attempts recovery:
-
-<table>
-<tr>
-<td width="50%">
-
-### Error Classification
-
-| Type | Example | Strategy |
-|:-----|:--------|:---------|
-| **Syntax** | `SyntaxError: invalid syntax` | AST-guided fix |
-| **Import** | `ModuleNotFoundError` | Dependency injection |
-| **Logic** | `AttributeError: 'NoneType'` | Context repair |
-| **Type** | `TypeError: expected str` | Type coercion |
-
-</td>
-<td width="50%">
-
-### Healing Pipeline
-
-```
-Error Detected
-     ↓
-Error Router (classify)
-     ↓
-Strategy Selection
-     ↓
-┌────┴────┐
-│ LLM Fix │ Fallback │
-└────┬────┘
-     ↓
-Validation
-     ↓
-✅ Continue or ❌ Escalate
-```
-
-</td>
-</tr>
-</table>
-
-<br />
-
-**Core Files:**
-
-| File | Purpose |
-|:-----|:--------|
-| `healing_pipeline.py` | Main healing orchestration |
-| `error_router.py` | Semantic error classification |
-| `self_healing_manager.py` | 48KB of repair logic |
-| `fallback_*_agent.py` | Template-based fallback generators |
-
-<br />
-
----
+## 🛡️ Evidence-Based Reliability
+ 
+ <div align="center">
+ 
+ <img src="docs/images/failure_classification.png" alt="Failure Classification" width="600" />
+ 
+ <br />
+ <sub><i>Strict failure taxonomy with explicit containment strategies</i></sub>
+ 
+ </div>
+ 
+ <br />
+ 
+ The system enforces a strict **One-Shot Policy** for all causal steps, relying on precise failure classification rather than infinite retry loops:
+ 
+ <table>
+ <tr>
+ <td width="50%">
+ 
+ ### 🏷️ Outcome Taxonomy
+ 
+ | Type | Logic | Handling |
+ |:-----|:------|:---------|
+ | **SUCCESS** | Steps verify OK | Proceed |
+ | **ENVIRONMENT_FAILURE** | Infra/Network/Docker | **Retry** (Evidence steps only) |
+ | **COGNITIVE_FAILURE** | Agents/Tests/Reasoning | **Isolate** (No auto-healing) |
+ | **HARD_FAILURE** | Logical Impossibility | **Stop** Workflow |
+ 
+ </td>
+ <td width="50%">
+ 
+ ### 🛡️ Isolation Strategy
+ 
+ ```
+ Step Failure
+      ↓
+ Failure Classifier
+      ↓
+ ┌────┴────┐
+ │  INFRA  │  COGNITIVE  │
+ │ (Retry) │  (Isolate)  │
+ └────┬────┘      │
+      │        Quarantine
+      ↓           ↓
+  Continue    Human Review
+ ```
+ 
+ </td>
+ </tr>
+ </table>
+ 
+ <br />
+ 
+ **Core Files:**
+ 
+ | File | Purpose |
+ |:-----|:--------|
+ | `step_outcome.py` | Taxonomy definitions (Success, Env, Cog, Hard) |
+ | `failure_classifier.py` | Semantic analysis of errors |
+ | `failure_boundary.py` | Runtime enforcement layer |
+ | `retry_policy.py` | Selective retries for infrastructure only |
+ 
+ <br />
+ 
+ ---
 
 <br />
 
