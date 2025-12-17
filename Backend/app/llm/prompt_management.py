@@ -296,6 +296,17 @@ STEP_CONTEXT_RULES = {
         "include_contracts": True,  # May need contracts to understand expected behavior
         "include_architecture": False,
     },
+    # FIX: Add rules for healing and test generation steps (were returning 0 files!)
+    "backend_healing": {
+        "files": ["backend/app/models.py", "backend/app/routers/*.py", "backend/tests/*.py", "backend/app/main.py", "contracts.md"],
+        "include_contracts": True,
+        "include_architecture": False,
+    },
+    "test_file_generation": {
+        "files": ["backend/app/models.py", "backend/app/routers/*.py", "backend/tests/*.py", "contracts.md"],
+        "include_contracts": True,
+        "include_architecture": False,
+    },
 }
 
 
@@ -387,146 +398,6 @@ FILE_CONTEXT_MODES = [
         }
     }
 ]
-
-
-_last_context_decision_id = ""
-
-
-async def get_adaptive_file_context(
-    task_description: str,
-    step_name: str,
-    archetype: str,
-    all_files: List[Dict[str, str]],
-) -> Dict[str, Any]:
-    """
-    Self-evolving file context selection.
-    
-    Uses V!=K attention to:
-    1. Determine how many files to include (context width)
-    2. Select the best RAG mode (narrow vs. exhaustive)
-    3. Learn from past decisions to improve selection
-    
-    Args:
-        task_description: What the agent is doing
-        step_name: Current workflow step
-        archetype: Project archetype
-        all_files: All available project files
-        
-    Returns:
-        Dict with:
-            - files: List of selected files
-            - mode: The context mode used
-            - config: The synthesized configuration
-            - decision_id: For outcome tracking
-    """
-    global _last_context_decision_id
-    
-    try:
-        from app.arbormind import arbormind_route
-        
-        # Route to determine context mode
-        context_query = f"Task: {task_description[:200]}. Step: {step_name}"
-        result = await arbormind_route(
-            context_query,
-            FILE_CONTEXT_MODES,
-            context_type="file_context",
-            archetype=archetype
-        )
-        
-        _last_context_decision_id = result.get("decision_id", "")
-        
-        # Get synthesized configuration
-        config = result.get("value", FILE_CONTEXT_MODES[1]["value"])  # Default: focused
-        
-        # Apply step-based filtering first
-        relevant = filter_files_for_step(step_name, all_files)
-        
-        # If no step rules matched, use all files
-        if not relevant:
-            relevant = all_files
-        
-        # Apply adaptive limit from attention
-        max_files = int(config.get("max_files", 8))
-        
-        # Sort by relevance (prefer files matching task keywords)
-        task_words = set(task_description.lower().split())
-        def relevance_score(f):
-            path = f.get("path", "").lower()
-            content_preview = f.get("content", "")[:500].lower()
-            score = sum(1 for w in task_words if w in path or w in content_preview)
-            return -score  # Negative for descending sort
-        
-        relevant_sorted = sorted(relevant, key=relevance_score)
-        selected_files = relevant_sorted[:max_files]
-        
-        # Include tests if config says so
-        if config.get("include_tests") and len(selected_files) < max_files:
-            test_files = [f for f in all_files if "test" in f.get("path", "").lower()]
-            for tf in test_files[:3]:
-                if tf not in selected_files:
-                    selected_files.append(tf)
-                    if len(selected_files) >= max_files:
-                        break
-        
-        return {
-            "files": selected_files,
-            "mode": result.get("selected", "focused"),
-            "config": config,
-            "decision_id": _last_context_decision_id,
-            "evolved": result.get("evolved", False)
-        }
-        
-    except Exception as e:
-        # Fallback to step-based selection
-        relevant = filter_files_for_step(step_name, all_files)
-        return {
-            "files": relevant[:10] if relevant else all_files[:10],
-            "mode": "fallback",
-            "config": {"max_files": 10, "use_summaries": True},
-            "decision_id": "",
-            "evolved": False,
-            "error": str(e)
-        }
-
-
-def report_context_outcome(
-    decision_id: Optional[str] = None,
-    success: bool = False,
-    quality_score: float = 5.0,
-    details: str = ""
-) -> bool:
-    """
-    Report the outcome of a file context selection decision.
-    
-    Call this after the agent finishes to feed back whether
-    the context width was appropriate.
-    
-    Args:
-        decision_id: The decision_id from get_adaptive_file_context
-        success: Whether the task succeeded with this context
-        quality_score: Quality rating (0-10)
-        details: Description of outcome
-        
-    Returns:
-        True if recorded
-    """
-    global _last_context_decision_id
-    
-    try:
-        from app.arbormind import report_routing_outcome
-        
-        did = decision_id or _last_context_decision_id
-        if not did:
-            return False
-        
-        return report_routing_outcome(
-            decision_id=did,
-            success=success,
-            quality_score=quality_score,
-            details=details
-        )
-    except Exception:
-        return False
 
 
 # ============================================================

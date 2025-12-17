@@ -23,6 +23,9 @@ from app.arbormind import (
 # Centralized entity extraction
 from app.utils.entity_discovery import extract_entity_from_request
 
+# Phase 0: Failure Boundary Enforcement
+from app.core.failure_boundary import FailureBoundary
+
 
 def _detect_primary_entity(user_request: str) -> str:
     """
@@ -36,6 +39,7 @@ def _detect_primary_entity(user_request: str) -> str:
 
 
 
+@FailureBoundary.enforce
 async def step_analysis(
     project_id: str,
     user_request: str,

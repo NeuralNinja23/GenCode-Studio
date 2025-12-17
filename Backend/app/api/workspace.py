@@ -67,6 +67,7 @@ class GenerateRequest(BaseModel):
     description: str
     provider: Optional[str] = None
     model: Optional[str] = None
+    resume_mode: Optional[str] = "auto"  # "auto", "resume", "fresh"
 
 
 class ResumeRequest(BaseModel):
@@ -153,8 +154,6 @@ async def get_file_content(project_id: str, path: str):
 
 
 
-
-
 @router.put("/{project_id}/file")
 async def save_file_content(project_id: str, data: FileContent):
     """Save file content."""
@@ -181,11 +180,19 @@ async def save_file_content(project_id: str, data: FileContent):
 
 @router.post("/{project_id}/generate/backend")
 async def generate_backend(request: Request, project_id: str, data: GenerateRequest):
-    """Start backend generation workflow."""
+    """
+    Start backend generation workflow.
+    
+    Resume Modes:
+    - "auto": Check for saved progress, resume if found, else start fresh
+    - "resume": Force resume (fail if no progress)
+    - "fresh": Clear progress and start fresh
+    """
     from app.workflow import run_workflow
+    from app.workflow.engine import resume_from_checkpoint_workflow
     from app.orchestration.state import WorkflowStateManager
     
-    log("WORKSPACE", f"Starting generation for {project_id}")
+    log("WORKSPACE", f"Starting generation for {project_id} (mode={data.resume_mode})")
     
     # FIX #13: Validate project_id
     if not validate_project_id(project_id):
@@ -205,35 +212,89 @@ async def generate_backend(request: Request, project_id: str, data: GenerateRequ
             "already_running": True,
         }
     
-    project_path = get_project_path(project_id)
-    project_path.mkdir(parents=True, exist_ok=True)
-    
     # Get connection manager
     manager = request.app.state.manager
     
-    # Start workflow in background with exception logging
-    async def _run_workflow_with_logging():
-        try:
-            await run_workflow(
-                project_id=project_id,
-                description=data.description,
-                workspaces_path=settings.paths.workspaces_dir,
-                manager=manager,
-                provider=data.provider,
-                model=data.model,
-            )
-        except Exception as e:
-            import traceback
-            log("WORKSPACE", f"ERROR {project_id}: {e}")
-            log("WORKSPACE", traceback.format_exc())
+    # ════════════════════════════════════════════════════════════════
+    # RESUME LOGIC: Auto-detect or force resume based on mode
+    # ════════════════════════════════════════════════════════════════
     
-    asyncio.create_task(_run_workflow_with_logging())
+    # Handle "fresh" mode - clear any saved progress
+    if data.resume_mode == "fresh":
+        log("WORKSPACE", f"🗑️ Clearing saved progress for {project_id} (fresh mode)")
+        await WorkflowStateManager.clear_progress(project_id)
     
-    return {
-        "success": True,
-        "message": "Workflow started",
-        "project_id": project_id,
-    }
+    # Check for saved progress (for "auto" and "resume" modes)
+    has_progress = await WorkflowStateManager.has_progress(project_id)
+    completed_steps = await WorkflowStateManager.get_completed_steps(project_id) if has_progress else []
+    
+    # Decide whether to resume
+    should_resume = False
+    if data.resume_mode == "resume":
+        if not has_progress:
+            raise HTTPException(status_code=400, detail="No saved progress to resume from")
+        should_resume = True
+    elif data.resume_mode == "auto" and has_progress:
+        should_resume = True
+        log("WORKSPACE", f"🔄 Auto-detected {len(completed_steps)} completed steps, will resume")
+    
+    project_path = get_project_path(project_id)
+    
+    if should_resume:
+        # Resume from checkpoint
+        async def _resume_workflow_with_logging():
+            try:
+                success = await resume_from_checkpoint_workflow(
+                    project_id=project_id,
+                    description=data.description,
+                    workspaces_path=settings.paths.workspaces_dir,
+                    manager=manager,
+                    provider=data.provider,
+                    model=data.model,
+                )
+                if not success:
+                    log("WORKSPACE", f"Resume failed for {project_id}, no action taken")
+            except Exception as e:
+                import traceback
+                log("WORKSPACE", f"ERROR resuming {project_id}: {e}")
+                log("WORKSPACE", traceback.format_exc())
+        
+        asyncio.create_task(_resume_workflow_with_logging())
+        
+        return {
+            "success": True,
+            "message": f"Resuming workflow from checkpoint (skipping {len(completed_steps)} steps)",
+            "project_id": project_id,
+            "mode": "resume",
+            "completed_steps": completed_steps,
+        }
+    else:
+        # Start fresh workflow
+        project_path.mkdir(parents=True, exist_ok=True)
+        
+        async def _run_workflow_with_logging():
+            try:
+                await run_workflow(
+                    project_id=project_id,
+                    description=data.description,
+                    workspaces_path=settings.paths.workspaces_dir,
+                    manager=manager,
+                    provider=data.provider,
+                    model=data.model,
+                )
+            except Exception as e:
+                import traceback
+                log("WORKSPACE", f"ERROR {project_id}: {e}")
+                log("WORKSPACE", traceback.format_exc())
+        
+        asyncio.create_task(_run_workflow_with_logging())
+        
+        return {
+            "success": True,
+            "message": "Workflow started",
+            "project_id": project_id,
+            "mode": "fresh",
+        }
 
 
 @router.post("/resume")
@@ -364,5 +425,64 @@ async def force_reset_workflow(project_id: str):
     return {
         "success": True,
         "message": f"Workflow state reset for {project_id}",
+        "project_id": project_id,
+    }
+
+
+@router.get("/{project_id}/progress")
+async def get_project_progress(project_id: str):
+    """
+    Get workflow progress for a project.
+    
+    Returns:
+    - completed_steps: List of steps that have been completed
+    - current_step: The last completed step
+    - is_running: Whether a workflow is currently running
+    - is_paused: Whether the workflow is paused for user input
+    - is_resumable: Whether the project can be resumed from checkpoint
+    """
+    from app.orchestration.state import WorkflowStateManager
+    
+    if not validate_project_id(project_id):
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+    
+    project_path = get_project_path(project_id)
+    project_exists = project_path.exists()
+    
+    completed_steps = await WorkflowStateManager.get_completed_steps(project_id)
+    current_step = await WorkflowStateManager.get_current_step(project_id)
+    is_running = await WorkflowStateManager.is_running(project_id)
+    is_paused = await WorkflowStateManager.is_paused(project_id)
+    has_progress = await WorkflowStateManager.has_progress(project_id)
+    
+    return {
+        "project_id": project_id,
+        "project_exists": project_exists,
+        "completed_steps": completed_steps,
+        "current_step": current_step,
+        "is_running": is_running,
+        "is_paused": is_paused,
+        "is_resumable": has_progress and not is_running,
+        "total_completed": len(completed_steps),
+    }
+
+
+@router.post("/{project_id}/clear-progress")
+async def clear_project_progress(project_id: str):
+    """
+    Clear all saved progress for a project.
+    Use this to force a fresh start on next generation.
+    """
+    from app.orchestration.state import WorkflowStateManager
+    
+    if not validate_project_id(project_id):
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+    
+    log("WORKSPACE", f"Clearing progress for {project_id}")
+    await WorkflowStateManager.clear_progress(project_id)
+    
+    return {
+        "success": True,
+        "message": f"Progress cleared for {project_id}",
         "project_id": project_id,
     }

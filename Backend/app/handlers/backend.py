@@ -19,6 +19,7 @@ from app.persistence.validator import validate_file_output
 # Centralized entity discovery for dynamic fallback
 from app.utils.entity_discovery import discover_primary_entity
 from app.handlers.archetype_guidance import get_full_backend_context, get_archetype_patterns_from_store
+# Phase 7: Removed ValidationResult import - handler has @FailureBoundary.enforce
 
 
 
@@ -27,125 +28,15 @@ MAX_FILES_PER_STEP = 5
 MAX_FILE_LINES = 400
 
 
-async def _validate_integration(project_path: Path, routers: List[str]) -> bool:
-    """
-    Validate that integrated routes are accessible using contract-driven testing.
-    
-    Uses:
-    - ContractParser to extract expected routes from contracts.md
-    - BackendProbe to test routes in environment-agnostic way
-    
-    No hardcoded /api/notes or /api/cats - everything is contract-derived.
-    
-    Args:
-        project_path: Path to workspace
-        routers: List of router names that were integrated (for legacy compat, not used)
-    
-    Returns:
-        True if all contract routes are accessible
-    """
-    from app.orchestration.contract_parser import ContractParser
-    from app.orchestration.backend_probe import BackendProbe, ProbeMode
-    
-    # Parse expected routes from contracts
-    parser = ContractParser(project_path)
-    expected_routes = parser.get_expected_routes()
-    
-    if not expected_routes:
-        log("VALIDATION", "⚠️ No contract routes found - validation skipped")
-        return True
-    
-    log("VALIDATION", f"📋 Validating {len(expected_routes)} contract routes")
-    
-    # ═══════════════════════════════════════════════════════════
-    # RESTART DOCKER: Pick up new router code written by backend_implementation
-    # Bug Fix #2: Added file sync delay to prevent race condition
-    # ═══════════════════════════════════════════════════════════
-    try:
-        from app.tools.implementations import SANDBOX
-        from app.sandbox import SandboxConfig
-        import asyncio
-        
-        # Extract project_id from path
-        project_id = project_path.name
-        
-        log("VALIDATION", "🔄 Syncing files before Docker restart...")
-        
-        # Bug Fix #2: Ensure files are flushed to disk before Docker sees them
-        # Touch main.py to force filesystem sync
-        main_py = project_path / "backend" / "app" / "main.py"
-        if main_py.exists():
-            main_py.touch()  # Updates mtime, forces buffer flush
-        
-        # Wait for filesystem to catch up (Windows is slower than Linux)
-        await asyncio.sleep(2)
-        
-        log("VALIDATION", "🔄 Restarting Docker to pick up new router code...")
-        
-        # Check if sandbox exists, create if not
-        status = await SANDBOX.get_status(project_id)
-        if not status.get("success"):
-            log("VALIDATION", "📦 Creating sandbox for first time...")
-            create_result = await SANDBOX.create_sandbox(
-                project_id=project_id,
-                project_path=project_path,
-                config=SandboxConfig(),
-            )
-            if not create_result.get("success"):
-                log("VALIDATION", f"⚠️ Sandbox create failed: {create_result.get('error')}")
-        else:
-            # Stop existing sandbox before restart
-            await SANDBOX.stop_sandbox(project_id)
-            await asyncio.sleep(1)
-        
-        # Start with build to pick up new code
-        start_result = await SANDBOX.start_sandbox(
-            project_id=project_id,
-            wait_healthy=True,
-            services=["backend"]
-        )
-        
-        if start_result.get("success"):
-            log("VALIDATION", "✅ Docker restarted with new code")
-            # Extra wait for uvicorn --reload to pick up changes
-            await asyncio.sleep(3)
-        else:
-            log("VALIDATION", f"⚠️ Docker restart failed: {start_result.get('error')}")
-            
-    except Exception as e:
-        log("VALIDATION", f"⚠️ Docker restart error: {e}")
-    
-    # Create probe for Docker environment (where tests run)
-    # Pass project_id for dynamic port detection
-    probe = BackendProbe.from_env(ProbeMode.DOCKER, project_id=project_id)
-    
-    # Test each route
-    failures = []
-    for route in expected_routes:
-        passed = await probe.check_route(
-            method=route.method,
-            path=route.path,
-            expected_status=route.expected_status,
-            timeout=5.0
-        )
-        
-        if passed:
-            log("VALIDATION", f"  ✅ {route.method} {route.path} → {route.expected_status}")
-        else:
-            log("VALIDATION", f"  ❌ {route.method} {route.path} failed")
-            failures.append(route)
-    
-    if failures:
-        log("VALIDATION", f"❌ {len(failures)} route(s) failed validation")
-        return False
-    
-    log("VALIDATION", "✅ All contract routes validated successfully")
-    return True
+# Phase 7: _validate_integration removed (legacy code)
 
 
 # NOTE: _extract_entity_from_request was removed
 # Now using centralized extract_entity_from_request from entity_discovery
 from app.utils.entity_discovery import extract_entity_from_request as _extract_entity_from_request
+
+# Phase 0: Failure Boundary Enforcement
+from app.core.failure_boundary import FailureBoundary
 
 
 
@@ -166,6 +57,7 @@ def ensure_workspace_app_package(project_path: Path) -> None:
         )
 
 
+@FailureBoundary.enforce
 async def step_backend_implementation(
     project_id: str,
     user_request: str,
@@ -348,7 +240,35 @@ async def _step_backend_multi_entity(
         
         except Exception as e:
             log("BACKEND", f"❌ Failed to generate {entity.name} router: {e}")
-            # Continue with other entities
+            # Track failure but continue to attempt other entities
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INVARIANT A: Backend Generation Is Atomic
+    # Either the backend exists in a valid state, or it does not exist at all.
+    # If expected routers != generated routers → FAIL HARD
+    # ═══════════════════════════════════════════════════════════════════════════
+    expected_routers = set(e.plural for e in aggregate_entities)
+    generated_routers = set(routers_generated)
+    missing_routers = expected_routers - generated_routers
+    
+    if missing_routers:
+        log("BACKEND", f"❌ ATOMIC FAILURE: Missing routers: {missing_routers}")
+        log("BACKEND", f"   Expected: {expected_routers}")
+        log("BACKEND", f"   Generated: {generated_routers}")
+        
+        return StepResult(
+            nextstep=WorkflowStep.SYSTEM_INTEGRATION,  # Allow healing to attempt
+            turn=current_turn + 1,
+            status="error",
+            error=f"Backend generation incomplete: missing routers {missing_routers}",
+            data={
+                "mode": "multi_entity",
+                "expected_routers": list(expected_routers),
+                "generated_routers": list(generated_routers),
+                "missing_routers": list(missing_routers),
+            },
+            token_usage=step_token_usage,
+        )
     
     log("BACKEND", f"✅ Multi-entity backend complete: {len(routers_generated)} routers")
     
@@ -470,6 +390,29 @@ These rules are MANDATORY. Violations cause test failures.
    - GET /{{id}} → 200 (or 404 if not found)
    - PUT /{{id}} → 200 (or 404 if not found)
    - DELETE /{{id}} → 204 No Content (use `status_code=status.HTTP_204_NO_CONTENT`)
+
+3. **ID PARAMETER HANDLING (CRITICAL - Prevents 500 Errors)**:
+   ALWAYS use `PydanticObjectId` for ID parameters. This auto-validates the format!
+   
+   ✅ CORRECT PATTERN:
+   ```python
+   from beanie import PydanticObjectId
+   
+   @router.get("/{{id}}")
+   async def get_one(id: PydanticObjectId):
+       item = await {primary_entity_capitalized}.get(id)
+       if not item:
+           raise HTTPException(status_code=404, detail="{primary_entity_capitalized} not found")
+       return item
+   ```
+   
+   ❌ WRONG (causes 500 errors on invalid IDs):
+   ```python
+   @router.get("/{{id}}")
+   async def get_one(id: str):  # Wrong - no validation
+       item = await {primary_entity_capitalized}.get(id)  # Crashes if id is not valid ObjectId
+       return item  # Crashes if item is None
+   ```
 
 2. **RESPONSE SHAPE (Strict)**:
    - GET / must return a LIST of objects: `[{{"id": "...", "title": "...", "status": "..."}}]`
@@ -703,6 +646,27 @@ Generate a complete FastAPI router that implements the EXACT specification above
    - Return proper HTTP status codes (200, 201, 404, etc.)
    - Use HTTPException for errors
 
+7. **ID Parameter Handling (CRITICAL)**:
+   - ALWAYS use `PydanticObjectId` for ID parameters: `from beanie import PydanticObjectId`
+   - ALWAYS check if entity is None after `.get()` and raise HTTPException(404)
+   
+   ✅ CORRECT:
+   ```python
+   @router.get("/{{id}}")
+   async def get_one(id: PydanticObjectId):
+       item = await {entity_name}.get(id)
+       if not item:
+           raise HTTPException(status_code=404, detail="Not found")
+       return item
+   ```
+   
+   ❌ WRONG (causes 500 errors):
+   ```python
+   async def get_one(id: str):  # Wrong type - no validation
+       item = await {entity_name}.get(id)  # Crashes on invalid ID
+       return item  # Crashes if None
+   ```
+
 ═══════════════════════════════════════════════════════
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════
@@ -773,6 +737,7 @@ def _extract_entity_contract(contracts: str, entity_plural: str) -> str:
 
 
 
+@FailureBoundary.enforce
 async def step_system_integration(
     project_id: str,
     user_request: str,
@@ -819,20 +784,29 @@ async def step_system_integration(
         # Without this, init_beanie() gets an empty list and all
         # collection operations fail with 500 Server Error.
         #
-        # BUG FIX: Use extract_all_models_from_models_py instead of
-        # discover_primary_entity. The old approach discovered entities
-        # from mock.js (e.g., "Category") but Derek might generate
-        # different models (e.g., "Expense"), causing ImportError crashes.
-        #
-        # FIX #7: FILTER OUT EMBEDDED MODELS (2025-12-15)
-        # Use extract_document_models_only() instead of extract_all_models_from_models_py()
-        # to prevent wiring embedded BaseModel classes to Beanie.
-        # Only AGGREGATE entities (Document) should be wired!
+        # INVARIANT B: Models May Only Be Wired If Served (2025-12-17)
+        # No model may exist in the runtime graph without an HTTP surface.
+        # Only wire models that have corresponding router files!
+        # This prevents wiring Content model when contents.py doesn't exist.
         # ═══════════════════════════════════════════════════════════
         from app.utils.entity_discovery import extract_document_models_only
         
-        actual_models = extract_document_models_only(project_path)
-        for model_name in actual_models:
+        all_models = extract_document_models_only(project_path)
+        
+        # INVARIANT B: Filter models to only those with corresponding routers
+        # Router file "contents.py" serves model "Content" (singular -> plural mapping)
+        served_models = []
+        for model_name in all_models:
+            # Check if router exists for this model
+            # Model "Content" -> router "contents.py"
+            expected_router = model_name.lower() + "s"  # Simple pluralization
+            if expected_router in existing_routers:
+                served_models.append(model_name)
+                log("BACKEND", f"✅ Model {model_name} has router {expected_router}.py")
+            else:
+                log("BACKEND", f"⚠️ INVARIANT B: Skipping model {model_name} (no router {expected_router}.py)")
+        
+        for model_name in served_models:
             wire_model(project_path, model_name)
             log("BACKEND", f"🔗 Wired AGGREGATE model: {model_name}")
         
@@ -858,19 +832,7 @@ for route in app.routes:
             
         log("BACKEND", "✅ Main.py wired successfully.")
         
-        # ════════════════════════════════════════════════════════════
-        # POST-INTEGRATION VALIDATION
-        # ════════════════════════════════════════════════════════════
-        validation_passed = await _validate_integration(project_path, existing_routers)
-        if not validation_passed:
-            log("BACKEND", "❌ Integration validation failed - routes not accessible")
-            # Return with error status to trigger healing
-            return StepResult(
-                nextstep=WorkflowStep.TESTING_BACKEND,
-                turn=current_turn + 1,
-                status="error",
-                data={"error": "Integration validation failed: routes returned 404"}
-            )
+        # Phase 7: Legacy validation removed - validation happens in testing_backend
         
     ensure_workspace_app_package(project_path)
     

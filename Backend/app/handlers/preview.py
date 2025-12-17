@@ -17,7 +17,11 @@ from app.handlers.base import broadcast_status
 from app.core.logging import log
 from app.orchestration.utils import broadcast_to_project
 
+# Phase 0: Failure Boundary Enforcement
+from app.core.failure_boundary import FailureBoundary
 
+
+@FailureBoundary.enforce
 async def step_preview_final(
     project_id: str,
     user_request: str,
@@ -174,6 +178,8 @@ services:
 
     except Exception as e:
         log("PREVIEW", f"Final preview setup failed: {e}")
+        # Phase 9: Raise to trigger FailureBoundary -> Isolation -> Degradation
+        raise e
 
     return StepResult(
         nextstep=WorkflowStep.COMPLETE,

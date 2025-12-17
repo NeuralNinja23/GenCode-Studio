@@ -161,7 +161,7 @@ class WorkflowStateManager:
     
     @staticmethod
     async def cleanup(project_id: str) -> None:
-        """Clean up state (stop running, unpause)."""
+        """Clean up state (stop running, unpause). Does NOT clear completed_steps for resume."""
         session = await WorkflowSession.find_one(WorkflowSession.project_id == project_id)
         if session:
             session.is_running = False
@@ -170,6 +170,64 @@ class WorkflowStateManager:
             await session.save()
             
         _active_managers.pop(project_id, None)
+
+    # ════════════════════════════════════════════════════════════════
+    # RESUME FUNCTIONALITY - Persist workflow progress
+    # ════════════════════════════════════════════════════════════════
+    
+    @staticmethod
+    async def save_completed_step(project_id: str, step: str, context: Dict[str, Any] = None) -> None:
+        """
+        Save a completed step to MongoDB for resume support.
+        
+        Args:
+            project_id: Project identifier
+            step: Step name that completed
+            context: Optional context data to persist
+        """
+        session = await WorkflowStateManager.get_session(project_id)
+        if step not in session.completed_steps:
+            session.completed_steps.append(step)
+        session.current_step = step
+        if context:
+            session.step_context[step] = context
+        session.last_updated = datetime.now(timezone.utc)
+        await session.save()
+    
+    @staticmethod
+    async def get_completed_steps(project_id: str) -> List[str]:
+        """Get list of completed steps for a project."""
+        session = await WorkflowSession.find_one(WorkflowSession.project_id == project_id)
+        return session.completed_steps if session else []
+    
+    @staticmethod
+    async def get_step_context(project_id: str) -> Dict[str, Any]:
+        """Get saved step context for resume."""
+        session = await WorkflowSession.find_one(WorkflowSession.project_id == project_id)
+        return session.step_context if session else {}
+    
+    @staticmethod
+    async def get_current_step(project_id: str) -> Optional[str]:
+        """Get last completed step."""
+        session = await WorkflowSession.find_one(WorkflowSession.project_id == project_id)
+        return session.current_step if session else None
+    
+    @staticmethod
+    async def clear_progress(project_id: str) -> None:
+        """Clear all progress for a fresh start."""
+        session = await WorkflowSession.find_one(WorkflowSession.project_id == project_id)
+        if session:
+            session.completed_steps = []
+            session.step_context = {}
+            session.current_step = None
+            session.last_updated = datetime.now(timezone.utc)
+            await session.save()
+    
+    @staticmethod
+    async def has_progress(project_id: str) -> bool:
+        """Check if project has any saved progress."""
+        session = await WorkflowSession.find_one(WorkflowSession.project_id == project_id)
+        return bool(session and session.completed_steps)
 
     @staticmethod
     async def acquire_lock():

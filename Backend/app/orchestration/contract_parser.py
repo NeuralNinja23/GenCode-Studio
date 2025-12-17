@@ -23,7 +23,7 @@ class RouteContract:
 
 
 class ContractParser:
-    """Parse API contracts from contracts.md and test_api.py."""
+    """Parse API contracts from contracts.md and test_contract_api.py."""
     
     def __init__(self, project_path: Path):
         """
@@ -34,14 +34,14 @@ class ContractParser:
         """
         self.project_path = project_path
         self.contracts_file = project_path / "contracts.md"
-        self.test_file = project_path / "backend" / "tests" / "test_api.py"
+        self.test_file = project_path / "backend" / "tests" / "test_contract_api.py"
     
     def get_expected_routes(self) -> List[RouteContract]:
         """
         Extract expected routes for validation.
         
         🔒 INVARIANT #1: Validation ⊇ Tests
-        Every route tested in test_api.py MUST appear here.
+        Every route tested in test_contract_api.py MUST appear here.
         If validation passes, tests WILL pass (no under-approximation).
         
         This is the NON-NEGOTIABLE contract. If any route is missing → FAIL FAST.
@@ -57,7 +57,7 @@ class ContractParser:
         ))
         
         # ═══════════════════════════════════════════════════════════
-        # MANDATORY CRUD ROUTES - Must match test_api.py exactly
+        # MANDATORY CRUD ROUTES - Must match test_contract_api.py exactly
         #
         # BUG FIX: Use extract_all_models_from_models_py instead of
         # discover_primary_entity. The old approach discovered entities
@@ -106,7 +106,7 @@ class ContractParser:
             entity_plural = get_entity_plural(entity_name)
             base_path = f"/api/{entity_plural}"
             
-            # ALL 4 routes that test_api.py requires
+            # ALL 4 routes that test_contract_api.py requires
             routes.extend([
                 # List all
                 RouteContract(
@@ -115,26 +115,27 @@ class ContractParser:
                     expected_status=200,
                     description=f"List all {entity_plural} (mandatory)"
                 ),
-                # Create
+                # Create - 422 expected because probe sends empty payload
+                # This validates route EXISTS (Pydantic rejects empty body)
                 RouteContract(
                     method="POST",
                     path=base_path,
-                    expected_status=201,
-                    description=f"Create new {entity_name} (mandatory)"
+                    expected_status=422,  # Empty payload fails validation, but route EXISTS
+                    description=f"Create new {entity_name} (route existence check)"
                 ),
                 # Get by ID - validated as route exists, not actual data
-                # We use a placeholder ID; 404 is acceptable (route exists but no data)
+                # Use valid ObjectId format (24 hex chars) that won't exist in DB
                 RouteContract(
                     method="GET",
-                    path=f"{base_path}/test-id-validation",
-                    expected_status=404,  # 404 means route EXISTS but ID not found
+                    path=f"{base_path}/000000000000000000000000",
+                    expected_status=404,  # Valid ObjectId format, but ID not found in DB
                     description=f"Get {entity_name} by ID (route must exist)"
                 ),
                 # Delete - same logic, 404 means route exists
                 RouteContract(
                     method="DELETE",
-                    path=f"{base_path}/test-id-validation",
-                    expected_status=404,  # 404 means route EXISTS but ID not found
+                    path=f"{base_path}/000000000000000000000000",
+                    expected_status=404,  # Valid ObjectId format, but ID not found in DB
                     description=f"Delete {entity_name} by ID (route must exist)"
                 ),
             ])
@@ -175,7 +176,7 @@ class ContractParser:
         return routes
     
     def _parse_test_file(self) -> List[RouteContract]:
-        """Parse expected routes from test_api.py."""
+        """Parse expected routes from test_contract_api.py."""
         routes = []
         
         try:
@@ -209,10 +210,10 @@ class ContractParser:
                     method=method,
                     path=path,
                     expected_status=status,
-                    description="From test_api.py"
+                    description="From test_contract_api.py"
                 ))
         except Exception:
-            pass  # test_api.py might not exist yet
+            pass  # test_contract_api.py might not exist yet
         
         return routes
     

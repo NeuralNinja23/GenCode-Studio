@@ -16,6 +16,7 @@ from app.orchestration.state import WorkflowStateManager
 from app.supervision import supervised_agent_call
 from app.persistence import persist_agent_output
 from app.persistence.validator import validate_file_output
+from app.core.failure_boundary import FailureBoundary
 from app.handlers.archetype_guidance import get_architecture_archetype_guidance
 
 
@@ -28,6 +29,7 @@ MAX_FILE_LINES = 400
 
 
 
+@FailureBoundary.enforce
 async def step_architecture(
     project_id: str,
     user_request: str,
@@ -315,6 +317,7 @@ export const ui = {
                         # Write theme.ts
                         theme_ts = """// Auto-generated FALLBACK UI Tokens (Victoria didn't generate them)
 import tokensJson from "./tokens.json";
+
 
 export const tokens = tokensJson as {
   vibe: string;

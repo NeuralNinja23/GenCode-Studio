@@ -18,6 +18,20 @@ interface WorkflowResponse {
   message?: string;
   project_id?: string;
   already_running?: boolean;
+  mode?: "fresh" | "resume";  // NEW: Resume mode indicator
+  completed_steps?: string[]; // NEW: List of already completed steps
+}
+
+// NEW: Progress response from backend
+interface ProgressResponse {
+  project_id: string;
+  project_exists: boolean;
+  completed_steps: string[];
+  current_step: string | null;
+  is_running: boolean;
+  is_paused: boolean;
+  is_resumable: boolean;
+  total_completed: number;
 }
 
 // FileTreeEntry removed - using FileTreeNode from types
@@ -55,11 +69,15 @@ const handleAxiosError = (error: unknown, operation: string): never => {
 
 /**
  * Starts the autonomous workflow for backend generation.
+ * @param projectId - Project ID
+ * @param prompt - User prompt describing the app
+ * @param resumeMode - "auto" (default, auto-resume if progress exists), "resume" (force resume), "fresh" (clear progress and start new)
  * @throws Error if the request fails
  */
 export const startWorkflow = async (
   projectId: string,
-  prompt: string
+  prompt: string,
+  resumeMode: "auto" | "resume" | "fresh" = "auto"
 ): Promise<WorkflowResponse> => {
   // Validate inputs
   if (!validateProjectId(projectId)) {
@@ -75,11 +93,14 @@ export const startWorkflow = async (
     async () => {
       const response = await axios.post<WorkflowResponse>(
         `${API_BASE}/${projectId}/generate/backend`,
-        { description: sanitizedPrompt },
+        {
+          description: sanitizedPrompt,
+          resume_mode: resumeMode  // NEW: Send resume mode to backend
+        },
         { timeout: TIMEOUTS.WORKFLOW }
       );
 
-      console.log(`[START WORKFLOW] Success for ${projectId}`);
+      console.log(`[START WORKFLOW] Success for ${projectId}, mode: ${response.data.mode || resumeMode}`);
       return response.data;
     },
     {
@@ -258,3 +279,56 @@ export const testConnection = async (): Promise<boolean> => {
     return false;
   }
 };
+
+/**
+ * Get workflow progress for a project.
+ * Used to check if a project can be resumed.
+ */
+export const getProjectProgress = async (
+  projectId: string
+): Promise<ProgressResponse | null> => {
+  if (!validateProjectId(projectId)) {
+    throw new Error('Invalid project ID format');
+  }
+
+  try {
+    const response = await axios.get<ProgressResponse>(
+      `${API_BASE}/${projectId}/progress`,
+      { timeout: TIMEOUTS.CONNECTION_TEST }
+    );
+    console.log(`[GET PROGRESS] ${projectId}:`, response.data);
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      // Project doesn't exist yet, not an error
+      return null;
+    }
+    console.error("[GET PROGRESS] Error:", error);
+    return null;
+  }
+};
+
+/**
+ * Clear progress for a project (for fresh start).
+ */
+export const clearProgress = async (
+  projectId: string
+): Promise<boolean> => {
+  if (!validateProjectId(projectId)) {
+    throw new Error('Invalid project ID format');
+  }
+
+  try {
+    await axios.post(`${API_BASE}/${projectId}/clear-progress`, {}, {
+      timeout: TIMEOUTS.CONNECTION_TEST
+    });
+    console.log(`[CLEAR PROGRESS] Success for ${projectId}`);
+    return true;
+  } catch (error) {
+    console.error("[CLEAR PROGRESS] Error:", error);
+    return false;
+  }
+};
+
+// Export ProgressResponse type for components
+export type { ProgressResponse };

@@ -112,10 +112,6 @@ class HealingSettings:
     require_query_annotations: bool = True  # Require Query() on pagination params
     require_pagination_params: bool = True  # Require page/limit params
     require_router_imports: bool = True     # Require proper FastAPI imports
-    
-    # Retry Settings
-    max_healing_attempts: int = 3           # Max healing attempts per failure
-    max_service_restart_attempts: int = 2   # Max service restart attempts
 
 
 @dataclass

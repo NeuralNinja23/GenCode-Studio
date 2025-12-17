@@ -48,9 +48,9 @@ class TaskGraph:
             "frontend_integration": ["contracts", "backend_implementation"],
             "testing_frontend": ["frontend_integration"],
             "preview_final": [
-                "testing_backend",
-                "testing_frontend"
-            ]
+                "system_integration", 
+                "frontend_integration"
+            ]  # Phase 9: Preview depends on CODE availability, not TEST success
         }
 
     def get_steps(self) -> List[str]:

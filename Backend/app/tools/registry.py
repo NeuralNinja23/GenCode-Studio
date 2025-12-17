@@ -6,6 +6,26 @@ Matches tools to user intent using Attention (V!=K).
 from typing import Any, Dict, List, Optional
 from app.core.logging import log
 from app.core.config import settings
+from app.tools.catalog import ALL_TOOLS
+from app.tools.specs import ToolSpec
+
+
+TOOL_REGISTRY: dict[str, ToolSpec] = {}
+
+def register_tools():
+    for tool in ALL_TOOLS:
+        TOOL_REGISTRY[tool.id] = tool
+
+
+def get_tool(tool_id: str) -> ToolSpec:
+    return TOOL_REGISTRY[tool_id]
+
+
+def get_tools_for_step(step: str) -> list[ToolSpec]:
+    return [
+        tool for tool in TOOL_REGISTRY.values()
+        if step in tool.allowed_steps or "*" in tool.allowed_steps
+    ]
 
 # ---------------------------------------------------------------------
 # CONTEXT MAPPING (Step -> Allowed Categories)
@@ -250,9 +270,14 @@ async def run_tool(name: str, args: Optional[Dict[str, Any]] = None) -> Dict[str
     return await _run_tool_impl(name, args)
 
 
-async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> List[Dict[str, Any]]:
+async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> Dict[str, Any]:
     """
     Select tools using V!=K Attention with strict Context constraints.
+    
+    Returns:
+        Dict with:
+            - tools: List of selected tools
+            - decision_id: ID for tracking routing outcome (for learning)
     """
     try:
         from app.arbormind import arbormind_route
@@ -277,6 +302,24 @@ async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> 
         if not candidates:
             log("REGISTRY", f"⚠️ No allowed tools for step '{step_name}', using full set.")
             candidates = TOOL_DEFINITIONS
+        
+        # 1.5: TOOL POLICY ENFORCEMENT - Filter by declarative constraints
+        # ONLY if specs exist; otherwise allow all tools (gradual rollout)
+        from app.tools.tool_policy import allowed_tools_for_step
+        from app.tools.registry import TOOL_REGISTRY
+        
+        # Only filter if we have registered tool specs for this step
+        if TOOL_REGISTRY and step_name:
+            allowed = allowed_tools_for_step(step_name)
+            if allowed:  # If policy exists for this step, enforce it
+                candidates = [c for c in candidates if c["id"] in allowed]
+                if not candidates:
+                    log("REGISTRY", f"⚠️ Tool policy filtered all tools for '{step_name}', falling back to standard tools")
+                    candidates = [t for t in TOOL_DEFINITIONS if t["id"] in {"code_generator", "filewriterbatch", "filereader"}]
+            else:
+                # No policy for this step - allow all candidates through
+                log("REGISTRY", f"📋 No tool policy for '{step_name}', allowing all candidates")
+
 
         # 2. Add 'No-Op' option (Standard Tools Only)
         candidates_with_noop = candidates.copy()
@@ -298,6 +341,9 @@ async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> 
             archetype=kwargs.get("archetype", "unknown")
         )
         
+        # SELF-EVOLUTION: Extract decision_id for outcome tracking
+        decision_id = result.get("decision_id", "")
+        
         # 4. Analyze Decision (Score Thresholding)
         top_match = result["selected"]
         top_score = result["ranked"][0]["score"] if result["ranked"] else 0.0
@@ -306,13 +352,13 @@ async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> 
         if top_score < 0.15:
             if settings.debug:
                 log("REGISTRY", f"📉 Low confidence ({top_score:.3f}). Defaulting to standard tools.")
-            return _get_standard_tools()
+            return {"tools": _get_standard_tools(), "decision_id": decision_id}
 
         # If explicit no-op wins
         if top_match == "standard_tools_only":
             if settings.debug:
                 log("REGISTRY", f"✅ Selected 'standard_tools_only' (Score: {top_score:.3f})")
-            return _get_standard_tools()
+            return {"tools": _get_standard_tools(), "decision_id": decision_id}
         
         # 5. Build Result
         # Determine global configuration override (V parameter)
@@ -333,11 +379,13 @@ async def get_relevant_tools_for_query(query: str, top_k: int = 5, **kwargs) -> 
              })
         
         # Enforce essentials for Robustness
-        return _ensure_essentials(selected_tools, global_config)
+        tools = _ensure_essentials(selected_tools, global_config)
+        
+        return {"tools": tools, "decision_id": decision_id}
         
     except Exception as e:
         log("REGISTRY", f"⚠️ Tool selection failed: {e}. using fallback")
-        return _get_standard_tools()
+        return {"tools": _get_standard_tools(), "decision_id": ""}
 
 def _get_standard_tools() -> List[Dict[str, Any]]:
     """Return only the essential tools."""

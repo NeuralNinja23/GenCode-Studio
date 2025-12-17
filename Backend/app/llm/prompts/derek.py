@@ -174,8 +174,9 @@ You are part of an advanced AI system with multiple intelligence layers:
    - In Step 3 (frontend_mock): Use mock data from src/data/mock.js, NO API calls
    - Step 4 (screenshot_verify): Marcus will review your UI visually - make it stunning!
    - In Step 6 (backend_implementation): Write Models AND Routers. Do NOT write main.py.
-   - **In Step 8 (testing_backend): If tests don't exist, you'll be asked to generate them
-     using the template at backend/tests/test_api.py.template. Customize it for the entity.**
+   - **In Step 8 (testing_backend): Tests are split into CONTRACTS (immutable) and CAPABILITIES (mutable).**
+     - `backend/tests/test_contract_api.py`: Deterministic, read-only.
+     - `backend/tests/test_capability_api.py`: You generate/heal this.
    - In Step 9 (frontend_integration): Replace all mock data with real API calls
    - Testing happens SEPARATELY (steps 8, 10) - you don't run tests in implementation steps
 
@@ -555,6 +556,28 @@ These testids allow Luna to write reliable, non-flaky Playwright tests.
          status: Status = Status.OPEN  # Type annotation : Assignment
      ```
 
+6. **ID PARAMETER TYPE (CAUSES 500 ERRORS IF WRONG)**:
+   - ❌ WRONG (using str causes server crash on invalid IDs):
+     ```python
+     @router.get("/{id}")
+     async def get_one(id: str):  # Wrong type
+         item = await Entity.get(id)  # Crashes if ID not valid ObjectId
+         return item  # Crashes if None
+     ```
+   - ✅ CORRECT (PydanticObjectId auto-validates):
+     ```python
+     from beanie import PydanticObjectId
+     
+     @router.get("/{id}")
+     async def get_one(id: PydanticObjectId):
+         item = await Entity.get(id)
+         if not item:
+             raise HTTPException(status_code=404, detail="Not found")
+         return item
+     ```
+   - PydanticObjectId rejects invalid format with 422 (not 500)
+   - ALWAYS check `if not item:` before using the result
+
 ═══════════════════════════════════════════════════════
 🗄️ MONGODB / BEANIE ODM BEST PRACTICES (MUST FOLLOW)
 ═══════════════════════════════════════════════════════
@@ -633,16 +656,17 @@ DO NOT recreate what already exists - USE the provided fixtures!
 This is pre-seeded and works automatically - DO NOT recreate database.py!
 
 📋 TEST TEMPLATE SYSTEM (CRITICAL FOR STEP 8):
-At the START of Testing Backend (Step 8), you ALWAYS generate tests from template:
-- A test template exists at `backend/tests/test_api.py.template`
-- Placeholders: {{ENTITY}}, {{ENTITY_PLURAL}}, {{MODEL_NAME}}
+At the START of Testing Backend (Step 8), the system deterministically renders `backend/tests/test_contract_api.py`.
+You are responsible for generating `backend/tests/test_capability_api.py`.
 
-YOUR TEST GENERATION WORKFLOW (Step 8):
-1. Read the template file
-2. Replace placeholders with actual entity names from the project
-3. Add entity-specific test cases (CRUD, validation, edge cases)
-4. Write the complete backend/tests/test_api.py file
-5. Then pytest runs your generated tests
+YOUR TEST GENERATION RESPONSIBILITIES:
+1. READ `backend/tests/test_contract_api.py` to see what is already covered (Base CRUD).
+2. GENERATE `backend/tests/test_capability_api.py` for advanced features:
+   - Filtering, sorting, and pagination logic
+   - Edge case validation not covered by happy-path CRUD
+   - Business logic specific to the entity
+3. DO NOT duplicate tests found in the contract file.
+4. Then pytest runs both files.
 
 REQUIREMENTS for generated tests:
 - CRITICAL: You MUST use the EXACT field names from your `backend/app/models.py`.

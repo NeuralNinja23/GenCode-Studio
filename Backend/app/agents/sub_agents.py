@@ -649,37 +649,29 @@ async def marcus_call_sub_agent(
             # Happy path: we got a usable files schema
             
             # ════════════════════════════════════════════════════════
-            # SELF-EVOLUTION: Report SUCCESS for attention decisions
+            # SELF-EVOLUTION: Return decision IDs for Supervisor to track
             # ════════════════════════════════════════════════════════
-            try:
-                from app.arbormind import report_routing_outcome
-                
-                # File selection mode worked
-                if file_mode_decision_id:
-                    report_routing_outcome(
-                        decision_id=file_mode_decision_id,
-                        success=True,
-                        quality_score=8.0,
-                        details=f"Agent {agent_name} succeeded with file mode"
-                    )
-                
-                # Tool selection worked (if tracked)
-                if tool_decision_id:
-                    report_routing_outcome(
-                        decision_id=tool_decision_id,
-                        success=True,
-                        quality_score=8.0,
-                        details=f"Agent {agent_name} succeeded with selected tools"
-                    )
-            except Exception as e:
-                log("EVOLUTION", f"⚠️ Failed to report success outcome: {e}")
+            # We don't report success here yet because we don't know if the code is GOOD.
+            # We only know it's valid JSON. The Supervisor (Marcus) will report the 
+            # true outcome based on his review and the quality score.
             
+            # Robustness: Inject decision_ids into payload so they survive tool unpacking
+            if isinstance(normalized, dict):
+                normalized["decision_ids"] = {
+                    "file_context": file_mode_decision_id,
+                    "tool_selection": tool_decision_id
+                }
+
             return {
                 "passed": True,
                 "output": normalized,
                 "raw_generation": raw,
                 "issues": [],
                 "token_usage": token_usage,  # V3: Return actual usage for cost tracking
+                "decision_ids": {
+                    "file_context": file_mode_decision_id,
+                    "tool_selection": tool_decision_id
+                }
             }
 
         # Fallback: return raw + parsed (if any) for tool_sub_agent_caller to attempt recovery
@@ -721,6 +713,10 @@ async def marcus_call_sub_agent(
             "raw_generation": raw,
             "issues": issues,
             "token_usage": token_usage,  # V3: Return actual usage even on failure
+            "decision_ids": {
+                "file_context": file_mode_decision_id,
+                "tool_selection": tool_decision_id
+            }
         }
 
     except Exception as e:

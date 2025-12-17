@@ -19,6 +19,7 @@ from app.core.exceptions import RateLimitError
 from app.core.types import ChatMessage
 from app.core.config import settings
 from app.core.logging import log
+from app.orchestration.state import WorkflowStateManager
 
 from .task_graph import TaskGraph
 from .step_contracts import StepContracts
@@ -32,6 +33,10 @@ from .budget_manager import get_budget_manager
 
 # Centralized entity discovery for dynamic fallback
 from app.utils.entity_discovery import discover_primary_entity, extract_all_models_from_models_py
+
+# Phase 1: Outcome Aggregation
+from app.core.step_outcome import StepExecutionResult, StepOutcome
+from app.workflow.outcome_aggregator import aggregate_workflow_outcome, format_degradation_summary
 
 # Pipeline metrics for honest tracking
 from app.arbormind.metrics_collector import (
@@ -81,11 +86,15 @@ class FASTOrchestratorV2:
         user_request: str,
         provider: Optional[str] = None,
         model: Optional[str] = None,
+        resume_from_checkpoint: bool = False,  # NEW: Resume from saved progress
     ):
         """
         Initialize FAST V2 orchestrator.
         
         Uses same signature as FastWorkflowEngine for drop-in replacement.
+        
+        Args:
+            resume_from_checkpoint: If True, load completed steps from MongoDB and skip them.
         """
         self.project_id = project_id
         self.manager = manager
@@ -96,6 +105,9 @@ class FASTOrchestratorV2:
         self.chat_history: List[ChatMessage] = []
         self.current_turn = 1
         self.max_turns = settings.workflow.max_turns
+        
+        # NEW: Resume flag
+        self.resume_from_checkpoint = resume_from_checkpoint
 
         # V2 Components
         self.graph = TaskGraph()
@@ -115,7 +127,10 @@ class FASTOrchestratorV2:
         # V2: Cross-step context for inter-step memory
         from app.orchestration.context import CrossStepContext
         self.cross_ctx = CrossStepContext.get_or_create(project_id)
-        self.cross_ctx.reset()  # Fresh start for new workflow
+        
+        # Only reset context if NOT resuming (fresh start)
+        if not resume_from_checkpoint:
+            self.cross_ctx.reset()
         
         # Checkpointing
         checkpoint_dir = self.project_path / ".fast_checkpoints"
@@ -125,7 +140,11 @@ class FASTOrchestratorV2:
         # Use per-project budget tracking so frontend can display per-project costs
         self.budget = get_budget_manager(project_id)
 
-        # State tracking
+        # Phase 3: Isolation manager for step quarantine
+        from app.orchestration.isolation import IsolationManager
+        self.isolation_manager = IsolationManager(project_path)
+
+        # State tracking (will be populated from DB if resuming)
         self.completed_steps: List[str] = []
         self.failed_steps: List[str] = []
         self.step_results: Dict[str, dict] = {}
@@ -140,6 +159,36 @@ class FASTOrchestratorV2:
         
         Uses existing handlers but with V2's dependency barriers and safety features.
         """
+        # ════════════════════════════════════════════════════════════════
+        # OLLAMA MODE: Delegate entirely to optimized Ollama orchestrator
+        # ════════════════════════════════════════════════════════════════
+        if self.provider.lower() == "ollama":
+            log("FAST-V2", "🦙 Detected Ollama provider - delegating to OllamaOrchestrator")
+            try:
+                from ollama import OllamaOrchestrator
+                
+                ollama_engine = OllamaOrchestrator(
+                    project_id=self.project_id,
+                    manager=self.manager,
+                    project_path=self.project_path,
+                    user_request=self.user_request,
+                    model=self.model,
+                )
+                
+                result = await ollama_engine.run()
+                
+                if result.get("success"):
+                    log("FAST-V2", f"🦙 Ollama workflow complete: {len(result.get('files_written', []))} files")
+                else:
+                    log("FAST-V2", f"🦙 Ollama workflow failed: {result.get('error')}")
+                
+                return  # Exit - Ollama handles everything
+                
+            except ImportError as e:
+                log("FAST-V2", f"⚠️ Ollama module not found: {e}. Falling back to standard pipeline.")
+            except Exception as e:
+                log("FAST-V2", f"⚠️ Ollama orchestrator failed: {e}. Falling back to standard pipeline.")
+        
         # Import handlers here to avoid circular imports
         from app.handlers import (
             step_analysis,
@@ -207,9 +256,40 @@ class FASTOrchestratorV2:
             }
         )
 
+        # ════════════════════════════════════════════════════════════════
+        # RESUME FEATURE: Load previously completed steps from MongoDB
+        # ════════════════════════════════════════════════════════════════
+        if self.resume_from_checkpoint:
+            saved_steps = await WorkflowStateManager.get_completed_steps(self.project_id)
+            if saved_steps:
+                self.completed_steps = saved_steps
+                log("FAST-V2", f"🔄 RESUMING - Loaded {len(saved_steps)} completed steps: {saved_steps}")
+                
+                await broadcast_to_project(
+                    self.manager,
+                    self.project_id,
+                    {
+                        "type": "WORKFLOW_UPDATE",
+                        "projectId": self.project_id,
+                        "message": f"Resuming from checkpoint. Skipping {len(saved_steps)} completed steps...",
+                        "mode": "resume",
+                        "completed_steps": saved_steps,
+                    }
+                )
+            else:
+                log("FAST-V2", "🆕 No saved progress found, starting fresh")
+
         try:
             for step in self.graph.get_steps():
                 log("FAST-V2", f"═══ Step: {step} ═══")
+                
+                # ════════════════════════════════════════════════════════
+                # RESUME FEATURE: Skip already completed steps  
+                # ════════════════════════════════════════════════════════
+                if step in self.completed_steps:
+                    log("FAST-V2", f"⏭️ Skipping {step} (already completed)")
+                    self.step_results[step] = {"status": "skipped_resume", "reason": "already_completed"}
+                    continue
 
                 # ════════════════════════════════════════════════════════
                 # V2 FEATURE #1: DEPENDENCY BARRIER
@@ -283,19 +363,91 @@ class FASTOrchestratorV2:
                         except Exception as me:
                             log("METRICS", f"⚠️ Failed to start step metrics: {me}")
 
-                    result = await handler(
-                        project_id=self.project_id,
-                        user_request=self.user_request,
-                        manager=self.manager,
-                        project_path=self.project_path,
-                        chat_history=self.chat_history,
-                        provider=self.provider,
-                        model=self.model,
-                        current_turn=self.current_turn,
-                        max_turns=self.max_turns,
-                    )
+                    # ════════════════════════════════════════════════════════
+                    # Phase 6: RETRY POLICY for ENVIRONMENT_FAILURE
+                    # ════════════════════════════════════════════════════════
+                    from app.orchestration.retry_policy import RetryPolicy
+                    
+                    async def execute_handler():
+                        """Wrapper for handler execution."""
+                        return await handler(
+                            project_id=self.project_id,
+                            user_request=self.user_request,
+                            manager=self.manager,
+                            project_path=self.project_path,
+                            chat_history=self.chat_history,
+                            provider=self.provider,
+                            model=self.model,
+                            current_turn=self.current_turn,
+                            max_turns=self.max_turns,
+                        )
+                    
+                    # 🔒 POLICY: Only retry infra issues on Evidence steps (Non-Causal)
+                    # testing_backend, testing_frontend, preview_final
+                    allowed_retry_steps = ["testing_backend", "testing_frontend", "preview_final"]
+                    
+                    if step in allowed_retry_steps:
+                        log("FAST-V2", f"🛡️ Retry Policy enabled for evidence step: {step}")
+                        result = await RetryPolicy.retry_environment_failures(
+                            execute_handler,
+                            step_name=step,
+                            max_retries=2  # 1 immediate + 1 delayed
+                        )
+                    else:
+                        # Causal steps execute ONCE. No retries.
+                        result = await execute_handler()
 
                     duration = (datetime.now() - step_start).total_seconds()
+
+                    # ════════════════════════════════════════════════════════
+                    # Phase 3: ISOLATION CHECK
+                    # ════════════════════════════════════════════════════════
+                    # If handler returned StepExecutionResult with ENVIRONMENT_FAILURE
+                    from app.core.step_outcome import StepExecutionResult, StepOutcome
+                    
+                    if isinstance(result, StepExecutionResult) and result.outcome == StepOutcome.ENVIRONMENT_FAILURE:
+                        log("FAST-V2", f"🔒 ISOLATING {step}: {result.error_details or 'Environment constraint'}")
+                        
+                        # Quarantine step and artifacts
+                        self.isolation_manager.isolate_step(
+                            step_name=step,
+                            artifacts=result.artifacts or [],
+                            reason=result.error_details or "Environment failure"
+                        )
+                        
+                        # ════════════════════════════════════════════════════════
+                        # Phase 4: STATIC VALIDATION (evidence, not verdict)
+                        # ════════════════════════════════════════════════════════
+                        static_evidence = None
+                        try:
+                            from app.validation.static_validator import StaticValidator
+                            validator = StaticValidator(self.project_path)
+                            
+                            # Provide evidence based on step type
+                            if "backend" in step or "testing_backend" in step:
+                                static_evidence = validator.validate_backend_step(step)
+                            elif "frontend" in step or "testing_frontend" in step:
+                                static_evidence = validator.validate_frontend_step(step)
+                            else:
+                                # Generic validation
+                                static_evidence = validator.validate_backend_step(step)
+                            
+                            log("FAST-V2", f"📋 Static evidence collected: {static_evidence.file_count} files, "
+                                f"{len(static_evidence.syntax_errors)} syntax errors")
+                        except Exception as val_err:
+                            log("FAST-V2", f"⚠️ Static validation failed (non-fatal): {val_err}")
+                        
+                        # Record as isolated with evidence
+                        self.step_results[step] = {
+                            "status": "isolated",
+                            "outcome": result.outcome.value,
+                            "reason": result.error_details,
+                            "artifacts_quarantined": len(result.artifacts or []),
+                            "static_evidence": static_evidence.to_dict() if static_evidence else None
+                        }
+                        
+                        log("FAST-V2", f"⏭️ Workflow continues with {step} isolated as dead branch")
+                        continue  # Skip to next step
 
                     # ════════════════════════════════════════════════════════
                     # V2 FIX: CHECK STEP RESULT STATUS BEFORE VALIDATION
@@ -416,6 +568,19 @@ class FASTOrchestratorV2:
                     # V2 FEATURE #7: Record to cross-step context
                     await self._record_step_context(step, result)
                     
+                    # ════════════════════════════════════════════════════════
+                    # RESUME FEATURE: Persist completed step to MongoDB
+                    # ════════════════════════════════════════════════════════
+                    try:
+                        await WorkflowStateManager.save_completed_step(
+                            self.project_id, 
+                            step,
+                            context=self.step_results.get(step)
+                        )
+                        log("FAST-V2", f"💾 Saved progress to MongoDB: {step}")
+                    except Exception as save_err:
+                        log("FAST-V2", f"⚠️ Failed to save progress (non-fatal): {save_err}")
+                    
                     self.current_turn += 1
 
                 except RateLimitError as e:
@@ -464,6 +629,48 @@ class FASTOrchestratorV2:
             # ════════════════════════════════════════════════════════
             total_duration = (datetime.now() - start_time).total_seconds()
             success = len(self.failed_steps) == 0
+            
+            # ════════════════════════════════════════════════════════
+            # Phase 1: AGGREGATE WORKFLOW OUTCOME
+            # ════════════════════════════════════════════════════════
+            from app.core.step_outcome import StepExecutionResult, StepOutcome
+            from app.core.types import WorkflowStatus
+            
+            # Collect StepExecutionResult objects from step_results
+            step_execution_results = []
+            for step_name, step_data in self.step_results.items():
+                if isinstance(step_data, dict) and "outcome" in step_data:
+                    # This step has new-style outcome
+                    try:
+                        result = StepExecutionResult(
+                            outcome=StepOutcome(step_data["outcome"]),
+                            step_name=step_name,
+                            artifacts=step_data.get("artifacts_quarantined", []),
+                            isolated=step_data.get("status") == "isolated",
+                            error_details=step_data.get("reason", "")
+                        )
+                        step_execution_results.append(result)
+                    except (ValueError, KeyError):
+                        # Legacy step result, skip
+                        pass
+            
+            # Call aggregator to get final workflow status
+            workflow_status, degradation_report = aggregate_workflow_outcome(
+                step_execution_results,
+                evidence={}  # TODO: Could add static validation evidence here
+            )
+            
+            # Update success flag based on aggregator decision
+            if workflow_status == WorkflowStatus.FAILED:
+                success = False
+            elif workflow_status == WorkflowStatus.SUCCESS_WITH_DEGRADATION:
+                success = True  # Workflow completed, but with degradation
+                log("FAST-V2", "⚠️ Workflow completed with DEGRADATION")
+                if degradation_report:
+                    log("FAST-V2", format_degradation_summary(degradation_report))
+            elif workflow_status == WorkflowStatus.SUCCESS:
+                success = True
+            
             # For failures, report the FIRST failed step, not the last completed step
             if self.failed_steps:
                 final_step = self.failed_steps[0]  # The step that caused the failure
@@ -473,6 +680,21 @@ class FASTOrchestratorV2:
             log("FAST-V2", f"{'✅' if success else '⚠️'} FAST V2 completed in {total_duration:.1f}s")
             log("FAST-V2", f"   Completed: {len(self.completed_steps)}/{len(self.graph.get_steps())}")
             log("FAST-V2", f"   Failed: {self.failed_steps}")
+
+            # Identify Isolated and Skipped steps (Causality Gate)
+            all_steps = set(self.graph.get_steps())
+            completed_set = set(self.completed_steps)
+            failed_set = set(self.failed_steps)
+            
+            isolated_steps = {s for s, r in self.step_results.items() if r.get("status") == "isolated"}
+            
+            skipped_steps = all_steps - completed_set - failed_set - isolated_steps
+            
+            if isolated_steps:
+                log("FAST-V2", f"   Isolated: {list(isolated_steps)} (Dead Branches)")
+            
+            if skipped_steps:
+                log("FAST-V2", f"   Skipped: {list(skipped_steps)} (Causality Gate - Dependency Missing)")
             
             # 📊 METRICS: Complete pipeline run tracking
             if self.run_id:
@@ -534,6 +756,9 @@ class FASTOrchestratorV2:
         finally:
             # Cleanup manager registration to prevent memory leaks
             CURRENT_MANAGERS.pop(self.project_id, None)
+            # FIX: Reset is_running flag in MongoDB (was missing, causing stale locks!)
+            await WorkflowStateManager.stop_workflow(self.project_id)
+            log("FAST-V2", f"✅ Workflow cleanup complete for {self.project_id}")
 
     def _validate_critical_files(self, step: str) -> bool:
         """

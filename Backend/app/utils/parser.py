@@ -272,20 +272,77 @@ def _find_json_object(raw_text: str) -> str:
     return raw_text[first_brace : last_brace + 1]
 
 
+def normalize_unicode_aggressively(text: str, filepath: str = "") -> str:
+    """
+    Comprehensive Unicode normalization - strips ALL non-ASCII to prevent syntax errors.
+    
+    Strategy:
+    1. NFD decomposition (café → c + a + f + e + ´)
+    2. Keep only ASCII characters (0-127)
+    3. Preserves code structure while removing:
+       - U+0080-U+009F control characters
+       - Smart punctuation (en-dash, em-dash, curly quotes)
+       - Zero-width characters
+       - Combining marks
+       - Any other non-ASCII junk
+    
+    This is FUTURE-PROOF - works for ANY Unicode issue Derek generates.
+    
+    Applied only to code artifacts (.py, .js, .ts, etc.), not documentation.
+    
+    Args:
+        text: Content to normalize
+        filepath: File path to determine if normalization should apply
+    
+    Returns:
+        ASCII-only text safe for code parsing
+    """
+    import unicodedata
+    
+    if not text or not isinstance(text, str):
+        return text
+    
+    # Only apply to code files
+    code_extensions = ('.py', '.js', '.jsx', '.ts', '.tsx', '.json')
+    is_code_file = filepath.lower().endswith(code_extensions) if filepath else True
+    
+    if not is_code_file:
+        return text  # Don't strip Unicode from markdown, etc.
+    
+    # NFD = Canonical Decomposition (splits combined characters)
+    # Example: ñ (U+00F1) → n (U+006E) + ˜ (U+0303)
+    normalized = unicodedata.normalize('NFD', text)
+    
+    # Keep only ASCII characters (0-127)
+    # This removes:
+    # - Control characters (U+0080-U+009F): causes "invalid non-printable character"
+    # - Smart punctuation (U+2013, U+2014, U+2018-U+201D): causes syntax errors
+    # - Zero-width chars (U+200B-U+200D): invisible but breaks parsing
+    # - Combining marks (U+0300-U+036F): leftover from NFD
+    ascii_only = ''.join(
+        char for char in normalized
+        if ord(char) < 128
+    )
+    
+    return ascii_only
+
+
 def sanitize_marcus_output(raw: str) -> str:
     """
     Cleans and normalizes messy model output before JSON parsing.
-    Handles markdown fences, trailing chatter, and malformed endings.
+    Handles markdown fences, trailing chatter, malformed endings, and Unicode issues.
     """
     if not raw or not isinstance(raw, str):
         return raw
 
-    cleaned = raw.strip()
+    # 0️⃣ Normalize Unicode characters FIRST (before any other processing)
+    # This strips ALL non-ASCII to prevent syntax errors from control chars, smart quotes, etc.
+    cleaned = normalize_unicode_aggressively(raw.strip(), filepath="output.json")
 
     # 1️⃣ Remove code fences and chatter
     cleaned = re.sub(r"^```(?:json|javascript|typescript)?\s*", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"```\s*$", "", cleaned, flags=re.MULTILINE)
-    cleaned = re.sub(r"^(?:Here is|Here’s|This is|Output:|Result:).*?(?=\{)", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"^(?:Here is|Here's|This is|Output:|Result:).*?(?=\{)", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
     cleaned = re.sub(r"}(\s*(?:This|Note:|Explanation:|I've|The above).*)$", "}", cleaned, flags=re.IGNORECASE | re.DOTALL)
 
     # 2️⃣ Extract main JSON object

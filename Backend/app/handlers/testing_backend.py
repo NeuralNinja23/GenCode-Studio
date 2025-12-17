@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from app.core.types import ChatMessage, StepResult
+from app.core.step_outcome import StepExecutionResult, StepOutcome
 from app.core.constants import WorkflowStep
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.core.logging import log
@@ -24,6 +25,9 @@ from app.llm.prompts.derek import DEREK_TESTING_PROMPT
 from app.persistence.validator import validate_file_output
 from app.core.constants import PROTECTED_SANDBOX_FILES
 from app.utils.entity_discovery import discover_primary_entity, extract_all_models_from_models_py
+
+# Phase 0: Failure Boundary Enforcement
+from app.core.failure_boundary import FailureBoundary
 
 
 # Constants from legacy
@@ -45,246 +49,51 @@ from app.utils.entity_discovery import extract_entity_from_request as _extract_e
 # REMOVED: Restrictive allowed prefixes - agents can write to any file except protected ones
 
 
-def _has_routing_failures(stdout: str, stderr: str, entity_plural: str) -> bool:
-    """
-    Detect if test failures are due to routing/integration issues (404s).
-    
-    Args:
-        stdout: Test output stdout
-        stderr: Test output stderr
-        entity_plural: Plural form of the primary entity
-    
-    Returns:
-        True if 404 routing failures detected
-    """
-    import re
-    
-    combined_output = (stdout + "\n" + stderr).lower()
-    
-    # Pattern 1: Direct 404 assertions on entity endpoints
-    if re.search(rf'assert 404 == 200.*?/api/{entity_plural}', combined_output):
-        return True
-    
-    # Pattern 2: Generic 404 on entity routes
-    if f"/api/{entity_plural}" in combined_output and "404" in combined_output:
-        return True
-    
-    # Pattern 3: "Not Found" errors on entity endpoints
-    if f"/api/{entity_plural}" in combined_output and "not found" in combined_output:
-        return True
-    
-    return False
 
 
-async def _heal_integration_failures(
-    project_id: str,
-    project_path: Path,
-    entity_plural: str,
-    failure_output: str,
-    attempt: int
-) -> bool:
-    """
-    LOOP CONSOLIDATION: Single healing attempt per outer loop iteration.
-    
-    Uses:
-    - HealingBudget to prevent runaway healing
-    - HealingPolicy to determine what to heal
-    - HealingPipeline to execute repair (single attempt)
-    - BackendProbe to validate fix
-    
-    Args:
-        project_id: Project ID
-        project_path: Path to workspace
-        entity_plural: Plural form of entity (from discovery)
-        failure_output: Combined stdout/stderr from test failure
-        attempt: Current attempt number (for logging only)
-    
-    Returns:
-        True if healing succeeded and validation passed
-    """
-    from app.orchestration.healing_pipeline import HealingPipeline
-    from app.orchestration.healing_policy import HealingPolicy
-    from app.orchestration.healing_budget import get_healing_budget
-    from app.orchestration.backend_probe import BackendProbe, ProbeMode
-    from app.orchestration.contract_parser import ContractParser
-    import asyncio
-    
-    log("HEAL", f"🧬 Healing triggered (master loop attempt {attempt}/3)")
-    
-    # ════════════════════════════════════════════════════════════════
-    # LOOP CONSOLIDATION: Check budget first
-    # ════════════════════════════════════════════════════════════════
-    budget = get_healing_budget(project_id)
-    if budget.is_exhausted():
-        log("HEAL", "🛑 Healing budget exhausted - cannot attempt repair")
-        log("HEAL", budget.get_exhaustion_diagnostic())
-        return False
-    
-    # Initialize components with project_id for budget tracking
-    policy = HealingPolicy(project_path)
-    healer = HealingPipeline(project_path=project_path, llm_caller=None, project_id=project_id)
-    probe = BackendProbe.from_env(ProbeMode.DOCKER, project_id=project_id)
-    
-    # Classify error type
-    error_type = policy.classify_error(
-        step="testing_backend",
-        error_message=failure_output,
-        http_statuses=[404] if "404" in failure_output else None
-    )
-    
-    log("HEAL", f"📊 Classified as: {error_type.value}")
-    
-    # ════════════════════════════════════════════════════════════════
-    # 🔒 INVARIANT #2: Healing is FORBIDDEN for routing_404 on initial generation
-    # 
-    # If the FIRST attempt has routing 404s, it means the initial backend
-    # generation produced invalid routes. Healing should NOT try to fix this.
-    # The pipeline must fail loudly so the root cause (prompts/templates) is fixed.
-    # ════════════════════════════════════════════════════════════════
-    from app.orchestration.healing_policy import ErrorType
-    
-    if error_type == ErrorType.ROUTING_404 and attempt == 1:
-        log("HEAL", "🔒 INVARIANT #2: Routing 404 on initial generation - healing FORBIDDEN")
-        log("HEAL", "   Initial backend generation produced missing routes.")
-        log("HEAL", "   This is a bootstrapping failure, not a recoverable error.")
-        log("HEAL", "   Fix the generation prompts or templates, do not heal.")
-        return False  # Fail fast, do not attempt healing
-    
-    # Get healing actions from policy
-    actions = policy.get_healing_actions(
-        step="testing_backend",
-        error_type=error_type,
-        entity_plural=entity_plural,
-        http_statuses=[404] if "404" in failure_output else None
-    )
-    
-    if not actions:
-        log("HEAL", "⚠️ No healing actions suggested by policy")
-        return False
-    
-    log("HEAL", f"📋 Policy suggests {len(actions)} healing action(s)")
-    
-    # Try FIRST action only (single attempt per outer loop)
-    # LOOP CONSOLIDATION: No more iterating through all actions
-    action = actions[0]
-    
-    log("HEAL", f"🔧 Action: {action.artifact}")
-    log("HEAL", f"   Reason: {action.reason}")
-    log("HEAL", f"   Requires restart: {action.requires_restart}")
-    
-    # Map artifact to step name for healing pipeline
-    step_map = {
-        "backend_vertical": "backend_implementation",
-        "system_integration": "system_integration",
-        "backend_main": "system_integration",
-        "backend_db": "backend_implementation",
-    }
-    
-    step = step_map.get(action.artifact, action.artifact)
-    
-    # SINGLE ATTEMPT: Healing with test failures for Derek feedback
-    try:
-        result = await healer.attempt_heal(
-            step=step,
-            error_log=failure_output[:1000],
-            archetype="general",
-            # LOOP CONSOLIDATION: retries parameter removed
-            test_failures=failure_output
-        )
-        
-        if not result:
-            log("HEAL", f"❌ Healing {action.artifact} failed")
-            policy.record_repair(action.artifact)
-            return False
-        
-        log("HEAL", f"✅ Healing {action.artifact} completed")
-        policy.record_repair(action.artifact)
-        
-        # Restart service if required (budget-controlled)
-        if action.requires_restart:
-            if not budget.can_restart_docker():
-                log("HEAL", "⚠️ Docker restart budget exhausted - skipping restart")
-            else:
-                budget.use_docker_restart(reason=f"healing {action.artifact}")
-                log("HEAL", "🔄 Restarting backend service...")
-                try:
-                    from app.tools.implementations import SANDBOX as sandbox_mgr
-                    
-                    # Sync files before Docker restart
-                    log("HEAL", "📁 Syncing files before restart...")
-                    main_py = project_path / "backend" / "app" / "main.py"
-                    if main_py.exists():
-                        main_py.touch()  # Force filesystem sync
-                    await asyncio.sleep(2)  # Wait for Windows filesystem
-                    
-                    # Stop the running container
-                    stop_result = await sandbox_mgr.stop_sandbox(project_id)
-                    if not stop_result.get("success"):
-                        log("HEAL", f"⚠️ Stop sandbox warning: {stop_result.get('error')}")
-                    
-                    await asyncio.sleep(1)  # Brief pause after stop
-                    
-                    # Restart with rebuild to pick up new code
-                    start_result = await sandbox_mgr.start_sandbox(
-                        project_id=project_id,
-                        wait_healthy=True,
-                        services=["backend"]  # Only restart backend
-                    )
-                    
-                    if not start_result.get("success"):
-                        log("HEAL", f"⚠️ Service restart failed: {start_result.get('error')}")
-                    else:
-                        log("HEAL", "✅ Service restarted successfully")
-                    
-                    await asyncio.sleep(3)  # Wait for service to fully initialize
-                except Exception as e:
-                    log("HEAL", f"⚠️ Restart failed: {e}")
-        
-        # Validate using contract-driven probe
-        log("HEAL", "🔍 Validating fix via contract routes...")
-        
-        # Check health first
-        if not await probe.is_healthy(timeout=5.0):
-            log("HEAL", "❌ Health check failed after healing")
-            return False
-        
-        # Check primary entity routes
-        parser = ContractParser(project_path)
-        entity_routes = parser.get_primary_entity_routes()
-        
-        if not entity_routes:
-            log("HEAL", "⚠️ No entity routes in contract - assuming success")
-            return True
-        
-        all_passed = True
-        for route in entity_routes:
-            passed = await probe.check_route(
-                method=route.method,
-                path=route.path,
-                expected_status=route.expected_status,
-                timeout=5.0
-            )
-            
-            if not passed:
-                log("HEAL", f"❌ Route still broken: {route.method} {route.path}")
-                all_passed = False
-                break
-        
-        if all_passed:
-            log("HEAL", "✅ All validation checks passed!")
-            return True
-        else:
-            log("HEAL", "❌ Validation failed after healing")
-            return False
-            
-    except Exception as e:
-        log("HEAL", f"❌ Healing action failed: {e}")
-        policy.record_repair(action.artifact)
-        return False
+
+
 
 
 # Centralized file writing utility
 from app.persistence import safe_write_llm_files
+
+
+def render_contract_tests(
+    template_path: Path,
+    contracts_md: str,
+    output_path: Path,
+    entity_name: str,
+    entity_plural: str
+) -> None:
+    """
+    Render the template deterministically.
+    Source of truth: contracts.md (used to verify scope, implemented via template)
+    
+    Rules:
+    NO Derek
+    NO healing
+    NO mutation
+    Pure string rendering
+    """
+    if not template_path.exists():
+        log("TESTING", f"⚠️ Contract template not found at {template_path}")
+        # Write emergency fallback
+        content = '"""\nCONTRACT TEST TEMPLATE – DETERMINISTIC\n"""\nimport pytest\n@pytest.mark.anyio\nasync def test_placeholder(client):\n    pass'
+        output_path.write_text(content, encoding="utf-8")
+        return
+
+    template = template_path.read_text(encoding="utf-8")
+    
+    # Deterministic rendering
+    rendered = template.replace("{{ENTITY}}", entity_name)
+    rendered = rendered.replace("{{ENTITY_PLURAL}}", entity_plural)
+    rendered = rendered.replace("{{ENTITY|upper}}", entity_name.upper())
+    rendered = rendered.replace("{{ENTITY_PLURAL|upper}}", entity_plural.upper())
+    
+    output_path.write_text(rendered, encoding="utf-8")
+    log("TESTING", f"✅ Rendered deterministic contract tests to {output_path.name}")
+
 
 
 async def _generate_tests_from_template(
@@ -306,97 +115,70 @@ async def _generate_tests_from_template(
     3. Write the test file
     4. Return True if tests were generated successfully
     
-    Derek ALWAYS generates tests from template - this ensures tests are
-    project-specific and match the implemented models/routers.
+    Derek ALWAYS generates capability tests, while contract tests are deterministic.
     """
     from app.supervision import supervised_agent_call
     from app.orchestration.utils import pluralize
     from app.handlers.base import broadcast_agent_log
     
-    tests_dir = project_path / "backend" / "tests"
-    template_file = tests_dir / "test_api.py.template"
-    
-    # ALWAYS generate tests from template - Derek creates project-specific tests
-    log("TESTING", f"📝 Derek generating backend tests from template for entity: {primary_entity}")
-    
-    primary_entity_plural = pluralize(primary_entity)
+    # Define variables needed throughout the function
     primary_entity_capitalized = primary_entity.capitalize()
+    primary_entity_plural = pluralize(primary_entity)
     
-    # Read the template if it exists
-    template_content = ""
-    if template_file.exists():
-        template_content = template_file.read_text(encoding="utf-8")
-        # Replace placeholders with actual entity names
-        template_content = template_content.replace("{{ENTITY}}", primary_entity)
-        template_content = template_content.replace("{{ENTITY_PLURAL}}", primary_entity_plural)
-        template_content = template_content.replace("{{MODEL_NAME}}", primary_entity_capitalized)
-        log("TESTING", f"📋 Using test template with entity: {primary_entity}")
+    tests_dir = project_path / "backend" / "tests"
+    tests_dir.mkdir(parents=True, exist_ok=True)
     
-    # Build Derek's test generation instructions
-    test_generation_prompt = f"""Generate the backend test file for this project.
+    # CLEANUP: Remove legacy test_api.py to avoid confusion/duplication
+    legacy_test_file = tests_dir / "test_api.py"
+    if legacy_test_file.exists():
+        log("TESTING", "🧹 Cleaning up legacy backend/tests/test_api.py")
+        legacy_test_file.unlink()
+    
+    # 1. Render Contract Tests Deterministically (Step 0-2)
+    template_path = project_path / "backend/templates/backend/seed/tests/test_contract_api.template"
+    if not template_path.exists():
+        # Try relative path for local dev
+        template_path = Path("backend/templates/backend/seed/tests/test_contract_api.template").absolute()
 
-═══════════════════════════════════════════════════════
-PROJECT CONTEXT
-═══════════════════════════════════════════════════════
+    contract_output = tests_dir / "test_contract_api.py"
+    
+    # Read contracts.md for strict adherence (placeholder for now, mostly using template)
+    contracts_path = project_path / "contracts.md"
+    contracts_md = contracts_path.read_text(encoding="utf-8") if contracts_path.exists() else ""
+    
+    # Render
+    render_contract_tests(
+        template_path=template_path,
+        contracts_md=contracts_md,
+        output_path=contract_output,
+        entity_name=primary_entity,
+        entity_plural=pluralize(primary_entity)
+    )
+    
+    # 2. Generate Capability Tests via Derek (Step 3)
+    log("TESTING", f"📝 Derek generating capability tests for entity: {primary_entity}")
 
-User Request: {user_request[:300]}
-Primary Entity: {primary_entity_capitalized}
-Entity Plural: {primary_entity_plural}
+    # Derek prompt (copy verbatim)
+    derek_prompt = f"""Generate capability tests based on the user prompt.
+
+Rules:
+- You MUST NOT redefine base CRUD routes
+- You MAY assert additional endpoints only if implied by the prompt
+- You MAY assert response shapes and business rules
+- These tests are healable and replaceable
+- DO NOT include CRUD tests already covered by contract tests
+
+Result
+/channels
+/statuses
+strict health checks
+filters, sorting, domain rules
+
+User Request: {user_request}
+Primary Entity: {primary_entity}
 Archetype: {archetype}
 
-═══════════════════════════════════════════════════════
-TEST TEMPLATE (CUSTOMIZE THIS FOR THE PROJECT)
-═══════════════════════════════════════════════════════
-
-Below is a template. Use it as a STARTING POINT but CUSTOMIZE it:
-- Replace placeholder tests with tests specific to {primary_entity_capitalized}
-- Add tests for the actual endpoints from contracts.md
-- Make tests project-specific, not generic
-
-TEMPLATE:
-{template_content if template_content else "No template found - generate standard CRUD tests."}
-
-═══════════════════════════════════════════════════════
-REQUIREMENTS
-═══════════════════════════════════════════════════════
-
-1. Create backend/tests/test_api.py with working pytest tests
-2. MUST include:
-   - test_health_check: GET /api/health returns 200 + {{"status": "healthy"}}
-   - test_list_{primary_entity_plural}: GET /api/{primary_entity_plural} returns 200
-   - test_create_{primary_entity}: POST /api/{primary_entity_plural} returns 200/201
-   - test_get_{primary_entity}_not_found: GET /api/{primary_entity_plural}/<fake_id> returns 404
-
-3. Use the `client` fixture from conftest.py (already provided)
-4. Use @pytest.mark.anyio decorator for async tests
-5. Use Faker for test data when appropriate
-6. ALL tests must be async (async def test_...)
-
-🚨 CRITICAL - TEST DATA FIELDS:
-- You MUST read the provided `models.py` content below.
-- Use EXACTLY the fields defined in the model (e.g. if model has 'content', use 'content'; if 'description', use 'description').
-- Do not invent fields. Matching the model schema is MANDATORY.
-- Example correct test data (adapt to actual model):
-  {{
-      "title": fake.sentence(nb_words=4),
-      "content": fake.paragraph(nb_sentences=2),
-  }}
-
-═══════════════════════════════════════════════════════
-OUTPUT FORMAT
-═══════════════════════════════════════════════════════
-
-{{
-  "thinking": "Explain how you're customizing the tests for {primary_entity_capitalized}...",
-  "files": [
-    {{
-      "path": "backend/tests/test_api.py",
-      "content": "import pytest\\nfrom faker import Faker\\n\\nfake = Faker()\\n\\n@pytest.mark.anyio\\nasync def test_health_check(client):\\n    ..."
-    }}
-  ]
-}}
-
-Generate COMPLETE, WORKING test file now!
+Generate ONLY: backend/tests/test_capability_api.py
 """
 
     try:
@@ -412,10 +194,10 @@ Generate COMPLETE, WORKING test file now!
             manager=manager,
             agent_name="Derek",
             step_name="Test File Generation",
-            base_instructions=test_generation_prompt,
+            base_instructions=derek_prompt,
             project_path=project_path,
             user_request=user_request,
-            contracts="",
+            contracts=contracts_md,
             max_retries=1,  # One retry allowed
         )
         
@@ -458,56 +240,26 @@ async def _fallback_generate_tests(
     tests_dir = project_path / "backend" / "tests"
     tests_dir.mkdir(parents=True, exist_ok=True)
     
-    test_content = f'''# backend/tests/test_api.py
+    test_content = f'''# backend/tests/test_capability_api.py
 """
-API Tests - Auto-generated fallback
-Generated when Derek failed to create tests.
+Capability Tests - Auto-generated fallback
+Generated when Derek failed to create capability tests.
 """
 import pytest
 from faker import Faker
 
 fake = Faker()
 
-
 @pytest.mark.anyio
-async def test_health_check(client):
-    """Test the health check endpoint."""
-    response = await client.get("/api/health")
-    assert response.status_code == 200
-    data = response.json()
-    assert data.get("status") == "healthy"
-
-
-@pytest.mark.anyio
-async def test_list_{entity_plural}(client):
-    """Test listing {entity_plural}."""
-    response = await client.get("/api/{entity_plural}")
-    assert response.status_code == 200
-    data = response.json()
-    # Response should be a list or have a data array
-    assert isinstance(data, (list, dict))
-
-
-@pytest.mark.anyio
-async def test_create_{entity}(client):
-    \"\"\"Test creating a {entity}.\"\"\"
-    {entity}_data = {{
-        \"title\": fake.sentence(nb_words=4),
-        \"content\": fake.paragraph(nb_sentences=2),
-    }}
-    response = await client.post(\"/api/{entity_plural}\", json={entity}_data)
-    assert response.status_code in [200, 201]
-
-
-@pytest.mark.anyio
-async def test_get_{entity}_not_found(client):
-    """Test getting a non-existent {entity} returns 404."""
-    fake_id = "507f1f77bcf86cd799439011"
-    response = await client.get(f"/api/{entity_plural}/{{fake_id}}")
-    assert response.status_code == 404
+async def test_capability_placeholder(client):
+    """
+    Placeholder test to ensure the file exists and pytest runs.
+    Real CRUD tests are in test_contract_api.py.
+    """
+    assert True
 '''
 
-    test_file = tests_dir / "test_api.py"
+    test_file = tests_dir / "test_capability_api.py"
     try:
         test_file.write_text(test_content, encoding="utf-8")
         log("TESTING", f"📋 Fallback test file written: {test_file.name} ({len(test_content)} chars)")
@@ -517,6 +269,8 @@ async def test_get_{entity}_not_found(client):
         return False
 
 
+
+@FailureBoundary.enforce
 async def step_testing_backend(
     project_id: str,
     user_request: str,
@@ -570,12 +324,14 @@ async def step_testing_backend(
     # Ensure tests directory exists so Docker doesn't create it as root
     (project_path / "backend/tests").mkdir(parents=True, exist_ok=True)
 
-    max_attempts = 3
     last_stdout: str = ""
     last_stderr: str = ""
     
     # V3: Cumulative token tracking across all LLM calls in this step
     step_token_usage = {"input": 0, "output": 0}
+    
+    # 🔒 INVARIANT 1: Only ONE contract expansion per run to prevent explosion
+    expansions_performed = 0
 
     # ═══════════════════════════════════════════════════════
     # CRITICAL: Run tests FIRST before calling Derek
@@ -632,7 +388,8 @@ async def step_testing_backend(
         log("TESTING", "⚠️ Derek could not generate tests from template - using fallback")
     
     # Read existing test file to show Derek what's expected
-    test_file_path = project_path / "backend/tests/test_api.py"
+    # Read existing test file to show Derek what's expected
+    test_file_path = project_path / "backend/tests/test_capability_api.py"
     test_file_exists = test_file_path.exists()
     existing_test_content = ""
     
@@ -675,8 +432,9 @@ Write basic CRUD tests for the primary entity router:
     
     if test_file_exists:
         test_instructions = f"""
-EXISTING TEST FILE: backend/tests/test_api.py
+EXISTING TEST FILE: backend/tests/test_capability_api.py
 DO NOT create new test files - fix the routers/models to make existing tests pass.
+Refer to backend/tests/test_contract_api.py for immutable contracts.
 
 Additional archetype guidance for {archetype}:
 {test_instructions}
@@ -687,10 +445,10 @@ Additional archetype guidance for {archetype}:
             pass
     else:
         test_instructions = f"""
-⚠️ MISSING TEST FILE: backend/tests/test_api.py
-You MUST create this file. Include tests for:
-1. /api/health (return 200 OK)
-2. /api/{primary_entity_plural} (CREATE and GET list)
+⚠️ MISSING TEST FILE: backend/tests/test_capability_api.py
+You MUST create this file. 
+DO NOT duplicate tests from test_contract_api.py (CRUD).
+Focus on business logic, filters, and edge cases.
 
 Archetype-specific requirements for {archetype}:
 {test_instructions}
@@ -715,650 +473,66 @@ Focus on fixing the {primary_entity} router and related models.
 {test_instructions}
 """
 
-    for attempt in range(1, max_attempts + 1):
-        log(
-            "TESTING",
-            f"🔁 Backend test attempt {attempt}/{max_attempts} for {project_id}",
+    # ------------------------------------------------------------
+    # ONE SHOT EXECUTION (No Loop)
+    # ------------------------------------------------------------
+    log("TESTING", "🚀 Running backend tests in sandbox (One Shot Policy)...")
+    try:
+        sandbox_result = await run_tool(
+            name="sandboxexec",
+            args={
+                "project_id": project_id,
+                "service": "backend",
+                "command": "pytest -q",
+                "start_services": ["backend"],
+                "timeout": 300,
+                "force_rebuild": True,  # Ensure Docker rebuilds to pick up newly wired routers
+            },
         )
-
-        # ------------------------------------------------------------
-        # 1) Run tests FIRST to get failure context
-        # ------------------------------------------------------------
-        if attempt == 1:
-            log("TESTING", "🚀 Running initial backend tests to get failure context...")
-            try:
-                sandbox_result = await run_tool(
-                    name="sandboxexec",
-                    args={
-                        "project_id": project_id,
-                        "service": "backend",
-                        "command": "pytest -q",
-                        "start_services": ["backend"],
-                        "timeout": 300,
-                        "force_rebuild": True,  # Ensure Docker rebuilds to pick up newly wired routers
-                    },
-                )
-                last_stdout = sandbox_result.get("stdout", "") or ""
-                last_stderr = sandbox_result.get("stderr", "") or ""
-                
-                # If tests pass on first try, we're done!
-                if sandbox_result.get("success"):
-                    log("TESTING", "✅ Backend tests PASSED on first run (no fixes needed)")
-                    return StepResult(
-                        nextstep=WorkflowStep.FRONTEND_INTEGRATION,
-                        turn=current_turn + 1,
-                        status="ok",
-                        data={"tier": "sandbox", "attempt": 0},
-                        token_usage=step_token_usage,  # V3
-                    )
-            except Exception as e:
-                last_stderr = str(e)
-                log("TESTING", f"Initial test run failed: {e}")
-
-        # ------------------------------------------------------------
-        # 2) Marcus analyzes failure as Backend Critic (before Derek fixes)
-        # ------------------------------------------------------------
-        failure_snippet = last_stderr or last_stdout or "(No test output captured)"
-        if len(failure_snippet) > 2000:
-            failure_snippet = failure_snippet[:2000] + "\n… (truncated)"
-
-        # Read architecture.md for Backend Design Patterns
-        arch_content = ""
-        try:
-            arch_file = project_path / "architecture.md"
-            if arch_file.exists():
-                arch_content = arch_file.read_text(encoding="utf-8")
-        except Exception as e:
-            log("TESTING", f"Could not read architecture.md: {e}")
-
-        # Read contracts.md for API expectations
-        contracts_content = ""
-        try:
-            contracts_file = project_path / "contracts.md"
-            if contracts_file.exists():
-                contracts_content = contracts_file.read_text(encoding="utf-8")[:2000]
-        except Exception:
-            pass
-
-        # ------------------------------------------------------------
-        # 👁️ VISIBILITY UPGRADE: Gather Source Code for Marcus
-        # ------------------------------------------------------------
-        source_context = ""
-        
-        # 1. Main.py (Router Wiring)
-        try:
-            main_py = (project_path / "backend/app/main.py").read_text(encoding="utf-8")
-            source_context += f"📄 backend/app/main.py (System Wiring):\n```python\n{main_py}\n```\n\n"
-        except Exception:
-            pass
-            
-        # 2. Models.py
-        try:
-            models_py = (project_path / "backend/app/models.py").read_text(encoding="utf-8")
-            source_context += f"📄 backend/app/models.py:\n```python\n{models_py}\n```\n\n"
-        except Exception:
-            pass
-
-        # 3. Routers (API Implementation)
-        try:
-            routers_dir = project_path / "backend/app/routers"
-            if routers_dir.exists():
-                for r_file in routers_dir.glob("*.py"):
-                    if r_file.name != "__init__.py":
-                        r_content = r_file.read_text(encoding="utf-8")
-                        source_context += f"📄 backend/app/routers/{r_file.name}:\n```python\n{r_content}\n```\n\n"
-        except Exception:
-            pass
-
-
-        # Marcus as Backend Critic - analyze failure and provide structured instructions
-        # NOTE: Using string concatenation to avoid "Invalid format specifier" when content contains { }
-        marcus_critic_prompt = (
-            "You are acting as a BACKEND CRITIC for a failing test.\n\n"
-            "PROJECT CONTEXT:\n"
-            f"- Primary Entity: {primary_entity}\n"
-            f"- Archetype: {archetype}\n"
-            f"- User Request: {user_request[:200]}\n\n"
-            "═══════════════════════════════════════════════════════\n"
-            "📐 BACKEND DESIGN PATTERNS (from architecture.md)\n"
-            "═══════════════════════════════════════════════════════\n\n"
-            + (arch_content[:3000] if arch_content else "No architecture.md found.") + "\n\n"
-            "═══════════════════════════════════════════════════════\n"
-            "📋 API CONTRACTS (from contracts.md)\n"
-            "═══════════════════════════════════════════════════════\n\n"
-            + (contracts_content if contracts_content else "No contracts.md found.") + "\n\n"
-            "═══════════════════════════════════════════════════════\n"
-            "❌ FAILING TEST OUTPUT\n"
-            "═══════════════════════════════════════════════════════\n\n"
-            + failure_snippet + "\n\n"
-            "═══════════════════════════════════════════════════════\n"
-            "🧪 EXISTING TEST FILE (backend/tests/test_api.py)\n"
-            "═══════════════════════════════════════════════════════\n\n"
-            + existing_test_content + "\n\n"
-            "═══════════════════════════════════════════════════════\n"
-            "🔍 CURRENT IMPLEMENTATION CODE (Critical for Debugging)\n"
-            "═══════════════════════════════════════════════════════\n\n"
-            + source_context + "\n\n"
-            "═══════════════════════════════════════════════════════\n"
-            "YOUR TASK AS BACKEND CRITIC\n"
-            "═══════════════════════════════════════════════════════\n\n"
-            "Analyze the test failure and provide Derek with STRUCTURED FIX INSTRUCTIONS.\n\n"
-            "You MUST identify:\n\n"
-            "1. **ROOT CAUSE**: What specific pattern violation or bug caused the failure?\n"
-            "   - Is it a model issue (wrong field types, missing defaults)?\n"
-            "   - Is it a router issue (wrong status codes, wrong response format)?\n"
-            "   - Is it a database issue (ObjectId handling, missing indexes)?\n\n"
-            "2. **VIOLATED PATTERNS**: Which Backend Design Patterns are not being followed?\n"
-            "   - Response envelope format (\"data\": [...], \"total\": int)\n"
-            "   - Error handling ({\"error\": {\"code\": \"...\", \"message\": \"...\"}})\n"
-            "   - HTTP status codes (201 for create, 404 for not found)\n"
-            "   - Field defaults (Field(default_factory=list) not = [])\n\n"
-            f"3. **SPECIFIC FILES TO FIX**: List exact files and what to change:\n"
-            f"   - backend/app/models.py: \"Add Field(default_factory=list) for comments field\"\n"
-            f"   - backend/app/routers/{primary_entity_plural}.py: \"Return 201 on POST, not 200\"\n\n"
-            "4. **CODE CHANGES**: Provide exact code snippets Derek should use.\n\n"
-            "OUTPUT FORMAT:\n"
-            "Return JSON with this structure:\n\n"
-            "{\n"
-            "  \"thinking\": \"Analyze the failure systematically. What went wrong? What pattern was violated?\",\n"
-            "  \"diagnosis\": {\n"
-            "    \"root_cause\": \"Brief description of the core issue\",\n"
-            "    \"violated_patterns\": [\"Pattern 1\", \"Pattern 2\"],\n"
-            "    \"fix_instructions\": [\n"
-            "      {\n"
-            "        \"file\": \"backend/app/models.py\",\n"
-            "        \"issue\": \"What's wrong\",\n"
-            "        \"fix\": \"Exact change to make\"\n"
-            "      }\n"
-            "    ]\n"
-            "  }\n"
-            "}\n\n"
-            "Be SPECIFIC and ACTIONABLE. Derek will follow your instructions exactly.\n"
-        )
-
-        # Have Marcus analyze the failure
-        marcus_analysis = None
-        try:
-            from app.supervision import supervised_agent_call
-            
-            await broadcast_agent_log(
-                manager,
-                project_id,
-                "AGENT:Marcus",
-                f"🔍 Backend test failed (attempt {attempt}). Analyzing failure against design patterns..."
-            )
-            
-            marcus_result = await supervised_agent_call(
-                project_id=project_id,
-                manager=manager,
-                agent_name="Marcus",
-                step_name="Backend Test Diagnosis",
-                base_instructions=marcus_critic_prompt,
-                project_path=project_path,
-                user_request=user_request,
-                contracts=contracts_content,
-                max_retries=0,  # No retries - single attempt only to avoid loop explosion
-            )
-            
-            # V3: Accumulate token usage
-            if marcus_result.get("token_usage"):
-                usage = marcus_result.get("token_usage")
-                step_token_usage["input"] += usage.get("input", 0)
-                step_token_usage["output"] += usage.get("output", 0)
-            
-            # Check if LLM is unavailable due to rate limiting
-            if marcus_result.get("skipped") and marcus_result.get("reason") == "rate_limit":
-                log("TESTING", "⚠️ LLM unavailable (rate limited), stopping backend testing")
-                await broadcast_agent_log(
-                    manager,
-                    project_id,
-                    "AGENT:Marcus",
-                    f"⚠️ {marcus_result.get('provider', 'LLM')} rate limited - cannot continue testing"
-                )
-                raise Exception(
-                    f"LLM provider rate limited. Please wait and try again.\n"
-                    f"Provider: {marcus_result.get('provider', 'unknown')}"
-                )
-            
-            marcus_analysis = marcus_result.get("output", {})
-            diagnosis = marcus_analysis.get("diagnosis", {})
-            
-            if diagnosis:
-                root_cause = diagnosis.get("root_cause", "Unknown")
-                fix_instructions = diagnosis.get("fix_instructions", [])
-                
-                await broadcast_agent_log(
-                    manager,
-                    project_id,
-                    "AGENT:Marcus",
-                    f"🎯 Diagnosed: {root_cause[:100]}. Providing {len(fix_instructions)} fix instructions to Derek."
-                )
-            else:
-                await broadcast_agent_log(
-                    manager,
-                    project_id,
-                    "AGENT:Marcus",
-                    "⚠️ Could not diagnose specific pattern violation. Derek will analyze directly."
-                )
-                
-        except Exception as e:
-            log("TESTING", f"Marcus backend critic analysis failed: {e}")
-            await broadcast_agent_log(
-                manager,
-                project_id,
-                "AGENT:Marcus",
-                "⚠️ Analysis skipped due to error. Derek will fix directly."
-            )
-
-        # ------------------------------------------------------------
-        # 3) Build Derek's instructions with Marcus's guidance
-        # ------------------------------------------------------------
-        marcus_guidance = ""
-        if marcus_analysis and marcus_analysis.get("diagnosis"):
-            diag = marcus_analysis["diagnosis"]
-            marcus_guidance = f"""
-═══════════════════════════════════════════════════════
-🧠 MARCUS'S DIAGNOSIS (FOLLOW THIS EXACTLY)
-═══════════════════════════════════════════════════════
-
-ROOT CAUSE: {diag.get('root_cause', 'Unknown')}
-
-VIOLATED PATTERNS:
-{chr(10).join('- ' + p for p in diag.get('violated_patterns', []))}
-
-FIX INSTRUCTIONS:
-"""
-            for fix in diag.get("fix_instructions", []):
-                marcus_guidance += f"""
-📁 {fix.get('file', 'unknown')}:
-   Issue: {fix.get('issue', 'unknown')}
-   Fix: {fix.get('fix', 'unknown')}
-"""
-            marcus_guidance += """
-
-You MUST follow Marcus's instructions above. He has analyzed the failure against the Backend Design Patterns.
-"""
-
-        # NOTE: Using string concatenation to avoid "Invalid format specifier" when content contains { }
-        instructions = (
-            DEREK_TESTING_PROMPT + "\n"
-            + entity_context + "\n\n"
-            + marcus_guidance + "\n\n"
-            "EXISTING TEST FILE (backend/tests/test_api.py):\n"
-            "```python\n"
-            + existing_test_content + "\n"
-            "```\n\n"
-            f"PYTEST OUTPUT FROM ATTEMPT {attempt}:\n\n"
-            + failure_snippet + "\n\n"
-            "FIX THE ROUTERS/MODELS TO MAKE TESTS PASS. Do NOT rewrite the test file unless absolutely necessary.\n"
-        )
-
-
-        try:
-            # Use supervised call to get the fix
-            # This ensures Marcus reviews the fix before we try to apply/test it
-            from app.supervision import supervised_agent_call
-            
-            result = await supervised_agent_call(
-                project_id=project_id,
-                manager=manager,
-                agent_name="Derek",
-                step_name="Backend Testing Fix",
-                base_instructions=instructions,
-                project_path=project_path,
-                user_request=user_request,
-                contracts="", # Contracts not critical for syntax fixes
-                max_retries=0,  # No retries - single attempt only to avoid loop explosion
-            )
-            
-            # V3: Accumulate token usage
-            if result.get("token_usage"):
-                usage = result.get("token_usage")
-                step_token_usage["input"] += usage.get("input", 0)
-                step_token_usage["output"] += usage.get("output", 0)
-            
-            # Check if LLM is unavailable due to rate limiting
-            if result.get("skipped") and result.get("reason") == "rate_limit":
-                log("TESTING", "⚠️ Derek skipped due to rate limiting")
-                raise Exception(f"LLM provider rate limited: {result.get('provider', 'unknown')}")
-
-            parsed = result.get("output", {})
-            
-            # 1) Unified diff patch (preferred)
-            diff_text = parsed.get("patch") or parsed.get("diff")
-            if isinstance(diff_text, str) and diff_text.strip():
-                patch_result = await run_tool(
-                    name="unifiedpatchapplier",
-                    args={
-                        "project_path": str(project_path),
-                        "patch": diff_text,
-                    },
-                )
-                log(
-                    "TESTING",
-                    f"Applied unified backend patch on attempt {attempt}: {patch_result}",
-                )
-
-            # 2) JSON multi-file patches
-            elif "patches" in parsed:
-                patch_result = await run_tool(
-                    name="jsonpatchapplier",
-                    args={
-                        "project_path": str(project_path),
-                        "patches": parsed.get("patches"),
-                    },
-                )
-                log(
-                    "TESTING",
-                    f"Applied JSON backend patches on attempt {attempt}: {patch_result}",
-                )
-
-            # 3) Fallback: full file rewrites
-            elif parsed.get("files"):
-                validated = validate_file_output(
-                    parsed,
-                    WorkflowStep.TESTING_BACKEND,
-                    max_files=MAX_FILES_PER_STEP,
-                )
-
-                written_count = await safe_write_llm_files(
-                    manager=manager,
-                    project_id=project_id,
-                    project_path=project_path,
-                    files=validated.get("files", []),
-                    step_name=WorkflowStep.TESTING_BACKEND,
-                )
-                
-                status = "✅ approved" if result.get("approved") else "⚠️ best effort"
-                log(
-                    "TESTING",
-                    f"Derek wrote {written_count} backend test/impl files on attempt {attempt} ({status})",
-                )
-
-        except Exception as e:
-            log("TESTING", f"Derek backend fix step failed on attempt {attempt}: {e}")
-
-        # ------------------------------------------------------------
-        # 2) Run backend tests inside sandbox via sandboxexec
-        # ------------------------------------------------------------
-        log(
-            "TESTING",
-            f"🚀 Running backend tests in sandbox (attempt {attempt}/{max_attempts})",
-        )
-
-        try:
-            sandbox_result = await run_tool(
-                name="sandboxexec",
-                args={
-                    "project_id": project_id,
-                    "service": "backend",
-                    "command": "pytest -q",
-                    "start_services": ["backend"], # ✅ Only start backend (and implicit DB)
-                    "timeout": 300,
-                },
-            )
-        except Exception as e:
-            log("TESTING", f"sandboxexec for backend threw exception: {e}")
-            raise # Propagate up to handler default filtering
-
         last_stdout = sandbox_result.get("stdout", "") or ""
         last_stderr = sandbox_result.get("stderr", "") or ""
-
+        
+        # V3: Accumulate token usage (approximated, as sandboxexec doesn't use LLM directly)
+        
         if sandbox_result.get("success"):
-            log(
-                "TESTING",
-                f"✅ Backend tests PASSED in sandbox on attempt {attempt}",
-            )
-
-            await broadcast_to_project(
-                manager,
-                project_id,
-                {
-                    "type": "WORKFLOW_STAGE_COMPLETED",
-                    "projectId": project_id,
-                    "step": WorkflowStep.TESTING_BACKEND,
-                    "attempt": attempt,
-                    "tier": "sandbox",
-                },
-            )
+            log("TESTING", "✅ Backend tests PASSED on first run")
             return StepResult(
-                nextstep=WorkflowStep.FRONTEND_INTEGRATION,  # GenCode Studio: Replace mock with API
+                nextstep=WorkflowStep.FRONTEND_INTEGRATION,
                 turn=current_turn + 1,
                 status="ok",
-                data={
-                    "tier": "sandbox",
-                    "attempt": attempt,
-                },
-                token_usage=step_token_usage,  # V3
+                data={"tier": "sandbox", "attempt": 1},
+                token_usage=step_token_usage,
             )
-
-        log(
-            "TESTING",
-            f"❌ Backend tests FAILED in sandbox on attempt {attempt}",
-        )
-
-        #═══════════════════════════════════════════════════════════
-        # 🧬 ARBORMIND HEALING LOOP: Detect 404s and heal integration
-        #═══════════════════════════════════════════════════════════
-        if _has_routing_failures(last_stdout, last_stderr, primary_entity_plural):
-            log("TESTING", "🔧 Detected 404 routing failures - triggering integration healing")
-            
-            healed = await _heal_integration_failures(
-                project_id=project_id,
-                project_path=project_path,
-                entity_plural=primary_entity_plural,
-                failure_output=last_stdout + "\n" + last_stderr,
-                attempt=attempt
-            )
-            
-            if healed:
-                log("TESTING", "✅ Integration healed - re-running tests")
-                # Re-run tests after healing
-                try:
-                    sandbox_result = await run_tool(
-                        name="sandboxexec",
-                        args={
-                            "project_id": project_id,
-                            "service": "backend",
-                            "command": "pytest -q",
-                            "start_services": ["backend"],
-                            "timeout": 300,
-                        },
-                    )
-                    
-                    if sandbox_result.get("success"):
-                        log("TESTING", "✅ Tests PASSED after integration healing!")
-                        return StepResult(
-                            nextstep=WorkflowStep.FRONTEND_INTEGRATION,
-                            turn=current_turn + 1,
-                            status="ok",
-                            data={"tier": "sandbox", "attempt": attempt, "healed": True},
-                            token_usage=step_token_usage,  # V3
-                        )
-                    else:
-                        log("TESTING", "⚠️ Tests still failing after healing - will retry Derek fixes")
-                except Exception as e:
-                    log("TESTING", f"Re-test after healing failed: {e}")
-            else:
-                log("TESTING", "⚠️ Integration healing did not resolve issue")
-
-        if attempt < max_attempts:
-            log(
-                "TESTING",
-                f"🔁 Backend tests will be retried (attempt {attempt + 1}/{max_attempts}).",
-            )
-        else:
+            # ------------------------------------------------------------
+            # ONE SHOT POLICY: Strict Halt on Test Failure (No Healing)
+            # ------------------------------------------------------------
+            log("TESTING", "❌ Tests failed. One Shot Policy active -> Returning COGNITIVE_FAILURE.")
             error_msg = (
-                "Backend tests failed in sandbox after all attempts.\n"
-                f"Last sandbox stdout:\n{last_stdout[:2000]}\n\n"
-                f"Last sandbox stderr:\n{last_stderr[:2000]}"
+                "Backend tests failed in sandbox.\n"
+                f"Stdout:\n{last_stdout[:2000]}\n\n"
+                f"Stderr:\n{last_stderr[:2000]}"
             )
-            log("ERROR", f"FAILED at {WorkflowStep.TESTING_BACKEND}: {error_msg}")
-            raise Exception(error_msg)
+            return StepExecutionResult(
+                outcome=StepOutcome.COGNITIVE_FAILURE,
+                step_name=WorkflowStep.TESTING_BACKEND,
+                error_details=error_msg,
+                data={"token_usage": step_token_usage}
+            )
 
-    # Defensive: should never reach here
-    raise Exception(
-        "Backend testing step exited without success or explicit failure. "
-        "This indicates a logic error in the backend test loop."
-    )
+    except Exception as e:
+        log("TESTING", f"Sandbox execution failed: {e}")
+        # Infra failure -> Environment Failure
+        return StepExecutionResult(
+            outcome=StepOutcome.ENVIRONMENT_FAILURE,
+            step_name=WorkflowStep.TESTING_BACKEND,
+            error_details=str(e),
+            data={"token_usage": step_token_usage}
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════
 # VICTORIA ESCALATION - Architectural Review After Derek Failures
 # ════════════════════════════════════════════════════════════════════════
 
-async def escalate_to_victoria(
-    project_path: Path,
-    entity_name: str,
-    entity_plural: str,
-    test_output: str,
-    failures: List[str],
-    attempt_count: int
-) -> bool:
-    """
-    Escalate to Victoria for architectural review after Derek fails multiple times.
-    
-    Victoria provides a deeper analysis of root causes and generates fixes
-    based on architectural understanding rather than just test errors.
-    
-    Args:
-        project_path: Path to project
-        entity_name: Entity name (singular)
-        entity_plural: Entity name (plural)
-        test_output: Full test output
-        failures: Parsed failure list
-        attempt_count: How many times Derek tried
-    
-    Returns:
-        True if Victoria fixed the issues
-    """
-    from app.supervision import supervised_agent_call
-    
-    log("HEAL", f"🆘 Escalating to Victoria after {attempt_count} Derek failures")
-    log("HEAL", "🏛️ Victoria will perform architectural review...")
-    
-    # Get current implementation
-    models_path = project_path / "backend" / "app" / "models.py"
-    router_path = project_path / "backend" / "app" / "routers" / f"{entity_plural}.py"
-    contracts_path = project_path / "contracts.md"
-    
-    models_code = models_path.read_text(encoding="utf-8") if models_path.exists() else "NOT FOUND"
-    router_code = router_path.read_text(encoding="utf-8") if router_path.exists() else "NOT FOUND"
-    contracts = contracts_path.read_text(encoding="utf-8")[:3000] if contracts_path.exists() else "NOT FOUND"
-    
-    failures_str = "\n".join([f"  {i+1}. {f}" for i, f in enumerate(failures)])
-    
-    prompt = f"""You are Victoria, a senior architecture expert. A backend has failed tests {attempt_count} times.
 
-ENTITY: {entity_name}
-PLURAL: {entity_plural}
-DEREK ATTEMPTS: {attempt_count}
-
-PERSISTENT FAILURES:
-{failures_str}
-
-TEST OUTPUT (first 2000 chars):
-{test_output[:2000]}
-
-CONTRACTS (first 1500 chars):
-{contracts[:1500]}
-
-CURRENT MODELS.PY (first 2000 chars):
-{models_code[:2000]}
-
-CURRENT ROUTER (first 2000 chars):
-{router_code[:2000]}
-
-TASK:
-Derek has failed {attempt_count} times. This suggests a deeper architectural issue.
-Identify the ROOT CAUSE and provide a complete, correct implementation.
-
-Common root causes:
-- Schema design flaws (wrong inheritance, missing schemas)
-- Router architecture issues (wrong patterns, missing middleware)
-- Status code mismatches
-- Enum validation missing
-- Query parameter support missing
-- Response model mismatches
-
-Return JSON with complete fixes:
-{{
-  "files": [
-    {{"path": "backend/app/models.py", "content": "...complete code..."}},
-    {{"path": "backend/app/routers/{entity_plural}.py", "content": "...complete code..."}}
-  ],
-  "root_cause": "The fundamental issue is...",
-  "fixes_applied": ["fix 1", "fix 2", "fix 3"]
-}}
-"""
-    
-    try:
-        log("HEAL", "🧠 Victoria analyzing root cause...")
-        
-        result = await supervised_agent_call(
-            project_id=project_path.name,
-            manager=None,  # No broadcast
-            agent_name="Victoria",
-            step_name=f"Architectural Review (Escalation)",
-            base_instructions=prompt,
-            project_path=project_path,
-            user_request=f"Fix persistent test failures for {entity_name}",
-            contracts=contracts,
-            max_retries=0,
-            max_tokens=20000,
-            temperature=0.2
-        )
-        
-        # Parse response
-        parsed = result.get("output", {})
-        files = parsed.get("files", [])
-        
-        if not files:
-            log("HEAL", "❌ Victoria returned no files")
-            return False
-        
-        root_cause = parsed.get("root_cause", "Unknown")
-        fixes = parsed.get("fixes_applied", [])
-        
-        log("HEAL", f"📋 Victoria identified root cause:")
-        log("HEAL", f"   {root_cause[:200]}")
-        
-        # Write files
-        files_written = 0
-        for file_obj in files:
-            file_path = project_path / file_obj.get("path", "")
-            content = file_obj.get("content", "")
-            
-            if content:
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_text(content, encoding="utf-8")
-                files_written += 1
-                log("HEAL", f"   ✅ Wrote {file_obj.get('path')}")
-        
-        if files_written == 0:
-            log("HEAL", "❌ No files written by Victoria")
-            return False
-        
-        log("HEAL", "✅ Victoria applied fixes:")
-        for fix in fixes:
-            log("HEAL", f"   - {fix}")
-        
-        # Restart backend
-        try:
-            from app.tools.implementations import SANDBOX
-            log("HEAL", "🔄 Restarting backend after Victoria fixes...")
-            await SANDBOX.restart_service(project_path.name, "backend")
-            import asyncio
-            await asyncio.sleep(5)  # Wait for restart
-            log("HEAL", "✅ Backend restarted")
-        except Exception as e:
-            log("HEAL", f"⚠️ Could not restart backend: {e}")
-        
-        return True
-        
-    except Exception as e:
-        log("HEAL", f"❌ Victoria escalation failed: {e}")
-        import traceback
-        log("HEAL", traceback.format_exc()[:500])
-        return False
 

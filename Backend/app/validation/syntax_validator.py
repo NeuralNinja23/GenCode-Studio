@@ -237,6 +237,43 @@ def validate_python_syntax(code: str, filename: str = "unknown.py") -> Validatio
         )
         return ValidationResult(False, errors)
     
+    # ═══════════════════════════════════════════════════════════════════
+    # AUTO-FIX: Strip LLM preamble text (lines before first valid Python)
+    # ═══════════════════════════════════════════════════════════════════
+    # LLM sometimes outputs: "Here is the file:\n\nimport pytest\n..."
+    # This causes: SyntaxError at line 1: invalid syntax
+    # Fix: Strip lines until we find valid Python (import, #, def, class, etc.)
+    first_python_line = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue  # Skip empty lines
+        # Check if this line looks like valid Python start
+        if any([
+            stripped.startswith('#'),
+            stripped.startswith('import '),
+            stripped.startswith('from '),
+            stripped.startswith('def '),
+            stripped.startswith('class '),
+            stripped.startswith('async '),
+            stripped.startswith('"') and 'docstring' not in stripped.lower(),  # Docstrings
+            stripped.startswith("'"),
+            stripped.startswith('@'),  # Decorators
+        ]):
+            first_python_line = i
+            break
+        # If this line doesn't look like Python and is text, mark where Python starts
+        # (we'll strip everything before the first import/def/class)
+    
+    if first_python_line > 0:
+        # There's LLM preamble text - strip it
+        stripped_lines = lines[first_python_line:]
+        code = '\n'.join(stripped_lines)
+        fixed_content = code
+        lines = stripped_lines  # Update for subsequent checks
+        warnings.append(f"Auto-fixed: Stripped {first_python_line} lines of LLM preamble text")
+        log("VALIDATION", f"🔧 Stripped {first_python_line} lines of preamble in {filename}")
+    
     # AUTO-FIX: Malformed imports
     malformed_import_pattern = r'(\bimport\s+[\w\.]+)([ \t;]+import\s+)|(\bfrom\s+[\w\.]+\s+import\s+[\w\.\*]+)([ \t;]+from\s+)'
     if re.search(malformed_import_pattern, code):
@@ -467,17 +504,54 @@ def validate_syntax(path: str, content: str) -> ValidationResult:
     """
     Validate file syntax based on its extension.
     
+    GATE 1: Unicode Normalization (strips ALL non-ASCII)
+    GATE 2: Syntax validation (AST / parser)
+    
+    This is the SINGLE ENTRY POINT for all code validation.
+    NO file bypasses this function.
+    
     NOTE: This is syntax-only validation. For comprehensive validation
     with import checks, use CodeValidator.validate_file().
     """
+    # ═══════════════════════════════════════════════════════════════════
+    # GATE 1: UNICODE NORMALIZATION (NON-NEGOTIABLE)
+    # ═══════════════════════════════════════════════════════════════════
+    # Apply aggressive Unicode → ASCII normalization BEFORE any validation
+    # This prevents ANY non-ASCII character from reaching the AST parser or disk
+    
+    from app.utils.parser import normalize_unicode_aggressively
+    
+    normalized_content = normalize_unicode_aggressively(content, filepath=path)
+    
+    content_was_normalized = False
+    # If normalization changed the content, it means we stripped Unicode
+    if normalized_content != content:
+        # Count how many non-ASCII chars were removed
+        removed_count = len(content) - len(normalized_content)
+        log("VALIDATION", f"🔧 Stripped {removed_count} non-ASCII characters from {path}")
+        content_was_normalized = True
+    
+    # Use normalized content for all subsequent validation
+    content = normalized_content
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # GATE 2: SYNTAX VALIDATION (File-type specific)
+    # ═══════════════════════════════════════════════════════════════════
     path_lower = path.lower()
     
     if path_lower.endswith('.py'):
-        return validate_python_syntax(content, path)
+        result = validate_python_syntax(content, path)
     elif path_lower.endswith(('.js', '.jsx', '.ts', '.tsx')):
-        return validate_javascript_syntax(content, path)
+        result = validate_javascript_syntax(content, path)
     else:
-        return ValidationResult(True, [], [])
+        # Non-code files pass through (but still got Unicode normalization if applicable)
+        result = ValidationResult(True, [], [])
+    
+    # If Unicode was stripped, mark content as fixed (even if no other fixes)
+    if content_was_normalized and not result.fixed_content:
+        result.fixed_content = content
+    
+    return result
 
 
 def validate_files_batch(files: List[Dict[str, str]]) -> Tuple[List[Dict], List[Dict]]:

@@ -9,6 +9,7 @@ This follows the GenCode Studio pattern:
 - Later, contracts.md will be created, then backend, then integration
 """
 from pathlib import Path
+from app.core.failure_boundary import FailureBoundary
 from typing import Any, List
 
 from app.core.types import ChatMessage, StepResult
@@ -39,6 +40,7 @@ MAX_FILE_LINES = 400
 
 
 
+@FailureBoundary.enforce
 async def step_frontend_mock(
     project_id: str,
     user_request: str,
@@ -281,6 +283,7 @@ import {{ Skeleton }} from '@/components/ui/skeleton';
 ```jsx
 // ✅ CORRECT - Use lucide-react for ALL icons including status:
 import {{ Plus, Trash2, Edit, Search, Loader2, CheckCircle, XCircle, Clock, AlertCircle }} from 'lucide-react';
+
 
 // Status indicators MUST use lucide-react:
 <CheckCircle className="text-green-500" />  // For success/active

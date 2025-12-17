@@ -311,7 +311,7 @@ async def run_workflow(
             (backend_dest / "app" / "routers" / "__init__.py").write_text("# Routers package\n", encoding="utf-8")
         
         # --- Seed Test Template (Option C) ---
-        # Copy test_api.py.template for Derek to use as reference
+        # Copy test_contract_api.template for deterministic rendering
         tests_dest = backend_dest / "tests"
         tests_dest.mkdir(parents=True, exist_ok=True)
         
@@ -319,12 +319,12 @@ async def run_workflow(
         if not (tests_dest / "__init__.py").exists():
             (tests_dest / "__init__.py").write_text("# Tests package\n", encoding="utf-8")
         
-        # Copy the template file for Derek to reference
-        test_template_src = backend_seed / "tests" / "test_api.py.template"
+        # Copy the template file for reference/rendering
+        test_template_src = backend_seed / "tests" / "test_contract_api.template"
         if test_template_src.exists():
-            test_template_dest = tests_dest / "test_api.py.template"
+            test_template_dest = tests_dest / "test_contract_api.template"
             shutil.copy2(test_template_src, test_template_dest)
-            log("WORKFLOW", "✅ Seeded Test Template (backend/tests/test_api.py.template)")
+            log("WORKFLOW", "✅ Seeded Test Template (backend/tests/test_contract_api.template)")
         
         # --- Frontend Seed ---
         frontend_dest = project_path / "frontend"
@@ -518,3 +518,60 @@ async def resume_workflow(
             await engine.run()
         else:
             log("WORKFLOW", f"No project found for {project_id}, cannot resume/refine")
+
+
+async def resume_from_checkpoint_workflow(
+    project_id: str,
+    description: str,
+    workspaces_path: Path,
+    manager: Any,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+) -> bool:
+    """
+    Resume a workflow from saved checkpoint.
+    
+    This is different from resume_workflow (which handles paused workflows).
+    This function:
+    1. Checks if project has saved progress in MongoDB
+    2. If yes, starts FASTOrchestratorV2 in resume mode (skips completed steps)
+    3. If no progress, returns False so caller can decide to start fresh
+    
+    Returns:
+        True if resumed successfully, False if no progress to resume from
+    """
+    from app.orchestration.fast_orchestrator import FASTOrchestratorV2
+    
+    # Check for saved progress
+    has_progress = await WorkflowStateManager.has_progress(project_id)
+    
+    if not has_progress:
+        log("WORKFLOW", f"No saved progress for {project_id}, cannot resume")
+        return False
+    
+    project_path = workspaces_path / project_id
+    if not project_path.exists():
+        log("WORKFLOW", f"Project directory not found: {project_path}")
+        return False
+    
+    # Guard: Check if another workflow is running
+    can_start = await WorkflowStateManager.try_start_workflow(project_id)
+    if not can_start:
+        log("WORKFLOW", f"⚠️ Workflow already running for {project_id}")
+        return False
+    
+    log("WORKFLOW", f"🔄 Resuming FAST V2 workflow for {project_id} from checkpoint")
+    
+    # Start engine in resume mode
+    engine = FASTOrchestratorV2(
+        project_id=project_id,
+        manager=manager,
+        project_path=project_path,
+        user_request=description,
+        provider=provider,
+        model=model,
+        resume_from_checkpoint=True,  # KEY: Enable resume mode
+    )
+    
+    await engine.run()
+    return True

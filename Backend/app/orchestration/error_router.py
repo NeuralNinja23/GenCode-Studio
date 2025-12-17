@@ -37,6 +37,10 @@ class ErrorRouter:
         "SYSTEM_INTEGRATION": Artifact.BACKEND_MAIN,
         "frontend_integration": Artifact.FRONTEND_API,
         "FRONTEND_INTEGRATION": Artifact.FRONTEND_API,
+        "testing_backend": Artifact.BACKEND_MAIN,
+        "TESTING_BACKEND": Artifact.BACKEND_MAIN,
+        "testing_frontend": Artifact.FRONTEND_API,
+        "TESTING_FRONTEND": Artifact.FRONTEND_API,
     }
     
     # Priority order for repair (lower = higher priority)

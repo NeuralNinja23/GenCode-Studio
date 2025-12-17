@@ -19,10 +19,14 @@ from app.orchestration.state import WorkflowStateManager
 from app.arbormind import compute_ui_vibe_routing
 from app.persistence import safe_write_llm_files, validate_file_output
 
+# Phase 0: Failure Boundary Enforcement
+from app.core.failure_boundary import FailureBoundary
+
 # Constants from legacy
 MAX_FILES_PER_STEP = 20
 
 
+@FailureBoundary.enforce
 async def step_refine(
     project_id: str,
     user_request: str,

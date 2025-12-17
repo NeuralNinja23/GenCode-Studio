@@ -962,9 +962,23 @@ def get_backend_archetype_guidance(archetype: str) -> str:
 Create a clean REST API with:
 - GET / - List all with pagination
 - GET /{id} - Get single item
-- POST / - Create new item
+- POST / - Create new item  
 - PUT /{id} - Update item
 - DELETE /{id} - Delete item
+
+🚨 ID PARAMETER HANDLING (CRITICAL):
+ALWAYS use PydanticObjectId for ID parameters:
+```python
+from beanie import PydanticObjectId
+
+@router.get("/{id}")
+async def get_one(id: PydanticObjectId):
+    item = await Entity.get(id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Not found")
+    return item
+```
+This ensures invalid IDs return 422 (validation error) not 500 (server crash).
 """
     
     return guidance["api_focus"]

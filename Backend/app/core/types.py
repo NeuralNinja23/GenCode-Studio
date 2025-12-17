@@ -56,6 +56,7 @@ class StepResult:
     status: str = "ok"
     data: Dict[str, Any] = field(default_factory=dict)
     token_usage: Optional[Dict[str, int]] = None  # V3: {"input": int, "output": int}
+    error: Optional[str] = None  # For transient infrastructure failures (e.g., Gemini 503)
 
 
 # Quality metrics
@@ -90,11 +91,33 @@ class TokenUsage:
 
 # Workflow state
 class WorkflowStatus(Enum):
-    """Status of a workflow."""
+    """
+    Workflow-level outcomes (aggregate property).
+    
+    Phase 1: Updated to support degradation reporting.
+    """
     RUNNING = "running"
     PAUSED = "paused"
-    COMPLETED = "completed"
+    SUCCESS = "success"                              # Clean success (all steps passed)
+    SUCCESS_WITH_DEGRADATION = "success_with_degradation"  # NEW: Degraded but coherent
     FAILED = "failed"
+    
+    # Legacy alias for backward compatibility
+    COMPLETED = "success"
+
+
+@dataclass
+class DegradationReport:
+    """
+    Report for workflows that complete with degradation.
+    
+    Phase 1: This is an AGGREGATE property, not step-level.
+    Degradation means some steps were isolated (dead branches).
+    """
+    isolated_steps: List[str]                      # Steps that were quarantined
+    quarantined_artifacts: Dict[str, List[str]]    # Artifacts that are untrusted
+    alternative_evidence: Dict[str, Any]           # Evidence from static validation
+    message: str                                   # Human-readable summary
 
 
 

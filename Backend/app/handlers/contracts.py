@@ -31,9 +31,14 @@ from app.orchestration.utils import pluralize
 
 # Centralized entity discovery for dynamic fallback
 from app.utils.entity_discovery import discover_primary_entity, extract_entity_from_request as _extract_entity_from_request
+from app.core.failure_boundary import FailureBoundary
+
+# Phase 0: Failure Boundary Enforcement
+from app.core.failure_boundary import FailureBoundary
 
 
 
+@FailureBoundary.enforce
 async def step_contracts(
     project_id: str,
     user_request: str,
@@ -561,7 +566,8 @@ def _generate_entity_plan_from_contracts(project_path: Path, project_id: str) ->
     
     # Parse all API endpoints with full paths
     # Pattern: METHOD /api/path/to/endpoint
-    endpoint_pattern = r'(GET|POST|PUT|DELETE|PATCH)\s+`?/api/([^`\s]+)'
+    # FIX: Exclude * to prevent capturing markdown bold syntax (like **GET**)
+    endpoint_pattern = r'(GET|POST|PUT|DELETE|PATCH)\s+`?/api/([^`\s\*]+)'
     matches = re.findall(endpoint_pattern, content, re.IGNORECASE)
     
     if not matches:
@@ -572,10 +578,18 @@ def _generate_entity_plan_from_contracts(project_path: Path, project_id: str) ->
     # e.g., "expenses", "categories", "dashboard"
     endpoint_groups = defaultdict(lambda: {"methods": set(), "paths": []})
     
+    invalid_entities = []
+    
     for method, full_path in matches:
         # Extract base segment (first part after /api/)
         parts = full_path.split('/')
         base_segment = parts[0].lower()
+        
+        # SAFETY NET: Validate entity name characters using user-provided strict pattern
+        # This prevents invalid names from polluting the entity plan
+        if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_-]*", base_segment):
+            invalid_entities.append(f"'{base_segment}' from '{full_path}'")
+            continue
         
         # Skip utility endpoints
         if base_segment in ['health', 'docs', 'openapi', 'metrics', 'v1', 'v2']:
@@ -583,6 +597,12 @@ def _generate_entity_plan_from_contracts(project_path: Path, project_id: str) ->
         
         endpoint_groups[base_segment]["methods"].add(method.upper())
         endpoint_groups[base_segment]["paths"].append(full_path)
+
+    if invalid_entities:
+        log(
+            "CONTRACTS", 
+            f"⚠️ Skipped {len(invalid_entities)} invalid contract paths. This indicates malformed contracts.md."
+        )
     
     log("CONTRACTS", f"📋 Found {len(endpoint_groups)} base path segments: {sorted(endpoint_groups.keys())}")
     

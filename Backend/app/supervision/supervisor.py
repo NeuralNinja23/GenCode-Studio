@@ -384,17 +384,45 @@ RESPOND WITH JSON:
         return result
         
     except Exception as e:
-        # FIX: Don't auto-approve on error - this was silently passing broken code
-        log("MARCUS", f"⚠️ Review failed: {e} - marking as NOT approved", project_id=project_id)
-        return {
-            "approved": False, 
-            "quality_score": 3, 
-            "issues": [f"Supervision error: {str(e)[:200]}"], 
-            "feedback": "Marcus supervision encountered an error. Please retry.", 
-            "corrections": [], 
-            "thinking": f"Review error: {e}",
-            "supervision_error": True
-        }
+        # ============================================================
+        # CLASSIFY ERROR TYPE
+        # ============================================================
+        error_str = str(e).lower()
+        is_provider_error = (
+            "provider error" in error_str or
+            "overloaded" in error_str or
+            "503" in error_str or
+            "rate limit" in error_str or
+            "429" in error_str or
+            "unavailable" in error_str
+        )
+        
+        if is_provider_error:
+            # TRANSIENT_INFRA_FAILURE: Provider/API issue, not cognitive failure
+            # Don't penalize the agent or record as a quality failure
+            log("MARCUS", f"⚠️ Review failed: TRANSIENT_INFRA_FAILURE ({str(e)[:100]})", project_id=project_id)
+            return {
+                "approved": False,
+                "quality_score": 3,
+                "issues": [f"Infrastructure error (retryable): {str(e)[:150]}"],
+                "feedback": "Temporary infrastructure issue. Please retry - this is not a code quality problem.",
+                "corrections": [],
+                "thinking": f"TRANSIENT_INFRA_FAILURE: {e}",
+                "supervision_error": True,
+                "error_type": "TRANSIENT_INFRA_FAILURE"  # For learning classification
+            }
+        else:
+            # Genuine supervision error (could be cognitive/parsing issue)
+            log("MARCUS", f"⚠️ Review failed: {e} - marking as NOT approved", project_id=project_id)
+            return {
+                "approved": False, 
+                "quality_score": 3, 
+                "issues": [f"Supervision error: {str(e)[:200]}"], 
+                "feedback": "Marcus supervision encountered an error. Please retry.", 
+                "corrections": [], 
+                "thinking": f"Review error: {e}",
+                "supervision_error": True
+            }
 
 
 
@@ -490,39 +518,26 @@ async def supervised_agent_call(
     project_path: Path,
     user_request: str,
     contracts: str = "",
-    max_retries: int = 3,
+    max_retries: int = 1,  # CHANGED: Default to 1 (One Shot Policy)
     max_tokens: Optional[int] = None,  # Override for token policy (used by healing)
     temperature: Optional[float] = None,  # Override for temperature (used by healing)
     healing_mode: bool = False,  # LOOP CONSOLIDATION: When True, forces single attempt, no retries
 ) -> Dict[str, Any]:
     """
-    Call an agent with Marcus supervision and auto-retry.
+    Call an agent with Marcus supervision.
     
-    PHASE 1-2 OPTIMIZATION: Now passes optimization parameters to reduce token usage.
-    
-    LOOP CONSOLIDATION: When healing_mode=True:
-    - Forces max_retries=0 (single attempt)
-    - Skips Marcus review (healing must be decisive)
-    - Uses healing budget for LLM calls
-    
-    Flow:
-    1. Build progressive context
-    2. Call agent with optimized parameters
-    3. Marcus reviews output (unless healing_mode)
-    4. If rejected, retry with minimal feedback (differential)
-    5. After max_retries, return best effort
-    
-    Returns:
-        Dict with: output, approved, attempt, quality
+    ONE SHOT POLICY: Retries are DISABLED.
     """
     from app.tools import run_tool
     from app.orchestration.utils import broadcast_to_project
     
+    # FORCE ONE SHOT: Ignore caller's max_retries
+    max_retries = 1
+    
     # ============================================================
-    # LOOP CONSOLIDATION: Enforce healing mode constraints
+    # ONE SHOT POLICY: Checks
     # ============================================================
     if healing_mode:
-        max_retries = 1  # Force single attempt
         log("SUPERVISION", f"🩺 Healing mode: single attempt, no Marcus review", project_id=project_id)
         
         # Check healing budget before proceeding
@@ -674,6 +689,13 @@ async def supervised_agent_call(
                 # Ensure raw_output is a string
                 parsed = normalize_llm_output(str(raw_output))
             
+            # SELF-EVOLUTION: Extract decision IDs from agent result or payload
+            # Priority: 1. tool_result["decision_ids"] (if preserved)
+            #          2. parsed["decision_ids"] (if injected)
+            decision_ids = tool_result.get("decision_ids", {})
+            if not decision_ids and isinstance(parsed, dict):
+                 decision_ids = parsed.get("decision_ids", {})
+            
             last_output = parsed
             
             # ════════════════════════════════════════════════════════
@@ -698,6 +720,17 @@ async def supervised_agent_call(
             # FIX #6: If no files, this is a FAILURE, not a success
             if "files" not in parsed or not parsed["files"]:
                 log("SUPERVISION", f"⚠️ {agent_name} produced no files - NOT approved", project_id=project_id)
+                
+                # SELF-EVOLUTION: Report routing failure (No Files)
+                try:
+                    from app.arbormind import report_routing_outcome
+                    if decision_ids:
+                        for did in decision_ids.values():
+                            if did:
+                                report_routing_outcome(did, False, 2.0, "Empty output (No files)")
+                except Exception:
+                    pass
+
                 # Don't return approved=True here - this was allowing empty output through!
                 # Instead, let the retry loop handle it
                 if attempt >= max_retries:
@@ -758,12 +791,19 @@ async def supervised_agent_call(
                         log("LEARNING", f"⚠️ Pattern storage failed (non-fatal): {learn_error}")
                     
                     # ═══════════════════════════════════════════════════════
-                    # SELF-EVOLUTION: Report supervisor decision outcome as SUCCESS
+                    # SELF-EVOLUTION: Report routing outcomes as SUCCESS
                     # ═══════════════════════════════════════════════════════
-                    # If we had a supervisor decision from a previous retry, report success
-                    if attempt > 1 and 'last_supervisor_decision_id' in dir() and last_supervisor_decision_id:
-                        try:
-                            from app.arbormind import report_routing_outcome
+                    try:
+                        from app.arbormind import report_routing_outcome
+                        
+                        # Report context/tool selection success
+                        if decision_ids:
+                            for did in decision_ids.values():
+                                if did:
+                                    report_routing_outcome(did, True, quality, f"Approved by Marcus (Q={quality})")
+
+                        # If we had a supervisor decision from a previous retry, report success
+                        if attempt > 1 and 'last_supervisor_decision_id' in dir() and last_supervisor_decision_id:
                             report_routing_outcome(
                                 last_supervisor_decision_id, 
                                 True, 
@@ -771,8 +811,8 @@ async def supervised_agent_call(
                                 f"Retry succeeded after {attempt} attempts"
                             )
                             log("EVOLUTION", "📈 Reported success for supervisor decision")
-                        except Exception:
-                            pass
+                    except Exception:
+                        pass
                 
                 return {"output": parsed, "approved": True, "attempt": attempt, "quality": quality, "token_usage": step_token_usage}
             
@@ -780,6 +820,20 @@ async def supervised_agent_call(
             quality = review.get("quality_score", 4)
             track_quality_score(project_id, agent_name, quality, False)  # Track rejection
             
+            # SELF-EVOLUTION: Report routing failure
+            try:
+                from app.arbormind import report_routing_outcome
+                if decision_ids:
+                    for did in decision_ids.values():
+                        if did:
+                             report_routing_outcome(did, False, quality, f"Rejected by Marcus (Q={quality})")
+            except Exception:
+                pass
+            
+            # ONE SHOT POLICY: Strict Halt on Rejection
+            log("SUPERVISION", f"❌ {agent_name} rejected (Q={quality}). One Shot Policy active -> HALTING.", project_id=project_id)
+            raise RuntimeError(f"One Shot Failure: {agent_name} rejected by Marcus. Issues: {review.get('issues', [])[:3]}")
+
             # ════════════════════════════════════════════════════════
             # FAILURE LEARNING: Record Intermediate Failure (Logic/Style)
             # ════════════════════════════════════════════════════════

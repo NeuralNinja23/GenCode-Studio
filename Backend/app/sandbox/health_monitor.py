@@ -38,8 +38,10 @@ class HealthMonitor:
                 container_id = container_info.get("id")
                 if not container_id:
                     continue
-
-                is_healthy = await self._check_container_health(container_id, service_name)
+                
+                # Pass ports for HTTP health check (Invariant C)
+                ports = container_info.get("ports", "")
+                is_healthy = await self._check_container_health(container_id, service_name, ports)
                 health_status[service_name] = is_healthy
 
             if all(health_status.values()):
@@ -55,30 +57,92 @@ class HealthMonitor:
         print(f"[HEALTH] ⚠️ Timeout reached. Unhealthy services: {unhealthy}")
         return health_status
 
-    async def _check_container_health(self, container_id: str, service_name: str) -> bool:
+    async def _check_container_health(self, container_id: str, service_name: str, ports: str = "") -> bool:
         """
-        Check if a specific container is healthy using `docker inspect`.
-        We look at .State.Health.Status if present, otherwise fall back to .State.Status == "running".
+        Check if a specific container is healthy.
+        
+        INVARIANT C: "Healthy" Means HTTP-Responsive (2025-12-17)
+        A service is not healthy until it responds correctly.
+        
+        For backend services: Perform actual HTTP health check to /api/health
+        For other services: Fall back to Docker state check
         """
         try:
             state = self._inspect_container_state(container_id)
             if not state:
                 return False
 
+            # First check Docker's built-in healthcheck if present
             health = state.get("Health") or {}
             status = health.get("Status")
             if status == "healthy":
                 return True
-
-            # If no healthcheck defined, consider "running" as good enough
-            if state.get("Status") == "running":
+            
+            # Container must at least be running
+            if state.get("Status") != "running":
+                return False
+            
+            # ═══════════════════════════════════════════════════════════
+            # INVARIANT C: For backend service, verify HTTP responsiveness
+            # A "running" container means nothing if the app inside is crashed
+            # ═══════════════════════════════════════════════════════════
+            if service_name == "backend" and ports:
+                http_healthy = await self._check_http_health(ports)
+                if not http_healthy:
+                    print(f"[HEALTH] ⚠️ Backend container running but HTTP not responsive")
+                    return False
+                print(f"[HEALTH] ✅ Backend HTTP health check passed")
                 return True
-
-            return False
+            
+            # For non-backend services, running is good enough
+            return True
 
         except Exception as e:
             print(f"[HEALTH] ⚠️ Error checking {service_name} ({container_id}): {e}")
             return False
+    
+    async def _check_http_health(self, ports: str, retries: int = 5, delay: float = 2.0) -> bool:
+        """
+        Perform actual HTTP health check to the backend /api/health endpoint.
+        
+        Args:
+            ports: Docker ports string like "0.0.0.0:32783->8001/tcp"
+            retries: Number of retry attempts
+            delay: Seconds to wait between retries
+        
+        Returns:
+            True if HTTP health check passes, False otherwise
+        """
+        import re
+        import httpx
+        
+        # Extract port from Docker ports string
+        match = re.search(r"(?:0\.0\.0\.0|127\.0\.0\.1|::):(\d+)->", ports)
+        if not match:
+            print(f"[HEALTH] ⚠️ Could not parse port from: {ports}")
+            return False
+        
+        port = match.group(1)
+        health_url = f"http://localhost:{port}/api/health"
+        
+        for attempt in range(retries):
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    response = await client.get(health_url)
+                    if response.status_code == 200:
+                        return True
+                    print(f"[HEALTH] Attempt {attempt+1}/{retries}: Got {response.status_code} from {health_url}")
+            except httpx.ConnectError:
+                print(f"[HEALTH] Attempt {attempt+1}/{retries}: Connection refused to {health_url}")
+            except httpx.TimeoutException:
+                print(f"[HEALTH] Attempt {attempt+1}/{retries}: Timeout connecting to {health_url}")
+            except Exception as e:
+                print(f"[HEALTH] Attempt {attempt+1}/{retries}: Error: {e}")
+            
+            if attempt < retries - 1:
+                await asyncio.sleep(delay)
+        
+        return False
 
     def _inspect_container_state(self, container_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -113,6 +177,8 @@ class HealthMonitor:
         """
         Get detailed health information for all containers.
         Uses docker CLI only.
+        
+        INVARIANT C: For backend, includes HTTP responsiveness status.
         """
         details: Dict[str, Any] = {}
         for service_name, container_info in containers.items():
@@ -123,13 +189,23 @@ class HealthMonitor:
 
             try:
                 state = self._inspect_container_state(cid) or {}
-                details[service_name] = {
+                ports = container_info.get("ports", "")
+                
+                # Base info from Docker state
+                service_details = {
                     "status": state.get("Status"),
                     "health": state.get("Health"),
                     "running": state.get("Status") == "running",
                     "exit_code": state.get("ExitCode"),
                     "started_at": state.get("StartedAt"),
                 }
+                
+                # INVARIANT C: For backend, add HTTP responsiveness check
+                if service_name == "backend" and ports and state.get("Status") == "running":
+                    http_healthy = await self._check_http_health(ports, retries=2, delay=1.0)
+                    service_details["http_responsive"] = http_healthy
+                
+                details[service_name] = service_details
             except Exception as e:
                 details[service_name] = {"error": str(e), "running": False}
 

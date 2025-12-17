@@ -19,7 +19,13 @@ import CodeView from "../components/CodeView";
 import TerminalView from "../components/TerminalView";
 import PreviewController from "../components/PreviewController";
 import CostDashboard from "../components/CostDashboard";
-import { resumeWorkflow, startWorkflow, getWorkspaceFiles, getFileContent, getProject } from "../services/agentService";
+import {
+  resumeWorkflow,
+  startWorkflow,
+  getWorkspaceFiles,
+  getFileContent,
+  getProjectProgress,
+} from "../services/agentService";
 import { startDeployment } from "../services/deploymentService";
 import { ChatMessage, MessageSender, FileTreeNode } from "../types";
 import { getWebSocketUrl } from "../config/env";
@@ -60,7 +66,8 @@ const WorkspacePage: React.FC = () => {
   const [rightPanelView, setRightPanelView] = useState<"code" | "preview" | "terminal" | null>(null);
   const [agentLogs, setAgentLogs] = useState<any[]>([]);
   const [generationStatus, setGenerationStatus] = useState("Initiating workflow.");
-  const [isWorkflowRunning, setIsWorkflowRunning] = useState(true);
+  // Start as NOT running if loading existing project (no initialPrompt)
+  const [isWorkflowRunning, setIsWorkflowRunning] = useState(!!initialPrompt);
   const [workflowStage, setWorkflowStage] = useState(0);
   const [currentStepName, setCurrentStepName] = useState(""); // Track semantic step name
   const [workflowTotalStages, setWorkflowTotalStages] = useState(WORKFLOW_STAGES.length);
@@ -124,27 +131,33 @@ const WorkspacePage: React.FC = () => {
     // 1. Fetch file tree immediately
     fetchFileTree();
 
-    // 2. If prompt is missing (refresh), try to fetch project details to restore context
+    // 2. If no initial prompt (opening existing project), just load it for editing
     if (!initialPrompt) {
-      import("../services/agentService").then(m => m.getProject(projectId))
-        .then(project => {
-          if (project && project.description) {
-            console.log("Restored project context:", project.name);
-            // We could restore the prompt to state or messages if needed, 
-            // but strictly for the "viewing code" requirement, file tree is enough.
-            // pushing a system message might be nice.
-            /*
+      // Show the code view immediately
+      setRightPanelView("code");
+
+      // Show welcome message - user can now chat to refine
+      setMessages([{
+        id: `loaded-${Date.now()}`,
+        sender: MessageSender.Agent,
+        content: "📁 Project loaded. Send a message to make changes or refinements.",
+      }]);
+
+      // Check if a workflow is currently running
+      getProjectProgress(projectId)
+        .then(progress => {
+          if (progress?.is_running) {
+            setIsWorkflowRunning(true);
             setMessages(prev => [...prev, {
-               id: `restored-${Date.now()}`,
-               sender: MessageSender.System,
-               content: `Loaded project: ${project.name}`
+              id: `running-${Date.now()}`,
+              sender: MessageSender.Agent,
+              content: "⚙️ A workflow is currently running...",
             }]);
-            */
           }
         })
-        .catch(err => console.error("Failed to load project details:", err));
+        .catch(err => console.error("Failed to check progress:", err));
     }
-  }, [projectId]);
+  }, [projectId, initialPrompt]);
 
   // ============================================================
   // CLEANUP ON UNMOUNT
@@ -373,7 +386,9 @@ const WorkspacePage: React.FC = () => {
       },
     ]);
 
-    startWorkflow(projectId, initialPrompt)
+    // FIX: Use "fresh" mode for new projects from HomePage to ensure full scaffolding
+    // This prevents accidentally resuming from stale MongoDB state
+    startWorkflow(projectId, initialPrompt, "fresh")
       .then((response) => {
         setMessages((prev) => [
           ...prev,

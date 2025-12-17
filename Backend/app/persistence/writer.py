@@ -100,6 +100,31 @@ async def safe_write_llm_files(
              if not validation_result.valid:
                   log("PERSIST", f"{prefix}❌ Skipping invalid file (syntax error): {clean_path} - {validation_result.errors[0]}", project_id=project_id)
                   continue
+             
+             # ═══════════════════════════════════════════════════════════════
+             # CRITICAL: Use normalized content if validation modified it
+             # ═══════════════════════════════════════════════════════════════
+             # validate_syntax returns Unicode-normalized content in fixed_content
+             # We MUST use this instead of original content to ensure ASCII-only code
+             if validation_result.fixed_content:
+                 content = validation_result.fixed_content
+                 log("PERSIST", f"{prefix}🔧 Using Unicode-normalized content for {clean_path}", project_id=project_id)
+             
+             # ═══════════════════════════════════════════════════════════════
+             # ROUTER SEMANTIC VALIDATION (catches query param issues)
+             # ═══════════════════════════════════════════════════════════════
+             # Check routers for required list params BEFORE tests fail
+             if clean_path.endswith('.py') and '/routers/' in clean_path:
+                 try:
+                     from app.orchestration.heal_helpers import has_optional_list_params
+                     list_ok, list_issues = has_optional_list_params(content)
+                     if not list_ok:
+                         # Log warning but don't block - this is a semantic issue, not syntax
+                         log("PERSIST", f"{prefix}⚠️ Router has required list params: {list_issues[0][:80]}", project_id=project_id)
+                         # Note: We log but don't skip - tests will catch it and healing will fix
+                 except Exception as router_err:
+                     log("PERSIST", f"{prefix}⚠️ Router check failed: {router_err}", project_id=project_id)
+                     
         except Exception as val_err:
              log("PERSIST", f"{prefix}⚠️ Validator crashed on {clean_path}: {val_err}. Skipping for safety.", project_id=project_id)
              continue

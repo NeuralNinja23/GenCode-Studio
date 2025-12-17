@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from beanie import Document, Indexed
 from pydantic import Field
 
@@ -25,6 +25,9 @@ class WorkflowSession(Document):
     is_paused: bool = False
     current_step: Optional[str] = None
     
+    # NEW: Track completed steps for resume functionality
+    completed_steps: List[str] = Field(default_factory=list)
+    
     # Stores the state dump when paused
     paused_state: Optional[Dict[str, Any]] = None
     
@@ -32,7 +35,11 @@ class WorkflowSession(Document):
     original_request: Optional[str] = None
     intent: Optional[Dict[str, Any]] = None
     
+    # NEW: Store step context data for resume
+    step_context: Dict[str, Any] = Field(default_factory=dict)
+    
     last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:
         name = "workflow_sessions"
+

@@ -19,6 +19,7 @@ from app.llm.prompts.luna import LUNA_TESTING_PROMPT
 from app.persistence.validator import validate_file_output
 from app.core.constants import PROTECTED_SANDBOX_FILES
 from app.handlers.archetype_guidance import get_e2e_testing_guidance
+from app.core.failure_boundary import FailureBoundary
 
 
 # Constants from legacy
@@ -226,6 +227,9 @@ async def _fallback_generate_frontend_tests(
 
 import { test, expect } from '@playwright/test';
 
+# Phase 0: Failure Boundary Enforcement
+from app.core.failure_boundary import FailureBoundary
+
 test('page loads without crashing', async ({ page }) => {
   await page.goto('http://localhost:5174/');
   await expect(page).toHaveTitle(/.*/);
@@ -260,6 +264,7 @@ test('main heading is visible', async ({ page }) => {
         return False
 
 
+@FailureBoundary.enforce
 async def step_testing_frontend(
     project_id: str,
     user_request: str,
@@ -296,7 +301,7 @@ async def step_testing_frontend(
         f"[{WorkflowStep.TESTING_FRONTEND}] Starting frontend sandbox tests for {project_id}",
     )
 
-    max_attempts = 3
+    
     last_stdout: str = ""
     last_stderr: str = ""
     
@@ -434,11 +439,12 @@ async def step_testing_frontend(
     if not tests_generated:
         log("TESTING", "⚠️ Luna could not generate tests from template - using fallback")
 
-    for attempt in range(1, max_attempts + 1):
-        log(
-            "TESTING",
-            f"🔁 Frontend test attempt {attempt}/{max_attempts} for {project_id}",
-        )
+    # ------------------------------------------------------------
+    # ONE SHOT EXECUTION (No Loop)
+    # ------------------------------------------------------------
+    if True:
+        attempt = 1
+        log("TESTING", f"🚀 Frontend test execution (One Shot) for {project_id}")
 
         # 0) PREPARE CONTEXT (The "Anti-Hallucination" Fix)
         # Collect ACTUAL component code so Luna knows the real DOM structure
@@ -808,35 +814,8 @@ async def step_testing_frontend(
             log("TESTING", f"⚠️ Failed to persist Playwright output: {e}")
 
         if not test_result.get("success"):
-            log("TESTING", f"❌ Frontend tests FAILED in sandbox on attempt {attempt}")
-
-            # ===== SELF-HEALING TESTS =====
-            # Try to auto-fix common test issues before next attempt
-            if test_file.exists() and attempt < max_attempts:
-                try:
-                    current_test = test_file.read_text(encoding="utf-8")
-                    error_output = test_stdout + test_stderr
-
-                    # Analyze what fixes might work
-                    fixes_needed = self_healing.analyze_failure(current_test, error_output)
-
-                    if fixes_needed:
-                        log("SELF-HEAL", f"🔧 Attempting auto-fix for: {', '.join(fixes_needed)}")
-
-                        fixed_test, fixes_applied = self_healing.attempt_healing(current_test, error_output)
-
-                        if fixes_applied:
-                            test_file.write_text(fixed_test, encoding="utf-8")
-                            log("SELF-HEAL", f"✅ Applied {len(fixes_applied)} auto-fixes to test file")
-                            persist_test_file_for_debugging(attempt, fixed_test, "self_healed")
-                        else:
-                            log("SELF-HEAL", "⚠️ No fixes could be applied")
-                    else:
-                        log("SELF-HEAL", "No recognized patterns - Luna will fix manually")
-
-                except Exception as heal_error:
-                    log("SELF-HEAL", f"⚠️ Self-healing failed: {heal_error}")
-            # ===== END SELF-HEALING =====
+            log("TESTING", f"❌ Frontend tests FAILED in sandbox on attempt {attempt} (One Shot Policy)")
+            # Self-Healing REMOVED
 
         else:
             log("TESTING", f"✅ Frontend tests PASSED in sandbox on attempt {attempt}")
@@ -895,28 +874,16 @@ async def step_testing_frontend(
                 token_usage=step_token_usage,  # V3
             )
 
-        if attempt < max_attempts:
-            combined = (
-                f"Tests success: {bool(test_result.get('success'))}, "
-                f"Build success: {bool(build_result.get('success'))}\n\n"
-                f"Test stderr:\n{test_stderr[:1000]}\n\n"
-                f"Build stderr:\n{build_stderr[:1000]}"
-            )
-            log(
-                "TESTING",
-                f"❌ Frontend sandbox attempt {attempt} failed; will retry.\n"
-                f"{combined}",
-            )
-        else:
-            error_msg = (
-                "Frontend tests and/or build failed in sandbox after all attempts.\n\n"
-                f"Last test stdout:\n{test_stdout[:1000]}\n\n"
-                f"Last test stderr:\n{test_stderr[:1000]}\n\n"
-                f"Last build stdout:\n{build_stdout[:1000]}\n\n"
-                f"Last build stderr:\n{build_stderr[:1000]}"
-            )
-            log("ERROR", f"FAILED at {WorkflowStep.TESTING_FRONTEND}: {error_msg}")
-            raise Exception(error_msg)
+        # One Shot Failure Logic
+        error_msg = (
+            "Frontend tests and/or build failed in sandbox (One Shot Policy).\n\n"
+            f"Last test stdout:\n{test_stdout[:1000]}\n\n"
+            f"Last test stderr:\n{test_stderr[:1000]}\n\n"
+            f"Last build stdout:\n{build_stdout[:1000]}\n\n"
+            f"Last build stderr:\n{build_stderr[:1000]}"
+        )
+        log("ERROR", f"FAILED at {WorkflowStep.TESTING_FRONTEND}: {error_msg}")
+        raise Exception(error_msg)
 
     # Should never reach here
     raise Exception(

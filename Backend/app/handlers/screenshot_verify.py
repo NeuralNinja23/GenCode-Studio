@@ -20,7 +20,11 @@ from app.core.logging import log
 from app.tools import run_tool
 from app.orchestration.state import WorkflowStateManager
 
+# Phase 0: Failure Boundary Enforcement
+from app.core.failure_boundary import FailureBoundary
 
+
+@FailureBoundary.enforce
 async def step_screenshot_verify(
     project_id: str,
     user_request: str,

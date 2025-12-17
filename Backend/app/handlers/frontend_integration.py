@@ -23,6 +23,7 @@ from app.persistence import persist_agent_output
 from app.persistence.validator import validate_file_output
 
 from app.utils.entity_discovery import discover_primary_entity, extract_all_models_from_models_py
+from app.core.failure_boundary import FailureBoundary
 
 
 
@@ -120,6 +121,7 @@ def cleanup_unused_components(project_path: Path):
         return 0
 
 
+@FailureBoundary.enforce
 async def step_frontend_integration(
     project_id: str,
     user_request: str,
@@ -260,6 +262,7 @@ function ItemsPage() {{
 AFTER (real API):
 ```jsx
 import {{ get, post, del }} from '../lib/api';
+
 
 function ItemsPage() {{
   const [items, setItems] = useState([]);

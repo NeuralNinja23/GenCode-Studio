@@ -77,6 +77,11 @@ async def lifespan(app: FastAPI):
     init_metrics_db()
     log("Main", "📊 ArborMind metrics database initialized")
     
+    # Initialize Tool Registry (CRITICAL: Must happen before any routing)
+    from app.tools.registry import register_tools
+    register_tools()
+    log("Main", "🔧 Tool registry initialized")
+    
     yield
     
     log("Main", "🔌 Shutting down...")

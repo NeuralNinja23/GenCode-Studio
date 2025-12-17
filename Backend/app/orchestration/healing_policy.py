@@ -16,7 +16,13 @@ from enum import Enum
 
 
 class ErrorType(Enum):
-    """Classification of failure types."""
+    """
+    DEPRECATED: Use app.core.step_outcome.StepOutcome instead.
+    
+    Phase 7: This is legacy classification kept for backward compatibility.
+    
+    Classification of failure types.
+    """
     ROUTING_404 = "routing_404"              # 404s on expected routes
     IMPORT_ERROR = "import_error"            # Python import failures
     SYNTAX_ERROR = "syntax_error"            # Code syntax errors
@@ -60,40 +66,8 @@ class HealingPolicy:
         self.repair_history: List[str] = []  # Track recent repairs
         self.max_history = 10
     
-    @staticmethod
-    def from_code_validator_error(cv_error_type) -> 'ErrorType':
-        """
-        Map CodeValidator.ErrorType to HealingPolicy.ErrorType.
-        
-        This bridges the generalized validator with the policy engine.
-        
-        Args:
-            cv_error_type: ErrorType from code_validator module
-        
-        Returns:
-            Corresponding HealingPolicy.ErrorType
-        """
-        # Import here to avoid circular import
-        from app.orchestration.code_validator import ErrorType as CVErrorType
-        
-        mapping = {
-            CVErrorType.SYNTAX_ERROR: ErrorType.SYNTAX_ERROR,
-            CVErrorType.INDENTATION_ERROR: ErrorType.SYNTAX_ERROR,
-            CVErrorType.IMPORT_ERROR: ErrorType.IMPORT_ERROR,
-            CVErrorType.MODULE_NOT_FOUND: ErrorType.MODULE_NOT_FOUND,
-            CVErrorType.CIRCULAR_IMPORT: ErrorType.IMPORT_ERROR,
-            CVErrorType.FASTAPI_PARAMETER_ERROR: ErrorType.FASTAPI_PARAMETER_ERROR,
-            CVErrorType.FASTAPI_ROUTE_ERROR: ErrorType.FASTAPI_ROUTE_ERROR,
-            CVErrorType.FASTAPI_DEPENDENCY_ERROR: ErrorType.FASTAPI_ROUTE_ERROR,
-            CVErrorType.ATTRIBUTE_ERROR: ErrorType.LOGIC_ERROR,
-            CVErrorType.TYPE_ERROR: ErrorType.TYPE_ERROR,
-            CVErrorType.VALUE_ERROR: ErrorType.VALIDATION_ERROR,
-            CVErrorType.BEANIE_ERROR: ErrorType.DATABASE_ERROR,
-            CVErrorType.MONGODB_ERROR: ErrorType.DATABASE_ERROR,
-            CVErrorType.UNKNOWN: ErrorType.UNKNOWN,
-        }
-        
-        return mapping.get(cv_error_type, ErrorType.UNKNOWN)
+    
+    # Phase 7: Removed from_code_validator_error - legacy code_validator module deleted
     
     def classify_error(
         self, 

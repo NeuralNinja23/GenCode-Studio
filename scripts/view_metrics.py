@@ -299,6 +299,112 @@ def get_v_vector_stats():
     }
 
 
+def get_decision_tracking_stats():
+    """Get NEW decision-level tracking stats (file context, tool selection, etc)."""
+    if not V_VECTOR_DB_PATH.exists():
+        return None
+    
+    conn = sqlite3.connect(V_VECTOR_DB_PATH)
+    c = conn.cursor()
+    
+    # Check if routing_decisions table exists (newer schema)
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='routing_decisions'")
+    if not c.fetchone():
+        conn.close()
+        return None  # Old schema, skip
+    
+    # Total routing decisions
+    c.execute("SELECT COUNT(*) FROM routing_decisions")
+    total = c.fetchone()[0]
+    
+    if total == 0:
+        conn.close()
+        return None
+    
+    # Outcome reporting rate
+    c.execute("""
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN outcome_reported = 1 THEN 1 ELSE 0 END) as reported,
+            SUM(CASE WHEN outcome_reported = 0 THEN 1 ELSE 0 END) as unreported
+        FROM routing_decisions
+    """)
+    row = c.fetchone()
+    total_dec, reported, unreported = row
+    
+    # Success/Failure breakdown (only for reported outcomes)
+    c.execute("""
+        SELECT 
+            SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes,
+            SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failures,
+            AVG(quality_score) as avg_quality,
+            MIN(quality_score) as min_quality,
+            MAX(quality_score) as max_quality
+        FROM routing_decisions
+        WHERE outcome_reported = 1
+    """)
+    outcome_row = c.fetchone()
+    successes, failures, avg_q, min_q, max_q = outcome_row
+    
+    # By context type
+    c.execute("""
+        SELECT 
+            context_type,
+            COUNT(*) as total,
+            SUM(CASE WHEN outcome_reported = 1 THEN 1 ELSE 0 END) as reported,
+            SUM(CASE WHEN outcome_reported = 1 AND success = 1 THEN 1 ELSE 0 END) as succeeded,
+            AVG(CASE WHEN outcome_reported = 1 THEN quality_score END) as avg_quality
+        FROM routing_decisions
+        GROUP BY context_type
+        ORDER BY total DESC
+    """)
+    context_breakdown = c.fetchall()
+    
+    # Quality score distribution (for reported outcomes)
+    c.execute("""
+        SELECT 
+            CAST(quality_score AS INTEGER) as score_bucket,
+            COUNT(*) as count
+        FROM routing_decisions
+        WHERE outcome_reported = 1 AND quality_score IS NOT NULL
+        GROUP BY score_bucket
+        ORDER BY score_bucket DESC
+    """)
+    quality_dist = c.fetchall()
+    
+    # Recent decisions
+    c.execute("""
+        SELECT 
+            context_type,
+            selected_id,
+            outcome_reported,
+            success,
+            quality_score,
+            details
+        FROM routing_decisions
+        ORDER BY timestamp DESC
+        LIMIT 10
+    """)
+    recent = c.fetchall()
+    
+    conn.close()
+    
+    return {
+        "total": total_dec,
+        "reported": reported or 0,
+        "unreported": unreported or 0,
+        "coverage": (reported or 0) / total_dec if total_dec > 0 else 0,
+        "successes": successes or 0,
+        "failures": failures or 0,
+        "avg_quality": avg_q or 0,
+        "min_quality": min_q,
+        "max_quality": max_q,
+        "context_breakdown": context_breakdown,
+        "quality_distribution": quality_dist,
+        "recent_decisions": recent,
+    }
+
+
 def main():
     print("=" * 70)
     print("🌳 ARBORMIND COMPREHENSIVE METRICS")
@@ -309,6 +415,7 @@ def main():
     failure_analysis = get_failure_analysis()
     routing_stats = get_routing_stats()
     v_vector_stats = get_v_vector_stats()
+    decision_stats = get_decision_tracking_stats()  # NEW: Get decision-level tracking
     
     # ═══════════════════════════════════════════════════════
     # PIPELINE SUCCESS RATES (THE TRUTH!)
@@ -368,6 +475,64 @@ def main():
         print("\n⚠️  No pipeline metrics database found.")
         print(f"   Expected: {PIPELINE_DB_PATH}")
         print("   Run a workflow to start collecting pipeline metrics.")
+    
+    # ═══════════════════════════════════════════════════════
+    # NEW: DECISION-LEVEL LEARNING METRICS
+    # ═══════════════════════════════════════════════════════
+    if decision_stats and decision_stats["total"] > 0:
+        print("\n" + "=" * 70)
+        print(" 🎯 DECISION-LEVEL LEARNING (File Context, Tools, etc)")
+        print("=" * 70)
+        
+        coverage_pct = decision_stats["coverage"] * 100
+        
+        # Coverage indicator
+        if coverage_pct >= 80:
+            cov_icon = "🟢"
+        elif coverage_pct >= 50:
+            cov_icon = "🟡"
+        else:
+            cov_icon = "🔴"
+        
+        print(f"\n{cov_icon} Outcome Reporting Coverage: {coverage_pct:.1f}%")
+        print(f"   Total Decisions: {decision_stats['total']}")
+        print(f"   Outcomes Reported: {decision_stats['reported']} ✅")
+        print(f"   Never Reported: {decision_stats['unreported']} ⚠️")
+        
+        if decision_stats['reported'] > 0:
+            succ_rate = decision_stats['successes'] / decision_stats['reported'] * 100 if decision_stats['reported'] > 0 else 0
+            print(f"\n📈 Outcome Summary:")
+            print(f"   Successes: {decision_stats['successes']} ({succ_rate:.1f}%)")
+            print(f"   Failures:  {decision_stats['failures']} ({100-succ_rate:.1f}%)")
+            print(f"   Avg Quality Score: {decision_stats['avg_quality']:.2f}")
+            if decision_stats['min_quality'] is not None and decision_stats['max_quality'] is not None:
+                print(f"   Quality Range: {decision_stats['min_quality']:.1f} - {decision_stats['max_quality']:.1f}")
+            
+            # Quality distribution
+            if decision_stats['quality_distribution']:
+                print(f"\n📊 Quality Score Distribution:")
+                max_count = max(count for _, count in decision_stats['quality_distribution'])
+                for score, count in decision_stats['quality_distribution']:
+                    bar_len = int((count / max_count) * 30) if max_count > 0 else 0
+                    bar = "█" * bar_len
+                    print(f"   {score:2.0f}: {bar} {count}")
+            
+            # By context type
+            if decision_stats['context_breakdown']:
+                print(f"\n🔍 By Decision Type:")
+                print(f"   {'Context Type':<30} {'Total':<8} {'Reported':<10} {'Success':<10} {'Avg Quality':<12}")
+                print(f"   {'-'*72}")
+                for row in decision_stats['context_breakdown']:
+                    ctx, total, reported, succeeded, avg_q = row
+                    ctx_name = ctx or "unknown"
+                    rep_pct = (reported / total * 100) if total > 0 and reported else 0
+                    succ_pct = (succeeded / reported * 100) if reported > 0 and succeeded else 0
+                    avg_q_str = f"{avg_q:.2f}" if avg_q else "-"
+                    print(f"   {ctx_name:<30} {total:<8} {reported:<4} ({rep_pct:>3.0f}%) {succeeded:<4} ({succ_pct:>3.0f}%) {avg_q_str:<12}")
+        
+        else:
+            print("\n⚠️  No outcomes reported yet. Decisions are being tracked but not evaluated.")
+            print("   This is normal for older data or if fixes were just applied.")
     
     # ═══════════════════════════════════════════════════════
     # PER-STEP SUCCESS RATES

@@ -47,7 +47,7 @@ from app.utils.entity_discovery import (
 CRITICAL_FILES = {
     "backend/app/models.py",
     "backend/app/routers/*.py",
-    "backend/tests/test_api.py",
+    "backend/tests/test_capability_api.py",
     "frontend/src/pages/*.jsx",
 }
 
@@ -322,7 +322,14 @@ class SelfHealingManager:
         test_context = ""
         if self.latest_test_failures:
             log("HEAL", "   📋 Including test failure feedback")
-            test_context = self._build_test_feedback_context(self.latest_test_failures)
+            # Truncate massive outputs (70k+ chars) to prevent context overflow
+            # We only need the first ~2k chars (assertion errors usually at top)
+            truncated_failures = self.latest_test_failures[:2000]
+            if len(self.latest_test_failures) > 2000:
+                truncated_failures += "\n... (truncated for brevity)"
+            
+            # Use truncated failures for context
+            test_context = self._build_test_feedback_context(truncated_failures)
         
         # Use healing budget
         budget.use_critical_regen(artifact="backend_vertical")
@@ -434,9 +441,34 @@ For backend/app/models.py:
 ```python
 from datetime import datetime  # If using datetime.utcnow() or datetime fields
 from enum import Enum  # If using Enum classes for status, priority, etc.
-from typing import Optional  # If using Optional[] types
-from beanie import Document
-from pydantic import Field
+from typing import Optional, List  # If using Optional[] or List[] types
+from beanie import Document, PydanticObjectId  # ✅ Document for collections, PydanticObjectId for foreign keys
+from pydantic import BaseModel, Field  # ✅ BaseModel for EMBEDDED documents (NOT from beanie!)
+```
+
+🚨 CRITICAL: Beanie does NOT have EmbeddedDocument!
+❌ WRONG: `from beanie import EmbeddedDocument`  # This does NOT exist in Beanie!
+✅ RIGHT: `from pydantic import BaseModel`  # Use for nested/embedded objects
+
+📚 BEANIE PATTERNS (MongoDB):
+
+**AGGREGATE (Top-level collection):**
+```python
+class Content(Document):  # ✅ Use Document for collections
+    title: str
+    owner: PydanticObjectId  # ✅ Foreign key reference to Owner._id
+    channel: PydanticObjectId  # ✅ Foreign key reference to Channel._id
+    
+    class Settings:
+        name = "contents"  # Collection name
+```
+
+**EMBEDDED (Nested object, NOT a collection):**
+```python
+class Owner(BaseModel):  # ✅ Use BaseModel, NOT Document or EmbeddedDocument!
+    name: str
+    avatar: str
+    # NO Settings class for embedded objects
 ```
 
 For backend/app/routers/{entity_plural}.py:
@@ -444,14 +476,16 @@ For backend/app/routers/{entity_plural}.py:
 from datetime import datetime  # If using datetime.utcnow()
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status, Response
+from beanie import PydanticObjectId  # ✅ For ID parameters
 from app.models import {model_name}  # REQUIRED - import your model
 ```
 
 ⚠️ COMMON MISTAKES TO AVOID:
-1. Using `datetime.utcnow()` without importing datetime
-2. Using `Optional[]` without importing from typing
-3. Defining Enum values without importing Enum
-4. Forgetting to import HTTPException, status, Response from fastapi
+1. ❌ Using `from beanie import EmbeddedDocument` (does NOT exist!)
+2. ❌ Using `datetime.utcnow()` without importing datetime
+3. ❌ Using `Optional[]` without importing from typing
+4. ❌ Defining Enum values without importing Enum
+5. ❌ Forgetting to import HTTPException, status, Response from fastapi
 
 ═══════════════════════════════════════════════════════
 🚨 CRITICAL PATH REQUIREMENTS (DOUBLE-CHECK THESE!)
@@ -494,6 +528,13 @@ CRITICAL REQUIREMENTS:
 - GET /{{id}} → 200 (or 404)
 - PUT /{{id}} → 200 (or 404)
 - DELETE /{{id}} → 204 No Content (use `status_code=status.HTTP_204_NO_CONTENT`, return None)
+
+**ID PARAMETER TYPE (CRITICAL - Prevents 500 Errors)**:
+- ALWAYS use `PydanticObjectId` for ID parameters, NOT `str`
+- Import: `from beanie import PydanticObjectId`
+- Pattern: `async def get_one(id: PydanticObjectId):`
+- ALWAYS check if result is None and raise HTTPException(404)
+- This ensures invalid ID formats return 422 (client error) not 500 (server crash)
 
 **RESPONSE SHAPE (FLAT, NOT WRAPPED)**:
 - GET / → `[{{"id": "...", "title": "...", "status": "active|completed"}}]`
@@ -538,53 +579,72 @@ Return JSON with "files" array containing path and content.
                 max_retries=0,  # Redundant with healing_mode but explicit
                 max_tokens=max_tokens,
                 temperature=temperature,
-                healing_mode=True,  # LOOP CONSOLIDATION: Single attempt, no retries
             )
             
-            # Write files
+            # ═══════════════════════════════════════════════════════════════
+            # CRITICAL: Use safe_write_llm_files - NO BYPASS ALLOWED
+            # ═══════════════════════════════════════════════════════════════
+            # Healing MUST go through the same validation gate as normal generation
+            # This ensures:
+            # 1. Unicode normalization (strips non-ASCII)
+            # 2. Syntax validation (AST check)
+            # 3. No invalid files are written to disk
+            
+            from app.persistence import safe_write_llm_files
+            
             parsed = result.get("output", {})
             if not parsed.get("files"):
                 log("HEAL", "❌ Derek returned no files")
                 return False
             
-            files_written = 0
-            for file_obj in parsed["files"]:
-                path = self.project_path / file_obj.get("path", "")
-                content = file_obj.get("content", "")
-                
-                if content:
-                    self._write_file(path, content)
-                    files_written += 1
-                    log("HEAL", f"   ✅ Wrote {file_obj.get('path')}")
+            # Write through validation gate (async call, but healing runs in async context)
+            files_written = await safe_write_llm_files(
+                manager=None,  # Healing doesn't broadcast to WebSocket
+                project_id=self.project_id,
+                project_path=self.project_path,
+                files=parsed["files"],
+                step_name="Backend Healing",
+                log_prefix="[HEAL]"
+            )
             
             if files_written == 0:
-                log("HEAL", "❌ No files written")
+                log("HEAL", "❌ No files passed validation and were written")
                 return False
+            
+            log("HEAL", f"✅ Wrote {files_written} file(s) through validation gate")
             
             # Ensure router is wired (use centralized utils)
             from app.orchestration.wiring_utils import wire_router, wire_model
             wire_router(self.project_path, entity_plural)
             
-            # Ensure model is wired (CRITICAL for Beanie)
-            # FIX #7: Check if model is AGGREGATE before wiring
-            # EMBEDDED models must NOT be wired to Beanie!
-            should_wire = True
-            entity_plan_path = self.project_path / "entity_plan.json"
-            if entity_plan_path.exists():
-                try:
-                    from app.utils.entity_discovery import EntityPlan
-                    plan = EntityPlan.load(entity_plan_path)
-                    # Check if this entity is EMBEDDED
-                    entity_spec = next((e for e in plan.entities if e.name == model_name), None)
-                    if entity_spec and entity_spec.type == "EMBEDDED":
-                        log("HEAL", f"⏭️ Skipping wiring for {model_name} (EMBEDDED entity)")
-                        should_wire = False
-                except Exception as e:
-                    log("HEAL", f"⚠️ Could not check entity type: {e}, wiring anyway")
-            
-            if should_wire:
-                wire_model(self.project_path, model_name)
-                log("HEAL", f"✅ Wired AGGREGATE model: {model_name}")
+            # ═══════════════════════════════════════════════════════════════════════════
+            # INVARIANT B: Models May Only Be Wired If Served
+            # Only wire model if corresponding router file actually exists!
+            # This prevents wiring models that failed to generate.
+            # ═══════════════════════════════════════════════════════════════════════════
+            router_path = self.project_path / "backend" / "app" / "routers" / f"{entity_plural}.py"
+            if not router_path.exists():
+                log("HEAL", f"⚠️ INVARIANT B: Skipping model wiring - router {entity_plural}.py doesn't exist")
+            else:
+                # FIX #7: Check if model is AGGREGATE before wiring
+                # EMBEDDED models must NOT be wired to Beanie!
+                should_wire = True
+                entity_plan_path = self.project_path / "entity_plan.json"
+                if entity_plan_path.exists():
+                    try:
+                        from app.utils.entity_discovery import EntityPlan
+                        plan = EntityPlan.load(entity_plan_path)
+                        # Check if this entity is EMBEDDED
+                        entity_spec = next((e for e in plan.entities if e.name == model_name), None)
+                        if entity_spec and entity_spec.type == "EMBEDDED":
+                            log("HEAL", f"⏭️ Skipping wiring for {model_name} (EMBEDDED entity)")
+                            should_wire = False
+                    except Exception as e:
+                        log("HEAL", f"⚠️ Could not check entity type: {e}, wiring anyway")
+                
+                if should_wire:
+                    wire_model(self.project_path, model_name)
+                    log("HEAL", f"✅ Wired AGGREGATE model: {model_name}")
 
             
             # Validate
@@ -833,9 +893,21 @@ Fix these specific issues in your generated code.
     def _ensure_model_wired(self, model_name: str) -> None:
         """
         Ensure model is imported and registered in document_models list in main.py.
+        
+        INVARIANT B: Only wire if corresponding router exists!
         """
         main_path = self.project_path / "backend" / "app" / "main.py"
         if not main_path.exists():
+            return
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # INVARIANT B: Models May Only Be Wired If Served
+        # Check if corresponding router file exists before wiring
+        # ═══════════════════════════════════════════════════════════════════════════
+        expected_router = model_name.lower() + "s"
+        router_path = self.project_path / "backend" / "app" / "routers" / f"{expected_router}.py"
+        if not router_path.exists():
+            log("HEAL", f"⚠️ INVARIANT B: Skipping _ensure_model_wired for {model_name} - no router {expected_router}.py")
             return
         
         content = main_path.read_text(encoding="utf-8")

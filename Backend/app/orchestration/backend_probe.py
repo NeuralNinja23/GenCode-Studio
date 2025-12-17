@@ -11,7 +11,7 @@ code doesn't need to know about Docker, ASGI, or environment details.
 """
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 from pathlib import Path
 
 
@@ -109,14 +109,14 @@ class HTTPBackendProbe(BackendProbe):
         self._base_url = "http://localhost:8001"
         return self._base_url
     
-    async def check_route(
+    async def check_route_detailed(
         self, 
         method: str, 
         path: str, 
         expected_status: int,
         timeout: float = 5.0
-    ) -> bool:
-        """Test route via HTTP request."""
+    ) -> Tuple[bool, int, str]:
+        """Test route via HTTP request and return detailed status."""
         import httpx
         from app.core.logging import log
         
@@ -137,27 +137,47 @@ class HTTPBackendProbe(BackendProbe):
                 elif method.upper() == "DELETE":
                     response = await client.delete(url)
                 else:
-                    raise ValueError(f"Unsupported HTTP method: {method}")
+                    return False, 0, f"Unsupported HTTP method: {method}"
                 
-                # Log actual response
-                if response.status_code == expected_status:
-                    log("PROBE", f"  ✅ Got {response.status_code} as expected")
-                    return True
+                status = response.status_code
+                passed = False
+                msg = ""
+                
+                # Check status
+                if status == expected_status:
+                    log("PROBE", f"  ✅ Got {status} as expected")
+                    passed = True
+                elif status == 422 and method.upper() in ("POST", "PUT"):
+                    log("PROBE", f"  ✅ Got 422 (route exists, validation failed with empty payload)")
+                    passed = True
                 else:
-                    log("PROBE", f"  ❌ Got {response.status_code}, expected {expected_status}")
+                    log("PROBE", f"  ❌ Got {status}, expected {expected_status}")
                     log("PROBE", f"     Response: {response.text[:200]}")
-                    return False
+                    msg = f"Got {status}, expected {expected_status}"
+                    
+                return passed, status, msg
                     
         except httpx.ConnectError as e:
             log("PROBE", f"  ❌ Connection failed: {e}")
             log("PROBE", f"     URL: {url}")
-            return False
+            return False, 0, f"Connection failed: {e}"
         except httpx.TimeoutException as e:
             log("PROBE", f"  ❌ Request timeout: {e}")
-            return False
+            return False, 0, f"Request timeout: {e}"
         except Exception as e:
             log("PROBE", f"  ❌ Unknown error: {type(e).__name__}: {e}")
-            return False
+            return False, 0, f"{type(e).__name__}: {e}"
+
+    async def check_route(
+        self, 
+        method: str, 
+        path: str, 
+        expected_status: int,
+        timeout: float = 5.0
+    ) -> bool:
+        """Wrapper for backward compatibility."""
+        passed, _, _ = await self.check_route_detailed(method, path, expected_status, timeout)
+        return passed
     
     async def is_healthy(self, timeout: float = 5.0) -> bool:
         """Check health endpoint."""
