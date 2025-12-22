@@ -15,7 +15,7 @@ HANDLERS = [
     ('backend.py', 'step_system_integration'),
     ('backend_models.py', 'step_backend_models'),
     ('contracts.py', 'step_contracts'),
-    ('frontend_integration.py', 'step_frontend_integration'),
+
     ('frontend_mock.py', 'step_frontend_mock'),
     ('preview.py', 'step_preview_final'),
     ('refine.py', 'step_refine'),

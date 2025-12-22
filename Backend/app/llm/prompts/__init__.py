@@ -3,13 +3,15 @@
 Agent prompts - organized by agent.
 """
 from .marcus import MARCUS_PROMPT, MARCUS_SUPERVISION_PROMPT
-from .derek import DEREK_PROMPT, DEREK_TESTING_PROMPT
-from .luna import LUNA_PROMPT, LUNA_TESTING_PROMPT
+from .derek import DEREK_PROMPT
+from .derek_testing import DEREK_TESTING_PROMPT
+from .luna import LUNA_PROMPT
+from .luna_testing import LUNA_TESTING_PROMPT
 from .victoria import VICTORIA_PROMPT
 
 __all__ = [
     "MARCUS_PROMPT", "MARCUS_SUPERVISION_PROMPT",
-    "DEREK_PROMPT", "DEREK_TESTING_PROMPT",
+    "DEREK_PROMPT",  "DEREK_TESTING_PROMPT",
     "LUNA_PROMPT", "LUNA_TESTING_PROMPT",
     "VICTORIA_PROMPT",
 ]

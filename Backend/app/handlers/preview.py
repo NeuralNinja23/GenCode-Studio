@@ -1,8 +1,8 @@
 # app/handlers/preview.py
 """
-Step 11: Launch preview with dynamic port allocation.
+Step 9: Launch preview with dynamic port allocation.
 
-Workflow order: ... → Testing Frontend (10) → Preview Final (11) → COMPLETE
+Workflow order: ... → Testing Frontend (8) → Preview Final (9) → COMPLETE
 """
 import asyncio
 import re
@@ -19,33 +19,33 @@ from app.orchestration.utils import broadcast_to_project
 
 # Phase 0: Failure Boundary Enforcement
 from app.core.failure_boundary import FailureBoundary
+from app.core.step_invariants import StepInvariants, StepInvariantError
 
 
 @FailureBoundary.enforce
-async def step_preview_final(
-    project_id: str,
-    user_request: str,
-    manager: Any,
-    project_path: Path,
-    chat_history: List[ChatMessage],
-    provider: str,
-    model: str,
-    current_turn: int,
-    max_turns: int,
-) -> StepResult:
+async def step_preview_final(branch) -> StepResult:
     """
     Step 11: Refresh preview on RANDOM free ports for both frontend and backend.
     """
+    from app.arbormind.cognition.branch import Branch
+    assert isinstance(branch, Branch)
+    
+    # Extract context from branch
+    project_id = branch.intent["project_id"]
+    user_request = branch.intent["user_request"]
+    manager = branch.intent["manager"]
+    project_path = branch.intent["project_path"]
+    
     await broadcast_status(
         manager,
         project_id,
         WorkflowStep.PREVIEW_FINAL,
-        f"Turn {current_turn}/{max_turns}: Finalizing preview (Dynamic Ports)...",
-        current_turn,
-        max_turns,
+        f"Readying preview...",
+        9,
+        9,
     )
 
-    log("PREVIEW", "Configuring sandbox for random port access...")
+    # log("PREVIEW", "Configuring sandbox for random port access...")
 
     preview_url = ""
     backend_url = "http://localhost:8001"  # Default fallback
@@ -104,7 +104,7 @@ services:
                 if match:
                     frontend_port = match.group(1)
                     preview_url = f"http://localhost:{frontend_port}"
-                    log("PREVIEW", f"✅ Frontend port: {frontend_port}")
+                    # log("PREVIEW", f"✅ Frontend port: {frontend_port}")
                 
                 # Get backend port
                 backend = containers.get("backend", {})
@@ -113,7 +113,7 @@ services:
                 if match:
                     backend_port = match.group(1)
                     backend_url = f"http://localhost:{backend_port}"
-                    log("PREVIEW", f"✅ Backend port: {backend_port}")
+                    # log("PREVIEW", f"✅ Backend port: {backend_port}")
                     
                     # IMPORTANT: Update the frontend with the correct backend URL
                     # This is a workaround for the browser not being able to access Docker internal hostnames
@@ -127,7 +127,7 @@ services:
                                 f'"http://localhost:{backend_port}"'
                             )
                             api_js_path.write_text(content, encoding="utf-8")
-                            log("PREVIEW", f"✅ Updated api.js with backend port {backend_port}")
+                            # log("PREVIEW", f"✅ Updated api.js with backend port {backend_port}")
                         except Exception as e:
                             log("PREVIEW", f"⚠️ Could not update api.js: {e}")
                 else:
@@ -142,7 +142,8 @@ services:
                             preview_data = await preview_resp.json()
                             preview_url = preview_data.get("preview_url") or preview_data.get("url") or ""
                             if preview_url:
-                                log("PREVIEW", f"✅ Got preview URL from API: {preview_url}")
+                                # log("PREVIEW", f"✅ Got preview URL from API: {preview_url}")
+                                pass
                 except Exception as e:
                     log("PREVIEW", f"Warning: API preview fetch failed: {e}")
                     pass
@@ -152,7 +153,7 @@ services:
 
             # 6) Verify Frontend Reachability
             if preview_url:
-                log("PREVIEW", f"Waiting for {preview_url}...")
+                # log("PREVIEW", f"Waiting for {preview_url}...")
 
                 for i in range(60):
                     try:
@@ -177,11 +178,24 @@ services:
             )
 
     except Exception as e:
-        log("PREVIEW", f"Final preview setup failed: {e}")
-        # Phase 9: Raise to trigger FailureBoundary -> Isolation -> Degradation
-        raise e
+        # Preview must NEVER block the workflow
+        log("PREVIEW", f"⚠️ Final preview setup failed (non-blocking): {e}")
+        # Continue anyway - the workflow is complete even if preview fails
+        await broadcast_to_project(
+            manager,
+            project_id,
+            {
+                "type": "PREVIEW_URL_READY",
+                "url": "http://localhost:5174",  # Fallback
+                "backend_url": "http://localhost:8001",  # Fallback
+                "message": f"Preview setup had issues but workflow is complete",
+                "stage": "complete",
+                "warning": str(e),
+            },
+        )
 
     return StepResult(
         nextstep=WorkflowStep.COMPLETE,
-        turn=current_turn + 1,
+        turn=10,  # Preview is step 9
     )
+

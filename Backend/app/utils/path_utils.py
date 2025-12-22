@@ -66,9 +66,9 @@ def get_main_py_path(project_id: str) -> Path:
     return get_project_path(project_id) / "backend" / "app" / "main.py"
 
 
-def get_contracts_path(project_id: str) -> Path:
-    """Get the contracts.md file path for a project."""
-    return get_project_path(project_id) / "contracts.md"
+def get_architecture_path(project_id: str) -> Path:
+    """Get the architecture.md file path for a project."""
+    return get_project_path(project_id) / "architecture.md"
 
 
 def get_tests_path(project_id: str) -> Path:

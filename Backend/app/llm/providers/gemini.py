@@ -49,8 +49,9 @@ async def call(
     generation_config = {
         "temperature": 0.2, # Reduced from 0.7 for more deterministic code
         "maxOutputTokens": max_tokens, 
-        # 🚨 CRITICAL: Force JSON response to prevent parsing failures
-        "responseMimeType": "application/json",
+        # 🚨 REMOVED: "responseMimeType": "application/json" was FORCING JSON output
+        # This was the ROOT CAUSE of Victoria outputting JSON instead of HDAP files!
+        # Agents should output HDAP format (<<<FILE>>>...<<<END_FILE>>>), not JSON.
     }
     
     # V2: Add stop sequences to prevent truncation

@@ -338,6 +338,8 @@ class SandboxManager:
                     shell=True,
                     capture_output=True, # Capture stdout/stderr
                     text=True,           # Decode as string
+                    encoding="utf-8",    # Explicit encoding
+                    errors="replace",    # Safe error handling
                     cwd=str(project_path),
                     timeout=timeout
                 )
@@ -436,6 +438,8 @@ class SandboxManager:
                     ["docker", "ps", "--filter", f"name={project_id}", "--format", "{{json .}}"],
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",  # Explicit encoding
+                    errors="replace",  # Safe error handling
                     timeout=10
                 )
             
@@ -547,6 +551,8 @@ class SandboxManager:
                     shell=True,
                     capture_output=True,  # Capture stdout/stderr
                     text=True,            # Decode as string
+                    encoding="utf-8",     # Explicit encoding
+                    errors="replace",     # Safe error handling
                     timeout=timeout
                 )
 

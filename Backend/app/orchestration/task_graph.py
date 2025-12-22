@@ -21,15 +21,12 @@ class TaskGraph:
     def __init__(self):
         # Ordered execution graph (fixed)
         self.steps: List[str] = [
-            "analysis",
             "architecture",
             "frontend_mock",
-            "screenshot_verify",
-            "contracts",
-            "backend_implementation",
+            "backend_models",
+            "backend_routers",
             "system_integration",
             "testing_backend",
-            "frontend_integration",
             "testing_frontend",
             "preview_final"
         ]
@@ -37,21 +34,19 @@ class TaskGraph:
         # Dependencies prevent premature execution.
         # A step can only run when ALL its dependencies have completed successfully.
         self.dependencies: Dict[str, List[str]] = {
-            "analysis": [],
-            "architecture": ["analysis"],
+            "architecture": [],
             "frontend_mock": ["architecture"],
-            "screenshot_verify": ["frontend_mock"],
-            "contracts": ["frontend_mock"],
-            "backend_implementation": ["architecture", "contracts"],
-            "system_integration": ["backend_implementation"],
-            "testing_backend": ["system_integration"],
-            "frontend_integration": ["contracts", "backend_implementation"],
-            "testing_frontend": ["frontend_integration"],
+            "backend_models": ["architecture"],
+            "backend_routers": ["backend_models"],
+            "system_integration": ["backend_routers"],
+            "testing_backend": ["system_integration"],     # Tests depend on system being ready
+            "testing_frontend": ["system_integration"],  # Tests depend on system integration (frontend wiring done there)
             "preview_final": [
                 "system_integration", 
-                "frontend_integration"
-            ]  # Phase 9: Preview depends on CODE availability, not TEST success
+                ]  # Phase 9: Preview depends on CODE availability, not TEST success
         }
+
+
 
     def get_steps(self) -> List[str]:
         """Get the ordered list of all workflow steps."""

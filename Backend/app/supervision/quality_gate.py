@@ -16,9 +16,7 @@ _quality_lock = asyncio.Lock()
 CRITICAL_STEPS = {
     "backend_routers", 
     "backend_main", 
-    "frontend_integration",
-    "architecture",
-    "contracts"
+    "architecture"
 }
 
 async def check_quality_gate(

@@ -8,18 +8,17 @@ from app.database import init_db, close_db
 def anyio_backend():
     return "asyncio"
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 async def async_client():
-    """Async HTTP client for testing FastAPI endpoints."""
-    transport = ASGITransport(app=app)
-    # follow_redirects=True handles 307 from trailing slash differences
-    async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=True) as client:
-        yield client
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        yield ac
 
-# Alias for compatibility - Derek's prompts use 'client'
-@pytest.fixture(scope="module")
-async def client(async_client):
-    """Alias for async_client - use either name in tests."""
+
+@pytest.fixture(scope="function")
+def client(async_client):
+    """
+    Sync wrapper for async_client to support standard pytest assertions.
+    """
     return async_client
 
 @pytest.fixture(scope="session", autouse=True)
@@ -46,7 +45,7 @@ def assert_api_routes_exist():
     )
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="function", autouse=True)
 async def db_connection():
     await init_db()
     yield

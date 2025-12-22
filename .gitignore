@@ -47,13 +47,14 @@ Thumbs.db
 htmlcov/
 .tox/
 
-# GenCode Studiworkspaces/cific
-
+# GenCode Studio Specific
+workspaces/
 *.fast_checkpoints/
 containers.json
 .agent
 .gemini
-workspaces/
+.cache
+Arbormind
 
 # Allow specific files even in ignored directories
 !**/conftest.py
@@ -69,7 +70,7 @@ logs/
 Emergent Prompt.txt
 
 # GitHub pretraining data (contains API keys/responses)
-GitHub
+
 
 
 commands

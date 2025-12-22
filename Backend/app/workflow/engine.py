@@ -3,18 +3,16 @@
 Workflow Engine - The main orchestration loop.
 
 This implements the GenCode Studio FRONTEND-FIRST workflow:
-1. Analysis (Marcus) - Understand requirements
-2. Architecture (Victoria) - Design system
-3. Frontend Mock (Derek) - Create frontend with mock data (aha moment!)
-4. Screenshot Verify (Marcus) - Visual QA of frontend
-5. Contracts (Marcus) - Define API contracts based on frontend mock
-6. Backend Models (Derek) - Create database models
-7. Backend Routers (Derek) - Create API endpoints
-8. Backend Main (Derek) - Wire up main app
-9. Testing Backend (Derek) - Run pytest
-10. Frontend Integration (Derek) - Replace mock with real API
-11. Testing Frontend (Luna) - Run Playwright
-12. Preview (Marcus) - Show running app
+1. Architecture (Victoria) - Design system
+2. Frontend Mock (Derek) - Create frontend with mock data (aha moment!)
+3. Backend Models (Derek) - Create database schemas
+4. Backend Routers (Derek) - Create FastAPI routers
+5. System Integration (Derek) - Script Integrator
+6. Testing Backend (Derek) - Run pytest
+7. Frontend Integration (Derek) - Replace mock with real API
+8. Testing Frontend (Luna) - Run Playwright
+9. Preview (Marcus) - Show running app
+
 """
 import asyncio
 import traceback
@@ -28,15 +26,13 @@ from app.orchestration.state import WorkflowStateManager, CURRENT_MANAGERS
 from app.core.logging import log
 from app.orchestration.utils import broadcast_to_project
 from app.handlers import (
-    step_analysis,
     step_architecture,
-    step_frontend_mock,  # Frontend-first with mock
-    step_screenshot_verify,  # NEW: Visual QA after frontend
-    step_contracts,
-    step_backend_implementation, # Atomic Backend
-    step_system_integration, # Script Integrator
+    step_frontend_mock,
+    step_backend_models,
+    step_backend_routers,
+    step_system_integration,
     step_testing_backend,
-    step_frontend_integration,  # Replace mock with API
+
     step_testing_frontend,
     step_preview_final,
     step_refine,
@@ -46,19 +42,19 @@ from app.handlers import (
 
 # Step handler registry - GENCODE STUDIO FRONTEND-FIRST ORDER
 STEP_HANDLERS = {
-    WorkflowStep.ANALYSIS: step_analysis,
     WorkflowStep.ARCHITECTURE: step_architecture,
-    WorkflowStep.FRONTEND_MOCK: step_frontend_mock,  # Step 3: Frontend with mock data
-    WorkflowStep.SCREENSHOT_VERIFY: step_screenshot_verify,  # Step 4: Visual QA
-    WorkflowStep.CONTRACTS: step_contracts,  # Step 5: API contracts from mock
-    WorkflowStep.BACKEND_IMPLEMENTATION: step_backend_implementation, # Step 6: Atomic Vertical
-    WorkflowStep.SYSTEM_INTEGRATION: step_system_integration, # Step 7: Integrator
-    WorkflowStep.TESTING_BACKEND: step_testing_backend,  # Step 8
-    WorkflowStep.FRONTEND_INTEGRATION: step_frontend_integration,  # Step 9
-    WorkflowStep.TESTING_FRONTEND: step_testing_frontend,  # Step 10
-    WorkflowStep.PREVIEW_FINAL: step_preview_final,  # Step 11
-    WorkflowStep.REFINE: step_refine,  # Post-workflow refinement
+    WorkflowStep.FRONTEND_MOCK: step_frontend_mock,
+    WorkflowStep.BACKEND_MODELS: step_backend_models,
+    WorkflowStep.BACKEND_ROUTERS: step_backend_routers,
+    WorkflowStep.SYSTEM_INTEGRATION: step_system_integration,
+    WorkflowStep.TESTING_BACKEND: step_testing_backend,
+
+    WorkflowStep.TESTING_FRONTEND: step_testing_frontend,
+    WorkflowStep.PREVIEW_FINAL: step_preview_final,
+    WorkflowStep.REFINE: step_refine,
 }
+
+
 
 
 class WorkflowEngine:
@@ -67,18 +63,18 @@ class WorkflowEngine:
     
     Executes the GenCode Studio FRONTEND-FIRST workflow:
     
-    1. Analysis (Marcus) - Understand and clarify requirements
-    2. Architecture (Victoria) - Design system architecture  
-    3. Frontend Mock (Derek) - Create frontend with mock data (aha moment!)
-    4. Screenshot Verify (Marcus) - Visual QA of the frontend
-    5. Contracts (Marcus) - Define API contracts for backend
-    6. Backend Models (Derek) - Create database models
-    7. Backend Routers (Derek) - Create API endpoints
-    8. Backend Main (Derek) - Wire up the main app
-    9. Testing Backend (Derek) - Test backend with pytest
-    10. Frontend Integration (Derek) - Replace mock with real API
-    11. Testing Frontend (Luna) - E2E tests with Playwright
-    12. Preview (Marcus) - Show running application
+    1. Architecture (Victoria) - Design system architecture  
+    2. Frontend Mock (Derek) - Create frontend with mock data (aha moment!)
+    3. Backend Models (Derek) - Create database schemas (Beanie/Pydantic)
+    4. Backend Routers (Derek) - Create FastAPI routers
+    5. System Integration (Derek) - Orchestrate services and dependencies
+    6. Testing Backend (Derek) - Run backend tests with pytest
+    7. Frontend Integration (Derek) - Replace mock with real API
+    8. Testing Frontend (Luna) - E2E tests with Playwright
+    9. Preview (Marcus) - Show running application
+
+
+
     """
     
     def __init__(
@@ -97,7 +93,8 @@ class WorkflowEngine:
         self.provider = provider or settings.llm.default_provider
         self.model = model or settings.llm.default_model
         self.chat_history: List[ChatMessage] = []
-        self.current_step = WorkflowStep.ANALYSIS
+        self.current_step = WorkflowStep.ARCHITECTURE
+
         self.current_turn = 1
         self.max_turns = settings.workflow.max_turns
     
@@ -132,15 +129,26 @@ class WorkflowEngine:
                 )
                 
                 # ═══════════════════════════════════════════════════════
-                # CHECKPOINT: Save progress after each step completes
+                # outcome = result.outcome if isinstance(result, StepExecutionResult) else ...
                 # ═══════════════════════════════════════════════════════
+                from app.core.step_outcome import StepExecutionResult, StepOutcome
+                is_new_result = isinstance(result, StepExecutionResult)
+                
+                # Check for success
+                if is_new_result:
+                    is_success = result.outcome == StepOutcome.SUCCESS
+                    step_data = result.data or {}
+                else:
+                    is_success = getattr(result, 'status', 'ok') == "ok"
+                    step_data = getattr(result, 'data', {})
+
                 try:
                     from app.orchestration.checkpoint import save_checkpoint
                     await save_checkpoint(
                         project_id=self.project_id,
                         step_name=self.current_step,
                         turn=self.current_turn,
-                        output=result.data if hasattr(result, 'data') else {},
+                        output=step_data,
                         context={
                             "user_request": self.user_request,
                             "provider": self.provider,
@@ -148,7 +156,7 @@ class WorkflowEngine:
                             "current_turn": self.current_turn,
                             "max_turns": self.max_turns,
                         },
-                        status="completed" if result.status == "ok" else "failed",
+                        status="completed" if is_success else "failed",
                     )
                 except Exception as cp_error:
                     log("WORKFLOW", f"⚠️ Checkpoint save failed (non-fatal): {cp_error}")
@@ -159,12 +167,22 @@ class WorkflowEngine:
                     # Keep system message (if any) and trim oldest
                     self.chat_history = self.chat_history[-max_chat_history:]
                 
-                if result.pause:
+                # Handling next steps
+                if is_new_result:
+                    # StepExecutionResult doesn't have pause/nextstep directly in it usually
+                    # but if it does, we use it. Otherwise, we assume progression.
+                    # Handlers currently still return StepResult mostly, wrapped by boundary
+                    pass
+                
+                if hasattr(result, 'pause') and result.pause:
                     await self._pause_workflow(result)
                     return
                 
-                self.current_step = result.nextstep
-                self.current_turn = result.turn
+                if hasattr(result, 'nextstep'):
+                    self.current_step = result.nextstep
+                
+                if hasattr(result, 'turn'):
+                    self.current_turn = result.turn
                 
                 if self.current_step == WorkflowStep.COMPLETE:
                     break
@@ -232,7 +250,6 @@ class WorkflowEngine:
                 "projectId": self.project_id,
                 "step": self.current_step,
                 "error": str(error),
-                "trace": traceback.format_exc(),
             },
         )
     
@@ -300,13 +317,22 @@ async def run_workflow(
         
         backend_seed = base_templates / "backend" / "seed"
         if backend_seed.exists():
-            shutil.copytree(backend_seed, backend_dest, dirs_exist_ok=True)
-            log("WORKFLOW", "✅ Seeded Backend Infrastructure (DB, Core, Auth)")
+            # Copy while EXCLUDING agent-owned artifacts
+            def agent_artifact_filter(src, names):
+                ignored = []
+                for name in names:
+                    if name == "models.py" and "app" in str(src):
+                        ignored.append(name)
+                    if "routers" in str(src) and name.endswith(".py") and name != "__init__.py":
+                        ignored.append(name)
+                return ignored
+
+            shutil.copytree(backend_seed, backend_dest, dirs_exist_ok=True, ignore=agent_artifact_filter)
         else:
              log("WORKFLOW", "⚠️ Missing Backend Seed Template!")
 
-        # Create routers/__init__.py manually if not in seed (Safety net)
-        (backend_dest / "app" / "routers").mkdir(exist_ok=True)
+        # Create routers/__init__.py manually if it was filtered out (it shouldn't be, but safe bet)
+        (backend_dest / "app" / "routers").mkdir(exist_ok=True, parents=True) # Ensure parents exist too
         if not (backend_dest / "app" / "routers" / "__init__.py").exists():
             (backend_dest / "app" / "routers" / "__init__.py").write_text("# Routers package\n", encoding="utf-8")
         
@@ -324,7 +350,6 @@ async def run_workflow(
         if test_template_src.exists():
             test_template_dest = tests_dest / "test_contract_api.template"
             shutil.copy2(test_template_src, test_template_dest)
-            log("WORKFLOW", "✅ Seeded Test Template (backend/tests/test_contract_api.template)")
         
         # --- Frontend Seed ---
         frontend_dest = project_path / "frontend"
@@ -333,7 +358,6 @@ async def run_workflow(
         frontend_seed = base_templates / "frontend" / "seed"
         if frontend_seed.exists():
             shutil.copytree(frontend_seed, frontend_dest, dirs_exist_ok=True)
-            log("WORKFLOW", "✅ Seeded Frontend Infrastructure (API, AuthContext)")
         
         # Copy Base Frontend (Vite Boilerplate) - excluding reference/seed
         # We need the build configs and base structure
@@ -361,17 +385,10 @@ async def run_workflow(
             elif item.is_dir() and item.name == "public":
                  shutil.copytree(item, frontend_dest / "public", dirs_exist_ok=True)
 
-        # --- Seed Frontend Test Template (Option C for Frontend) ---
-        # Copy e2e.spec.js.template for Luna to use as reference
+        # --- Frontend Tests Directory (Luna generates tests dynamically) ---
+        # No template needed - Luna generates E2E tests from actual component code
         frontend_tests_dest = frontend_dest / "tests"
         frontend_tests_dest.mkdir(parents=True, exist_ok=True)
-        
-        # Copy the test template file for Luna to reference
-        frontend_test_template_src = frontend_seed / "tests" / "e2e.spec.js.template"
-        if frontend_test_template_src.exists():
-            frontend_test_template_dest = frontend_tests_dest / "e2e.spec.js.template"
-            shutil.copy2(frontend_test_template_src, frontend_test_template_dest)
-            log("WORKFLOW", "✅ Seeded Frontend Test Template (frontend/tests/e2e.spec.js.template)")
 
         # --- Docker Infrastructure ---
         # FIX: Align with new template structure (backend/Dockerfile, frontend/Dockerfile)
@@ -403,7 +420,7 @@ VITE_API_URL=http://localhost:8001/api
 """
             (frontend_dest / ".env").write_text(frontend_env_content, encoding="utf-8")
         
-        log("WORKFLOW", f"[{project_id}] Golden Seed Scaffolding Complete")
+        # log("WORKFLOW", f"[{project_id}] Golden Seed Scaffolding Complete")
         
         # FIX ATOMIC-001: Commit atomic scaffolding
         if final_project_path.exists():
@@ -432,7 +449,6 @@ VITE_API_URL=http://localhost:8001/api
     
     from app.orchestration.fast_orchestrator import FASTOrchestratorV2
     
-    log("WORKFLOW", f"🚀 Using FAST V2 ENGINE for {project_id}")
     engine = FASTOrchestratorV2(
         project_id=project_id,
         manager=manager,

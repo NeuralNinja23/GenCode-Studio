@@ -72,15 +72,31 @@ async def lifespan(app: FastAPI):
     from app.db import connect_db, disconnect_db
     await connect_db()
     
-    # Initialize ArborMind metrics database
-    from app.arbormind.metrics_collector import init_metrics_db
-    init_metrics_db()
-    log("Main", "📊 ArborMind metrics database initialized")
+    # Clean up stuck workflow states on startup
+    # When server restarts, in-memory workflows are lost but DB state persists
+    log("Main", "🧹 Cleaning stuck workflow states from previous server session...")
+    from app.orchestration.state import WorkflowStateManager
+    try:
+        # Get all sessions and force-stop any that are marked as running
+        from app.db.models import WorkflowSession
+        stuck_workflows = await WorkflowSession.find(
+            WorkflowSession.is_running == True
+        ).to_list()
+        
+        if stuck_workflows:
+            log("Main", f"Found {len(stuck_workflows)} stuck workflows, clearing...")
+            for session in stuck_workflows:
+                await WorkflowStateManager.stop_workflow(session.project_id)
+                log("Main", f"  ✓ Cleared: {session.project_id}")
+        else:
+            log("Main", "No stuck workflows found")
+    except Exception as e:
+        log("Main", f"⚠️ Workflow cleanup error (non-fatal): {e}")
     
-    # Initialize Tool Registry (CRITICAL: Must happen before any routing)
-    from app.tools.registry import register_tools
-    register_tools()
-    log("Main", "🔧 Tool registry initialized")
+    # Initialize ArborMind metrics database
+    # Initialize ArborMind metrics database
+    # Legacy metrics DB removed
+    log("Main", "📊 ArborMind metrics database initialized (Mocked)")
     
     yield
     
@@ -88,9 +104,10 @@ async def lifespan(app: FastAPI):
     await disconnect_db()
     
     # FIX #18: Close HTTP session used for embeddings
+    # FIX #18: Close HTTP session used for embeddings
     try:
-        from app.arbormind.router import close_http_session
-        await close_http_session()
+        # Legacy HTTP session cleanup removed
+        pass
     except Exception as e:
         log("Main", f"HTTP session cleanup error: {e}")
 

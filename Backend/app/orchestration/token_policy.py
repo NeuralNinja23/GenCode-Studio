@@ -2,132 +2,135 @@
 """
 Step-specific token allocation policies.
 
-Different workflow steps have different complexity requirements:
-- Analysis/Planning: Lower tokens (mostly text)
-- Code Generation: Higher tokens (complete files)
-- Backend Implementation: Highest tokens (Models + Routers + Manifest)
-- Testing: Medium-high tokens (multiple test files)
+════════════════════════════════════════════════════════════════════════════════
+ARCHITECTURAL INVARIANT: Hard Token Caps
+════════════════════════════════════════════════════════════════════════════════
 
-This replaces the one-size-fits-all DEFAULT_MAX_TOKENS approach.
+CAUSAL STEPS:
+- max_tokens is a HARD CAP, not a suggestion
+- NO retry_tokens (causal steps don't retry - they fail or succeed)
+- If agent can't fit in the cap → step FAILS
+- Output must be concise and complete
+
+EVIDENCE STEPS:
+- Can have retry_tokens for infrastructure failures
+- May retry on environment issues, NOT on code issues
+
+This prevents:
+- Stochastic truncation (unlimited tokens = random cutoff)
+- Token waste on doomed generations
+- Hidden costs from healing/retry loops
+════════════════════════════════════════════════════════════════════════════════
 """
 
 # ═══════════════════════════════════════════════════════
-# STEP-SPECIFIC TOKEN BUDGETS
+# STEP CLASSIFICATION (Canonical source of truth)
+# ═══════════════════════════════════════════════════════
+
+CAUSAL_STEPS = {
+    "architecture", 
+    "backend_models",
+    "backend_routers",
+    "frontend_mock",
+    "system_integration",
+    }
+
+EVIDENCE_STEPS = {
+    "testing_backend",
+    "testing_frontend",
+    "preview_final",
+}
+
+# ═══════════════════════════════════════════════════════
+# STEP-SPECIFIC TOKEN BUDGETS (HARD CAPS)
 # ═══════════════════════════════════════════════════════
 
 STEP_TOKEN_POLICIES = {
     # ───────────────────────────────────────────────────
-    # LOW COMPLEXITY STEPS (Analysis, Planning)
+    # CAUSAL STEPS: STRICT LIMITS, NO RETRY
     # ───────────────────────────────────────────────────
-    "analysis": {
-        "max_tokens": 8000,      # Initial analysis
-        "retry_tokens": 10000,   # Retry with more detail
-        "description": "Requirement analysis and clarification"
-    },
     
-    "contracts": {
-        "max_tokens": 8000,      # Contract definition from mock data
-        "retry_tokens": 10000,   # Retry with more endpoints
-        "description": "API contract generation from frontend mock"
-    },
-    
-    "screenshot_verify": {
-        "max_tokens": 8000,      # Visual QA analysis
-        "retry_tokens": 10000,   # More detailed critique
-        "description": "UI/UX review and visual QA"
-    },
-    
-    # ───────────────────────────────────────────────────
-    # MEDIUM COMPLEXITY STEPS (Architecture, Frontend)
-    # ───────────────────────────────────────────────────
-    # Issue #6 Fix: Increased tokens to prevent Victoria output truncation
-    # Issue #8 Fix: Further increased since architecture often contains detailed UI tokens JSON
     "architecture": {
-        "max_tokens": 20000,     # System design + UI design system (increased from 16000)
-        "retry_tokens": 24000,   # More detailed architecture (increased from 20000)
-        "description": "Architecture planning and UI design system"
+        "max_tokens": 8000,       # Architecture plan with UI design system (increased to avoid truncation)
+        "retry_tokens": None,     # CAUSAL: No retry
+        "description": "Architecture planning and UI design system",
+        "is_causal": True,
     },
     
-    "frontend_mock": {
-        "max_tokens": 12000,     # Pages + Components with mock data
-        "retry_tokens": 16000,   # More components or refinement
-        "description": "Frontend UI with mock data (no API calls)"
-    },
-    
-    "frontend_integration": {
-        "max_tokens": 12000,     # Replace mock with API calls
-        "retry_tokens": 16000,   # Fix API integration issues
-        "description": "Replace mock data with real API calls"
-    },
-    
-    "refine": {
-        "max_tokens": 12000,     # Code refinements
-        "retry_tokens": 14000,   # More extensive fixes
-        "description": "Post-workflow refinements and polish"
-    },
-    
-    # ───────────────────────────────────────────────────
-    # HIGH COMPLEXITY STEPS (Backend Code Generation)
-    # ───────────────────────────────────────────────────
     "backend_models": {
-        "max_tokens": 10000,     # Models.py only
-        "retry_tokens": 14000,   # More complex models with relations
-        "description": "Database models (Beanie Documents)"
+        "max_tokens": 8000,       # models.py with multiple entities - needs larger budget
+        "retry_tokens": None,     # CAUSAL: No retry
+        "description": "Database models (Beanie Documents)",
+        "is_causal": True,
     },
     
     "backend_routers": {
-        "max_tokens": 14000,     # Complete CRUD routers
-        "retry_tokens": 18000,   # More endpoints or error handling
-        "description": "API routers with full CRUD operations"
+        "max_tokens": 12000,      # Multiple routers with full CRUD - INCREASED to prevent truncation
+        "retry_tokens": None,     # CAUSAL: No retry  
+        "description": "API routers with CRUD operations",
+        "is_causal": True,
     },
     
-    "backend_implementation": {
-        "max_tokens": 30000,     # PHASE 6: Increased from 20000 to prevent truncation
-        "retry_tokens": 40000,   # PHASE 6: Increased from 24000 for retry robustness
-        "description": "Complete backend vertical (Models + Routers + Manifest)"
+    "frontend_mock": {
+        "max_tokens": 12000,      # Frontend components need more tokens - INCREASED
+        "retry_tokens": None,     # CAUSAL: No retry
+        "description": "Frontend page/component with mock data",
+        "is_causal": True,
     },
     
     "system_integration": {
-        "max_tokens": 8000,      # Wire up routers in main.py
-        "retry_tokens": 10000,   # Fix integration issues
-        "description": "System integration (main.py + requirements)"
+        "max_tokens": 6000,       # Wire up routers in main.py - INCREASED from 3000
+        "retry_tokens": None,     # CAUSAL: No retry
+        "description": "System integration (main.py only)",
+        "is_causal": True,
     },
     
     # ───────────────────────────────────────────────────
-    # TESTING STEPS (Need space for multiple test files)
+    # EVIDENCE STEPS: Can have retry for infra issues
     # ───────────────────────────────────────────────────
     "testing_backend": {
-        "max_tokens": 16000,     # PHASE 6: Increased from 12000
-        "retry_tokens": 20000,   # PHASE 6: Increased from 16000 for comprehensive tests
-        "description": "Backend testing with pytest"
+        "max_tokens": 12000,      # Test generation + execution - INCREASED from 6000
+        "retry_tokens": 14000,    # EVIDENCE: Can retry on infra failure
+        "description": "Backend testing with pytest",
+        "is_causal": False,
     },
     
     "testing_frontend": {
-        "max_tokens": 14000,     # Playwright E2E tests
-        "retry_tokens": 18000,   # More test scenarios
-        "description": "Frontend E2E testing with Playwright"
+        "max_tokens": 10000,      # E2E test generation - complete test file with HDAP markers
+        "retry_tokens": 12000,    # EVIDENCE: Can retry on infra failure
+        "description": "Frontend E2E testing - OBSERVATION ONLY",
+        "is_causal": False,
     },
     
     "preview_final": {
-        "max_tokens": 8000,      # Final preview and polish
-        "retry_tokens": 10000,   # Additional refinements
-        "description": "Final preview and application polish"
+        "max_tokens": 4000,       # Final preview summary - INCREASED from 2000
+        "retry_tokens": 5000,     # EVIDENCE: Can retry on infra failure
+        "description": "Final preview and summary",
+        "is_causal": False,
+    },
+    
+    "refine": {
+        "max_tokens": 2500,       # Single file refinement
+        "retry_tokens": None,     # Treated as causal (modifies code)
+        "description": "Post-workflow refinements - ONE FILE",
+        "is_causal": True,
     },
     
     "complete": {
-        "max_tokens": 6000,      # Workflow completion summary
-        "retry_tokens": 8000,    # Extended summary if needed
-        "description": "Workflow completion and summary"
+        "max_tokens": 1500,       # Summary only
+        "retry_tokens": None,     # No retry needed
+        "description": "Workflow completion summary",
+        "is_causal": False,
     },
 }
 
 
 # ═══════════════════════════════════════════════════════
-# DEFAULT FALLBACK (For steps not in the policy map)
+# DEFAULT FALLBACK (Conservative for unknown steps)
 # ═══════════════════════════════════════════════════════
 
-DEFAULT_FALLBACK_TOKENS = 10000
-DEFAULT_RETRY_TOKENS = 12000
+DEFAULT_FALLBACK_TOKENS = 2000   # Conservative default
+DEFAULT_RETRY_TOKENS = None      # Unknown steps don't retry
 
 
 # ═══════════════════════════════════════════════════════
@@ -163,14 +166,8 @@ def get_tokens_for_step(step_name: str, is_retry: bool = False) -> int:
         "frontend_mock_data": "frontend_mock",  # From supervisor.py step_id transform
         
         # Backend variations
-        "backend implementation": "backend_implementation",
-        "backend vertical": "backend_implementation",
-        
-        # Screenshot/UI Review variations
-        "ui screenshot review": "screenshot_verify",
-        "ui_screenshot_review": "screenshot_verify",  # Underscore version
-        "screenshot review": "screenshot_verify",
-        "screenshot_review": "screenshot_verify",
+        "backend implementation": "backend_routers",
+        "backend vertical": "backend_routers",
         
         # Testing variations
         "testing backend": "testing_backend",
@@ -179,9 +176,12 @@ def get_tokens_for_step(step_name: str, is_retry: bool = False) -> int:
         "backend_test_diagnosis": "testing_backend",
         "backend testing fix": "testing_backend",
         "backend_testing_fix": "testing_backend",
+        "test_file_generation": "testing_backend",
+        "test file generation": "testing_backend",
+        "e2e_test_generation": "testing_frontend",
+        "e2e test generation": "testing_frontend",
         
         # Integration variations
-        "frontend integration": "frontend_integration",
         "system integration": "system_integration",
     }
     
@@ -234,7 +234,6 @@ STEP_TEMPERATURES = {
     # Low temperatures for critical code generation
     "backend_models": 0.15,          # Data models need consistency
     "backend_routers": 0.15,         # API routes need correctness
-    "backend_implementation": 0.2,   # Complete backend generation
     "system_integration": 0.1,       # Critical wiring, be very careful
     "testing_backend": 0.1,          # Tests need precision
     "testing_frontend": 0.15,        # E2E tests need to be accurate
@@ -242,12 +241,8 @@ STEP_TEMPERATURES = {
     # Medium temperatures for design/architecture
     "architecture": 0.3,             # Allow some creativity in design
     "frontend_mock": 0.4,            # UI can be more creative
-    "frontend_integration": 0.25,    # API calls need carefulness
     
     # Higher temperatures for analysis/planning
-    "analysis": 0.3,                 # Analysis can explore options
-    "contracts": 0.2,                # Contract definition needs consistency
-    "screenshot_verify": 0.3,        # UI review can be subjective
     "refine": 0.25,                  # Refinements need balance
 }
 

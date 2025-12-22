@@ -62,19 +62,8 @@ def log_files(scope: str, files: List[dict], project_id: Optional[str] = None) -
     """
     Log file list summary.
     """
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    prefix = f"[{timestamp}] [{scope}]"
-    if project_id:
-        prefix += f" [{project_id[:8]}]"
-    
-    print(f"{prefix} 📁 Generated {len(files)} files:")
-    for f in files[:10]:
-        path = f.get("path", "unknown")
-        size = len(f.get("content", ""))
-        print(f"  - {path} ({size} bytes)")
-    if len(files) > 10:
-        print(f"  ... and {len(files) - 10} more files")
-    sys.stdout.flush()
+    # Silent as requested
+    pass
 
 
 def log_result(scope: str, approved: bool, quality: int, issues: List[str] = None, project_id: Optional[str] = None) -> None:

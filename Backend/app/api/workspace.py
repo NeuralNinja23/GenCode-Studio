@@ -255,9 +255,7 @@ async def generate_backend(request: Request, project_id: str, data: GenerateRequ
                 if not success:
                     log("WORKSPACE", f"Resume failed for {project_id}, no action taken")
             except Exception as e:
-                import traceback
                 log("WORKSPACE", f"ERROR resuming {project_id}: {e}")
-                log("WORKSPACE", traceback.format_exc())
         
         asyncio.create_task(_resume_workflow_with_logging())
         
@@ -283,9 +281,7 @@ async def generate_backend(request: Request, project_id: str, data: GenerateRequ
                     model=data.model,
                 )
             except Exception as e:
-                import traceback
                 log("WORKSPACE", f"ERROR {project_id}: {e}")
-                log("WORKSPACE", traceback.format_exc())
         
         asyncio.create_task(_run_workflow_with_logging())
         
@@ -485,4 +481,39 @@ async def clear_project_progress(project_id: str):
         "success": True,
         "message": f"Progress cleared for {project_id}",
         "project_id": project_id,
+    }
+
+
+@router.post("/{project_id}/force-stop")
+async def force_stop_workflow(project_id: str):
+    """
+    Force stop a stuck workflow.
+    
+    Use this when a workflow is marked as running but is actually stuck/crashed.
+    This manually clears the is_running flag.
+    """
+    from app.orchestration.state import WorkflowStateManager
+    
+    if not validate_project_id(project_id):
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+    
+    # Check current state
+    is_running = await WorkflowStateManager.is_running(project_id)
+    
+    if not is_running:
+        return {
+            "success": True,
+            "message": f"Workflow for {project_id} is not stuck (already stopped)",
+            "project_id": project_id,
+            "was_running": False,
+        }
+    
+    log("WORKSPACE", f"🔧 Force stopping stuck workflow for {project_id}")
+    await WorkflowStateManager.stop_workflow(project_id)
+    
+    return {
+        "success": True,
+        "message": f"Force stopped workflow for {project_id}",
+        "project_id": project_id,
+        "was_running": True,
     }

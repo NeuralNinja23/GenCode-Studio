@@ -20,7 +20,8 @@ class ExecRequest(BaseModel):
 async def sandbox_exec(data: ExecRequest):
     """Execute command in sandbox."""
     try:
-        from app.sandbox import sandbox as manager
+        from app.sandbox import get_sandbox
+        manager = get_sandbox()
         
         result = await manager.exec_in_container(
             project_id=data.project_id,
@@ -38,7 +39,8 @@ async def sandbox_exec(data: ExecRequest):
 async def get_sandbox_status(project_id: str):
     """Get sandbox status for a project."""
     try:
-        from app.sandbox import sandbox as manager
+        from app.sandbox import get_sandbox
+        manager = get_sandbox()
         
         status = await manager.get_status(project_id)
         
@@ -51,8 +53,9 @@ async def get_sandbox_status(project_id: str):
 async def create_sandbox(project_id: str):
     """Create/initialize sandbox for a project (idempotent)."""
     try:
-        from app.sandbox import sandbox as manager
+        from app.sandbox import get_sandbox
         from app.utils.path_utils import get_project_path
+        manager = get_sandbox()
         
         # Get workspace path using centralized utility
         project_path = get_project_path(project_id)
@@ -74,7 +77,8 @@ async def create_sandbox(project_id: str):
 async def start_sandbox(project_id: str, wait_healthy: bool = True):
     """Start sandbox for a project."""
     try:
-        from app.sandbox import sandbox as manager
+        from app.sandbox import get_sandbox
+        manager = get_sandbox()
         
         result = await manager.start_sandbox(project_id, wait_healthy=wait_healthy)
         
@@ -87,7 +91,8 @@ async def start_sandbox(project_id: str, wait_healthy: bool = True):
 async def stop_sandbox(project_id: str):
     """Stop sandbox for a project."""
     try:
-        from app.sandbox import sandbox as manager
+        from app.sandbox import get_sandbox
+        manager = get_sandbox()
         
         await manager.stop_sandbox(project_id)
         
@@ -100,7 +105,8 @@ async def stop_sandbox(project_id: str):
 async def get_preview_url(project_id: str):
     """Get preview URL for a project sandbox."""
     try:
-        from app.sandbox import sandbox as manager
+        from app.sandbox import get_sandbox
+        manager = get_sandbox()
         
         # Try to start sandbox if not running
         status = await manager.get_status(project_id)
@@ -127,3 +133,4 @@ async def get_preview_url(project_id: str):
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

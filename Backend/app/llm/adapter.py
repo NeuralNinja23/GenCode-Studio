@@ -25,35 +25,11 @@ LLMResponse = Dict[str, Any]  # {"text": str, "usage": {"input": int, "output": 
 # instead of cutting off mid-function when hitting token limits.
 
 STOP_SEQUENCES = {
-    "python": [
-        "\n\n@router.",      # New route decorator - safe to stop before next route
-        "\n\nclass ",        # New class definition
-        "\n\n# ═══",         # Section separator comment
-        "\n\n# ---",         # Another common separator
-    ],
-    "javascript": [
-        "\n\nexport ",       # New export statement
-        "\n\n// ═══",        # Section separator
-        "\n\nimport ",       # New import block (shouldn't appear mid-file)
-        "\n\nfunction ",     # New function declaration
-        "\n\nconst ",        # New const at module level
-    ],
-    "jsx": [
-        "\n\nexport ",       # Export statement
-        "\n\n// ═══",        # Section separator
-        "\n\nfunction ",     # Component function
-        "\n\nconst ",        # New const
-    ],
-    "generic": [
-        "\n\n```",           # End of code block
-        "\n\n---",           # Markdown separator
-        "\n\n\n",            # Triple newline (natural break)
-    ],
+    "python": [],
+    "javascript": [],
+    "jsx": [],
+    "generic": [],
 }
-# USER REQUEST UPDATE: Ensure strict stops on file ends
-STOP_SEQUENCES["python"].extend(["```", "```json", "<<END>>"])
-STOP_SEQUENCES["javascript"].extend(["```", "```json", "<<END>>"])
-STOP_SEQUENCES["jsx"].extend(["```", "```json", "<<END>>"])
 
 
 
@@ -91,7 +67,7 @@ def get_stop_sequences_for_step(step_name: str) -> List[str]:
     
     # Generic (markdown, contracts, etc.)
     else:
-        return STOP_SEQUENCES["generic"]
+        return [] # No stop sequences for generic/artifact mode
 
 class LLMAdapter:
     """
@@ -99,16 +75,16 @@ class LLMAdapter:
     
     Handles:
     - Provider selection
-    - Retries with exponential backoff (3 attempts)
-    - Rate limit handling
+    - SINGLE EXECUTION (ArborMind handles retry via branch continuation)
+    - Rate limit handling (raises LLMError)
     
     NO FALLBACK: If the primary provider fails, the request fails.
+    NO RETRIES: ArborMind decides if/when to retry via branch continuation.
     """
     
     def __init__(self):
         self.default_provider = settings.llm.default_provider
         self.default_model = settings.llm.default_model
-        self.max_retries = settings.llm.max_retries
     
     async def call(
         self,
@@ -181,7 +157,12 @@ class LLMAdapter:
         max_tokens: int,
         stop_sequences: Optional[List[str]] = None,
     ) -> str:
-        """Call a specific provider with retry logic."""
+        """
+        Call a specific provider - SINGLE ATTEMPT ONLY.
+        
+        ArborMind handles retry decisions via branch continuation.
+        This adapter is pure execution muscle.
+        """
         # Import here to avoid circular imports
         from .providers import gemini, openai, anthropic, ollama
         
@@ -197,40 +178,21 @@ class LLMAdapter:
         
         call_func = provider_map[provider]
 
-        
-        for attempt in range(self.max_retries):
-            try:
-                response = await call_func(
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    model=model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stop_sequences=stop_sequences,  # V2: Pass stop sequences
-                )
-                
-                # NOTE: Token tracking now handled by BudgetManager at orchestrator level
-                # The adapter returns the response, and handlers call budget.register_usage()
-                
-                return response
-            except Exception as e:
-                error_str = str(e).lower()
-                
-                # Rate limit - wait and retry
-                if "rate" in error_str or "429" in error_str:
-                    wait_time = (attempt + 1) * 5
-                    log("LLM", f"Rate limited (attempt {attempt + 1}/{self.max_retries}), waiting {wait_time}s...")
-                    await asyncio.sleep(wait_time)
-                # Network error - shorter retry
-                elif "network" in error_str or "connection" in error_str:
-                    log("LLM", f"Network error (attempt {attempt + 1}/{self.max_retries}), retrying...")
-                    await asyncio.sleep(2)
-                else:
-                    # Unknown error - don't retry, fail immediately
-                    raise LLMError(provider, f"Provider error: {e}")
-        
-        # All retries exhausted due to rate limiting - raise specific error to STOP workflow
-        raise RateLimitError(provider, self.max_retries)
+        # SINGLE EXECUTION - No retry loop
+        # ArborMind decides if/when to retry via branch continuation
+        try:
+            response = await call_func(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop_sequences=stop_sequences,
+            )
+            return response
+        except Exception as e:
+            # Report the failure - ArborMind decides what to do next
+            raise LLMError(provider, f"Provider error: {e}")
 
 
 

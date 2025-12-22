@@ -8,47 +8,35 @@ class WorkflowStep:
     """
     GenCode Studio workflow steps (Frontend-First pattern).
     
-    Order (11 steps total - Atomic Backend):
-    1. ANALYSIS - Understand and clarify requirements
-    2. ARCHITECTURE - Design system architecture
-    3. FRONTEND_MOCK - Create frontend with mock data
-    4. SCREENSHOT_VERIFY - Visual QA of the frontend
-    5. CONTRACTS - Define API contracts based on frontend mock
-    6. BACKEND_IMPLEMENTATION - Atomic creation of Models+Routers+Manifest
-    7. SYSTEM_INTEGRATION - Wiring steps (Main.py + Requirements)
-    8. TESTING_BACKEND - Test backend with pytest
-    9. FRONTEND_INTEGRATION - Replace mock with real API calls
-    10. TESTING_FRONTEND - E2E tests with Playwright
-    11. PREVIEW_FINAL - Show the running application
+    Order (9 steps total - Atomic Backend):
+    1. ARCHITECTURE - Design system architecture
+    2. FRONTEND_MOCK - Create frontend with mock data
+    3. BACKEND_MODELS - Create database schemas (Beanie/Pydantic)
+    4. BACKEND_ROUTERS - Create FastAPI routers for all entities
+    5. SYSTEM_INTEGRATION - Wiring steps (Main.py + Requirements)
+    6. TESTING_BACKEND - Test backend with pytest
+    7. FRONTEND_INTEGRATION - Replace mock with real API calls
+    8. TESTING_FRONTEND - E2E tests with Playwright
+    9. PREVIEW_FINAL - Show the running application
     """
     # Step 1
-    ANALYSIS = "analysis"
-    # Step 2
     ARCHITECTURE = "architecture"
-    # Step 3: Frontend-first with mock data
+    # Step 2: Frontend-first with mock data
     FRONTEND_MOCK = "frontend_mock"
-    # Step 4: Visual QA
-    SCREENSHOT_VERIFY = "screenshot_verify"
-    # Step 5: API contracts derived from mock data
-    CONTRACTS = "contracts"
-    
-    # Step 6: Atomic Implementation (Models + Routers)
-    BACKEND_IMPLEMENTATION = "backend_implementation"
-    # Step 7: System Integration (Script wiring)
+    # Step 3: Database Models
+    BACKEND_MODELS = "backend_models"
+    # Step 4: Router implementation
+    BACKEND_ROUTERS = "backend_routers"
+    # Step 5: System Integration (Script wiring)
     SYSTEM_INTEGRATION = "system_integration"
     
-    # DEPRECATED STEPS (Do not use in new workflows)
-    # BACKEND_MODELS = "backend_models"
-    # BACKEND_ROUTERS = "backend_routers"
-    # BACKEND_MAIN = "backend_main"
-    
-    # Step 8
+    # Step 6: Backend Testing
     TESTING_BACKEND = "testing_backend"
-    # Step 9: Replace mock with API calls
+    # Step 7: Frontend Integration (Wiring)
     FRONTEND_INTEGRATION = "frontend_integration"
-    # Step 10
+    # Step 8: Frontend Testing (E2E)
     TESTING_FRONTEND = "testing_frontend"
-    # Step 11
+    # Step 9: Final Preview
     PREVIEW_FINAL = "preview_final"
     # Post-workflow refinement
     REFINE = "refine"
@@ -56,21 +44,8 @@ class WorkflowStep:
     COMPLETE = "complete"
 
 
-# LLM Configuration
-# ═══════════════════════════════════════════════════════
-# ⚠️ DEPRECATION NOTICE: These constants are kept for backwards compatibility only.
-# 
-# USE app.orchestration.token_policy.get_tokens_for_step() instead!
-# Different workflow steps need different token budgets:
-#   - Analysis/Contracts: 8,000 tokens
-#   - Frontend Mock: 12,000 tokens  
-#   - Backend Implementation: 20,000 tokens (Models + Routers + Manifest)
-#   - Testing: 12,000-14,000 tokens
-# 
-# See: app/orchestration/token_policy.py
-# ═══════════════════════════════════════════════════════
 
-# Fallback defaults (only used by code that hasn't migrated to token_policy yet)
+
 DEFAULT_MAX_TOKENS = 10000
 TEST_FILE_MIN_TOKENS = 12000
 
@@ -226,10 +201,8 @@ MAX_ENTITIES_OVERRIDE = 8  # For explicit complex projects (CRM, marketplace)
 
 # Token budgets per step (multi-entity aware)
 MULTI_ENTITY_BUDGETS = {
-    "analysis": 5000,
     "entity_planning": 6000,
     "architecture": 20000,
-    "contracts": 10000,
     "backend_models": 10000,  # All models at once
     "backend_relationships": 6000,
     "backend_router_per_entity": 8000,  # Per entity (vs 20K for all)
@@ -237,6 +210,7 @@ MULTI_ENTITY_BUDGETS = {
     "frontend_page_per_entity": 5000,  # Per entity (vs 12K for all)
     "frontend_navigation": 3000,
 }
+
 
 # Entity generation priority (lower = generated first)
 ENTITY_GENERATION_PRIORITY = {

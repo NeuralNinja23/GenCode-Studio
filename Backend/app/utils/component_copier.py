@@ -43,9 +43,12 @@ def get_used_components(project_path: Path) -> Set[str]:
     
     used_components = set()
     
-    # Regex to match: from '@/components/ui/button' or from "@/components/ui/card"
+    # Regex to match imports from components/ui:
+    # - from '@/components/ui/button'
+    # - from "./components/ui/tooltip"  
+    # - from "../components/ui/card"
     import_pattern = re.compile(
-        r"""(?:from|import)\s+['"]@/components/ui/([a-z-]+)['"]""",
+        r"""(?:from|import)\s+['"](?:@/|\.\.?/)components/ui/([a-z-]+)['"]""",
         re.IGNORECASE
     )
     
@@ -59,10 +62,13 @@ def get_used_components(project_path: Path) -> Set[str]:
             try:
                 content = file_path.read_text(encoding="utf-8")
                 matches = import_pattern.findall(content)
+                if matches:
+                    log("COMPONENT_COPIER", f"🔍 Found components in {file_path.name}: {matches}")
                 used_components.update(matches)
             except Exception as e:
                 log("COMPONENT_COPIER", f"⚠️ Error reading {file_path}: {e}")
     
+    log("COMPONENT_COPIER", f"🔍 Total components detected from imports: {sorted(used_components)}")
     return used_components
 
 
@@ -88,8 +94,8 @@ def copy_used_components(project_path: Path) -> int:
     Returns:
         Number of components copied
     """
-    # Source: templates folder
-    templates_ui = settings.paths.base_dir / "backend" / "templates" / "frontend" / "src" / "components" / "ui"
+    # Source: templates folder (Updated to point to seed/src)
+    templates_ui = settings.paths.base_dir / "backend" / "templates" / "frontend" / "seed" / "src" / "components" / "ui"
     
     # Destination: project frontend
     project_ui = project_path / "frontend" / "src" / "components" / "ui"
@@ -116,25 +122,46 @@ def copy_used_components(project_path: Path) -> int:
     
     # Copy each required component
     copied = 0
+    failed = []
     for component in required:
         src_file = templates_ui / f"{component}.jsx"
         dest_file = project_ui / f"{component}.jsx"
         
-        if src_file.exists():
-            shutil.copy2(src_file, dest_file)
-            copied += 1
-        else:
+        if not src_file.exists():
             log("COMPONENT_COPIER", f"⚠️ Component not found in templates: {component}")
+            failed.append(f"{component} (not in templates)")
+            continue
+        
+        try:
+            log("COMPONENT_COPIER", f"📋 Copying {component}: {src_file} → {dest_file}")
+            shutil.copy2(src_file, dest_file)
+            
+            # Verify the copy actually succeeded
+            if dest_file.exists():
+                copied += 1
+                log("COMPONENT_COPIER", f"✅ Verified {component}.jsx copied successfully")
+            else:
+                failed.append(f"{component} (copy succeeded but file missing)")
+                log("COMPONENT_COPIER", f"❌ {component}.jsx reported success but file doesn't exist!")
+        except Exception as e:
+            failed.append(f"{component} (error: {e})")
+            log("COMPONENT_COPIER", f"❌ Failed to copy {component}: {e}")
+    
+    if failed:
+        log("COMPONENT_COPIER", f"⚠️ Failed to copy {len(failed)} components: {failed}")
     
     # Also copy the lib/utils.js if not exists (needed by components)
-    lib_src = settings.paths.base_dir / "backend" / "templates" / "frontend" / "src" / "lib"
+    lib_src = settings.paths.base_dir / "backend" / "templates" / "frontend" / "seed" / "src" / "lib"
     lib_dest = project_path / "frontend" / "src" / "lib"
     
     if lib_src.exists() and not (lib_dest / "utils.js").exists():
         lib_dest.mkdir(parents=True, exist_ok=True)
         for lib_file in lib_src.glob("*.js"):
             if not (lib_dest / lib_file.name).exists():
-                shutil.copy2(lib_file, lib_dest / lib_file.name)
+                try:
+                    shutil.copy2(lib_file, lib_dest / lib_file.name)
+                except Exception as e:
+                    log("COMPONENT_COPIER", f"❌ Failed to copy lib/{lib_file.name}: {e}")
     
     log("COMPONENT_COPIER", f"✅ Copied {copied}/{len(required)} Shadcn components")
     
@@ -152,7 +179,7 @@ def copy_component_by_name(project_path: Path, component_name: str) -> bool:
     Returns:
         True if copied successfully
     """
-    templates_ui = settings.paths.base_dir / "backend" / "templates" / "frontend" / "src" / "components" / "ui"
+    templates_ui = settings.paths.base_dir / "backend" / "templates" / "frontend" / "seed" / "src" / "components" / "ui"
     project_ui = project_path / "frontend" / "src" / "components" / "ui"
     
     src_file = templates_ui / f"{component_name}.jsx"

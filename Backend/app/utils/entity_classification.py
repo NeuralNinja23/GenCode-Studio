@@ -97,64 +97,6 @@ def classify_entities_from_mock(project_path: Path) -> Dict[str, str]:
     return classifications
 
 
-def classify_entities_from_contracts(contracts_path: Path) -> Dict[str, str]:
-    """
-    Dynamically classify entities from contracts.md endpoint structure.
-    
-    Rules (deterministic, works with ANY entities):
-    1. AGGREGATE: Has 2+ CRUD endpoints OR has POST endpoint
-    2. EMBEDDED: Has only GET endpoint (read-only reference data)
-    
-    Returns:
-        Dict mapping entity name to type
-    """
-    if not contracts_path.exists():
-        log("CLASSIFY", "⚠️ contracts.md not found - skipping classification")
-        return {}
-    
-    try:
-        content = contracts_path.read_text(encoding="utf-8")
-    except Exception as e:
-        log("CLASSIFY", f"❌ Error reading contracts.md: {e}")
-        return {}
-    
-    classifications = {}
-    endpoint_counts = {}
-    
-    # Count CRUD operations per entity
-    # Matches: GET /api/tasks, POST /api/users, DELETE /api/products/{id}
-    crud_pattern = r'(GET|POST|PUT|DELETE|PATCH)\s+/api/(\w+)'
-    
-    for match in re.finditer(crud_pattern, content, re.IGNORECASE):
-        method = match.group(1).upper()
-        entity_plural = match.group(2).lower()
-        
-        if entity_plural not in endpoint_counts:
-            endpoint_counts[entity_plural] = set()
-        endpoint_counts[entity_plural].add(method)
-    
-    # Classify based on endpoint patterns
-    for entity_plural, methods in endpoint_counts.items():
-        from app.utils.entity_discovery import singularize
-        entity_name = singularize(entity_plural)
-        entity_name = entity_name[0].upper() + entity_name[1:]  # Capitalize
-        
-        # RULE: AGGREGATE if has POST (can create) OR has 3+ operations (full CRUD)
-        if 'POST' in methods or len(methods) >= 3:
-            classifications[entity_name] = "AGGREGATE"
-            log("CLASSIFY", f"   ✅ {entity_name}: AGGREGATE ({len(methods)} endpoints: {methods})")
-        
-        # RULE: EMBEDDED if only GET (read-only reference)
-        elif methods == {'GET'}:
-            classifications[entity_name] = "EMBEDDED"
-            log("CLASSIFY", f"   🔒 {entity_name}: EMBEDDED (read-only, 1 endpoint)")
-        
-        # Default to AGGREGATE for safety
-        else:
-            classifications[entity_name] = "AGGREGATE"
-            log("CLASSIFY", f"   ⚠️ {entity_name}: AGGREGATE (default, {len(methods)} endpoints)")
-    
-    return classifications
 
 
 def merge_classifications(
@@ -166,16 +108,13 @@ def merge_classifications(
     
     Priority (most reliable to least):
     1. mock.js (shows actual data structure)
-    2. contracts.md (shows API design)
     
-    If conflict: mock.js wins (more trustworthy)
     Default: AGGREGATE (safer than EMBEDDED)
     
     Returns:
         Final classification dict
     """
-    # Start with contracts
-    merged = dict(contract_classifications)
+    merged = {}
     
     # Override with mock.js (higher priority)
     for entity_name, entity_type in mock_classifications.items():
@@ -184,7 +123,7 @@ def merge_classifications(
         merged[entity_name] = entity_type
     
     # Ensure all entities have a classification (default to AGGREGATE)
-    all_entities = set(mock_classifications.keys()) | set(contract_classifications.keys())
+    all_entities = set(mock_classifications.keys())
     for entity_name in all_entities:
         if entity_name not in merged:
             merged[entity_name] = "AGGREGATE"
@@ -204,12 +143,11 @@ def classify_project_entities(project_path: Path) -> Dict[str, str]:
     """
     log("CLASSIFY", "🔍 Classifying entities from project artifacts...")
     
-    # Classify from both sources
+    # Classify from mock.js
     mock_class = classify_entities_from_mock(project_path)
-    contract_class = classify_entities_from_contracts(project_path / "contracts.md")
     
-    # Merge with priority
-    final = merge_classifications(mock_class, contract_class)
+    # Merge with fallback defaults
+    final = merge_classifications(mock_class, {})
     
     if final:
         aggregates = [k for k, v in final.items() if v == "AGGREGATE"]
@@ -218,6 +156,6 @@ def classify_project_entities(project_path: Path) -> Dict[str, str]:
         log("CLASSIFY", f"   AGGREGATE ({len(aggregates)}): {aggregates}")
         log("CLASSIFY", f"   EMBEDDED ({len(embedded)}): {embedded}")
     else:
-        log("CLASSIFY", "⚠️ No entities classified (no mock.js or contracts.md found)")
+        log("CLASSIFY", "⚠️ No entities classified (no mock.js found)")
     
     return final

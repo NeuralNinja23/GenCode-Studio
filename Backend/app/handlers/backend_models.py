@@ -17,90 +17,107 @@ from app.core.constants import WorkflowStep
 from app.core.logging import log
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.utils.entity_discovery import EntitySpec, EntityPlan
-from app.llm import call_llm_with_usage
-from app.llm.prompts import DEREK_PROMPT
 from app.core.failure_boundary import FailureBoundary
+from app.core.step_invariants import StepInvariants, StepInvariantError
 
 
 @FailureBoundary.enforce
-async def step_backend_models(
-    project_id: str,
-    user_request: str,
-    manager: Any,
-    project_path: Path,
-    chat_history: List[ChatMessage],
-    provider: str,
-    model: str,
-    current_turn: int,
-    max_turns: int,
-) -> StepResult:
+async def step_backend_models(branch) -> StepResult:
     """
     Step: Backend Models - Generate all models at once.
     
     Two-phase approach:
-    1. Derek generates JSON model specifications
+    1. Derek generates model specifications
     2. System merges into single models.py
-    
-    Args:
-        project_id: Project identifier
-        user_request: Original user request
-        manager: WebSocket connection manager
-        project_path: Path to project directory
-        chat_history: Conversation history
-        provider: LLM provider name
-        model: LLM model name
-        current_turn: Current workflow turn
-        max_turns: Maximum turns allowed
     
     Returns:
         StepResult with next step = BACKEND_IMPLEMENTATION (routers)
     """
+    from app.arbormind.cognition.branch import Branch
+    assert isinstance(branch, Branch)
+    
+    # Extract context from branch
+    project_id = branch.intent["project_id"]
+    user_request = branch.intent["user_request"]
+    manager = branch.intent["manager"]
+    project_path = branch.intent["project_path"]
+    provider = branch.intent["provider"]
+    model = branch.intent["model"]
+    
     await broadcast_status(
         manager,
         project_id,
-        WorkflowStep.BACKEND_IMPLEMENTATION,
-        f"Turn {current_turn}/{max_turns}: Derek generating data models...",
-        current_turn,
-        max_turns,
+        WorkflowStep.BACKEND_MODELS,
+        f"Derek generating data models...",
+        3,
+        9,
     )
     
     # V3: Track token usage
     step_token_usage = None
     
     # Load entity plan
+    entity_plan_path = project_path / "entity_plan.json"
+    if not entity_plan_path.exists():
+        log("BACKEND_MODELS", "📋 No entity_plan.json found - synthesizing from detected entities")
+        _synthesize_entity_plan(project_path, branch)
+        
     try:
-        entity_plan = EntityPlan.load(project_path / "entity_plan.json")
+        entity_plan = EntityPlan.load(entity_plan_path)
         entities = entity_plan.entities
         relationships = entity_plan.relationships
-    except FileNotFoundError:
-        log("BACKEND_MODELS", "⚠️ No entity_plan.json found, using fallback")
-        # Fallback to primary entity
-        from app.utils.entity_discovery import discover_all_entities
-        entities = discover_all_entities(project_path, user_request)
-        relationships = []
+    except Exception as e:
+        log("BACKEND_MODELS", f"❌ Failed to load/synthesize entity plan: {e}")
+        raise RuntimeError(f"Missing entity_plan.json and synthesis failed: {e}")
     
     if not entities:
         log("BACKEND_MODELS", "❌ No entities found, cannot generate models")
-        return StepResult(
-            nextstep=WorkflowStep.BACKEND_IMPLEMENTATION,
-            turn=current_turn + 1,
-            status="error",
-            error="No entities found for model generation",
-        )
+        raise RuntimeError("No entities found for model generation")
     
-    log("BACKEND_MODELS", f"📋 Generating models for {len(entities)} entities")
+    # Phase-1: ARCHITECTURE IS TRUTH
+    # We no longer run domain grounding or injection here. 
+    # The entities were already extracted via architecture-first priority.
+    entity_names = [e.name for e in entities]
+    log("BACKEND_MODELS", f"✅ Using authoritative entities: {entity_names}")
     
-    # Load contracts if available
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INVARIANT: Entity names SHOULD be singular.
+    # We auto-singularize common plural names to prevent fatal workflow stops.
+    # ═══════════════════════════════════════════════════════════════════════════
+    for entity in entities:
+        if entity.name.endswith("s") and not entity.name.endswith("ss"):
+            old_name = entity.name
+            new_name = entity.name[:-1]  # Simple singularization
+            entity.name = new_name
+            log("BACKEND_MODELS", f"⚠️ Auto-singularized entity name: {old_name} -> {new_name}")
+    
+    # log("BACKEND_MODELS", f"📋 Generating models for {len(entities)} entities")
+    
+    # Architecture.md is the canonical declaration of intent
+    # Architecture Bundle: Backend context (Source of Truth)
+    # V2.1: Use cached architecture from Victoria's output
+    from app.orchestration.state import WorkflowStateManager
+    arch_cache = await WorkflowStateManager.get_architecture_cache(project_id)
+    
     contracts_data = {}
-    contracts_path = project_path / "contracts.md"
-    if contracts_path.exists():
-        try:
-            contracts_content = contracts_path.read_text(encoding="utf-8")
-            contracts_data = {"content": contracts_content[:5000]}  # Limit size
-        except Exception as e:
-            log("BACKEND_MODELS", f"Could not read contracts: {e}")
+    if "backend" in arch_cache:
+        contracts_content = arch_cache["backend"]
+        contracts_data = {"content": contracts_content[:15000]}
+        log("BACKEND_MODELS", "📦 Using cached architecture (backend.md)")
+    else:
+        # Fallback to disk read
+        arch_backend_path = project_path / "architecture" / "backend.md"
+        if arch_backend_path.exists():
+            try:
+                contracts_content = arch_backend_path.read_text(encoding="utf-8")
+                contracts_data = {"content": contracts_content[:15000]} 
+                log("BACKEND_MODELS", "⚠️ Cache miss - read backend.md from disk")
+            except Exception as e:
+                log("BACKEND_MODELS", f"Could not read architecture/backend.md: {e}")
+
     
-    # Phase A: Derek generates model specs as JSON
+    
+    # Phase A: Derek generates models via supervised call
     await broadcast_agent_log(
         manager,
         project_id,
@@ -112,52 +129,80 @@ async def step_backend_models(
         entities=entities,
         relationships=relationships,
         contracts=contracts_data,
-        provider=provider,
-        model=model,
+        project_id=project_id,
+        manager=manager,
+        project_path=project_path,
+        user_request=user_request,
+        branch=branch,
     )
     
     # Extract token usage
     step_token_usage = model_spec_result.get("token_usage")
     model_spec = model_spec_result.get("spec", {})
     
-    # Phase B: System merges specs into Python code
+    # Phase B: Write models.py
     try:
-        models_code = merge_model_specs_to_python(
-            model_spec=model_spec,
-            entities=entities,
-            relationships=relationships
-        )
+        models_code = model_spec_result.get("code", "")
+        if not models_code:
+            raise RuntimeError("Derek returned empty code for models.py")
         
         # Write models.py
         models_path = project_path / "backend" / "app" / "models.py"
         models_path.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure we overwrite ANY template/existing file by unlinking first
+        if models_path.exists():
+            models_path.unlink()
         models_path.write_text(models_code, encoding="utf-8")
         
-        log("BACKEND_MODELS", f"✅ Generated models.py with {len(model_spec.get('models', []))} models")
+        # Extract model metadata via regex (since we no longer have JSON spec)
+        import re
+        model_matches = re.findall(r"class\s+(\w+)\(Document\):", models_code)
+        models_count = len(model_matches)
+        model_names = model_matches
+        expected_entity_count = len(entities)
+        
+        log("BACKEND_MODELS", f"✅ Generated models.py with {models_count} models: {model_names}")
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # INVARIANT 1: At least ONE model MUST be generated for AGGREGATE entities
+        # This prevents routers from being generated without models to import
+        # ═══════════════════════════════════════════════════════════════════════════
+        if models_count == 0:
+            log("BACKEND_MODELS", "❌ INVARIANT VIOLATION: Zero models generated for AGGREGATE entities")
+            raise RuntimeError(
+                "BACKEND_MODELS invariant violated: "
+                "At least one Beanie Document model must be generated for AGGREGATE entities. "
+                f"Expected models for: {[e.name for e in entities]}"
+            )
+        
+        # ═══════════════════════════════════════════════════════════════════════════
+        # INVARIANT 2: No more models than expected entities (prevents duplicates/leaks)
+        # This catches embedded entities accidentally becoming top-level Documents
+        # ═══════════════════════════════════════════════════════════════════════════
+        if models_count > expected_entity_count:
+            log("BACKEND_MODELS", f"⚠️ INVARIANT WARNING: {models_count} models > {expected_entity_count} expected entities")
+            log("BACKEND_MODELS", f"   Generated: {model_names}")
+            log("BACKEND_MODELS", f"   Expected:  {[e.name for e in entities]}")
+            # Note: This is a warning, not a hard failure, as extra utility models may be valid
         
         await broadcast_agent_log(
             manager,
             project_id,
             "AGENT:Derek",
-            f"Generated {len(model_spec.get('models', []))} data models in models.py"
+            f"Generated {models_count} data models in models.py"
         )
         
     except Exception as e:
         log("BACKEND_MODELS", f"❌ Model generation failed: {e}")
-        return StepResult(
-            nextstep=WorkflowStep.BACKEND_IMPLEMENTATION,
-            turn=current_turn + 1,
-            status="error",
-            error=f"Model generation failed: {str(e)}",
-            token_usage=step_token_usage,
-        )
+        raise RuntimeError(f"Model generation failed: {str(e)}")
     
     return StepResult(
-        nextstep=WorkflowStep.BACKEND_IMPLEMENTATION,
-        turn=current_turn + 1,
+        nextstep=WorkflowStep.BACKEND_ROUTERS,
+        turn=4,  # Backend models phase
         data={
-            "models_count": len(model_spec.get('models', [])),
-            "entities": [e.name for e in entities],
+            "models_count": models_count,
+            "model_names": model_names,
+            "expected_entities": [e.name for e in entities],
         },
         token_usage=step_token_usage,
     )
@@ -167,312 +212,301 @@ async def derek_generate_model_spec(
     entities: List[EntitySpec],
     relationships: List[Any],
     contracts: Dict[str, Any],
-    provider: str,
-    model: str,
+    project_id: str,
+    manager: Any,
+    project_path: Path,
+    user_request: str,
+    branch: Any,
 ) -> Dict[str, Any]:
     """
-    Derek generates model specifications as JSON (not Python code).
+    Derek generates model specifications using supervised agent call.
+    
+    Now uses ARTIFACT enforcement + auto-recovery for consistency.
     
     Args:
         entities: List of entities to model
         relationships: Relationships between entities
         contracts: API contracts data
-        provider: LLM provider
-        model: LLM model
+        project_id: Project ID for broadcasting
+        manager: WebSocket manager
+        project_path: Path to project
+        user_request: Original user request
     
     Returns:
-        Dict with "spec" (JSON model spec) and "token_usage"
+        Dict with "code" (Python model code) and "token_usage"
     """
-    from app.core.constants import MULTI_ENTITY_BUDGETS
+    from app.supervision import supervised_agent_call
     
     # Serialize entities and relationships
     entities_json = json.dumps([e.to_dict() for e in entities], indent=2)
     relationships_json = json.dumps([r.to_dict() for r in relationships], indent=2)
     contracts_content = contracts.get("content", "")
-    
-    prompt = f"""You are Derek, an expert backend developer specializing in data modeling.
+    contracts_display = contracts_content[:2000] if contracts_content else "No contracts available"
+
+    # Build Derek's instructions
+    derek_instructions = f"""
+    You are Derek, acting as a BACKEND DATA MODEL IMPLEMENTER.
+
+This step PRODUCES EXECUTABLE BACKEND CODE.
+You are generating Beanie Document models and Pydantic schemas.
+You are NOT generating routers, tests, or business logic.
 
 ═══════════════════════════════════════════════════════
-ENTITIES TO MODEL
+SOURCE OF TRUTH (NON-NEGOTIABLE)
+═══════════════════════════════════════════════════════
+
+ALL models MUST be derived ONLY from:
+- architecture/backend.md
+
+DO NOT invent entities.
+DO NOT invent fields.
+DO NOT infer from frontend.
+DO NOT assume contracts.
+
+If something is missing, infer conservatively from the USER REQUEST,
+but NEVER output empty or partial models.
+
+═══════════════════════════════════════════════════════
+🏗️ ENTITIES TO IMPLEMENT
 ═══════════════════════════════════════════════════════
 
 {entities_json}
 
 ═══════════════════════════════════════════════════════
-RELATIONSHIPS
+🔗 RELATIONSHIPS TO MODEL
 ═══════════════════════════════════════════════════════
 
 {relationships_json}
 
 ═══════════════════════════════════════════════════════
-API CONTRACTS (Reference)
+AGGREGATE COMPLETENESS (HARD REQUIREMENT)
 ═══════════════════════════════════════════════════════
 
-{contracts_content[:2000] if contracts_content else "No contracts available"}
+You MUST generate models for EVERY entity marked as:
+
+Type: AGGREGATE
+or
+Type: EMBEDDED
+
+Rules:
+1. AGGREGATE entities:
+   - Must inherit from Beanie `Document`
+   - Must have their own collection
+   - Must be top-level classes
+
+2. EMBEDDED entities:
+   - Must inherit from Pydantic `BaseModel` (NOT `Document`)
+   - Must be used as fields within Aggegates
+   - DO NOT give them their own collection
+   - MUST generate Create/Update schemas just like Aggregates
+
+
+If architecture/backend.md defines N aggregate entities:
+→ You MUST generate N Beanie Document classes
+→ You MUST generate Create / Update / Response schemas for EACH
+
+Generating only a subset of aggregates is a FATAL ERROR.
+
+ALL AGGREGATES ARE EQUAL.
+DO NOT prioritize a "primary" entity.
 
 ═══════════════════════════════════════════════════════
-YOUR TASK
+MANDATORY MODEL RULES (STRICT)
 ═══════════════════════════════════════════════════════
 
-Generate Pydantic/SQLModel model specifications as JSON.
+1. Use Beanie + Pydantic v2
+2. Imports MUST include:
+   from beanie import Document, PydanticObjectId, Indexed
+   from pydantic import BaseModel, Field
+   from datetime import datetime
+   from typing import Optional, List
+   from typing_extensions import Literal
 
-For EACH entity, define:
-1. **Fields**: All data fields with types (str, int, bool, Optional[str], datetime, etc.)
-2. **Required fields**: Which fields are mandatory
-3. **Foreign keys**: For relationships (e.g., user_id for User → Note)
-4. **Descriptions**: Brief field descriptions
+3. EVERY AGGREGATE MUST:
+   - Inherit from Document
+   - Have its own MongoDB collection
+   - Include:
+       created_at: datetime = Field(default_factory=datetime.utcnow)
+       updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-IMPORTANT RULES:
-- Use ONLY fields that make sense for each entity
-- Add standard fields: id (int), created_at (datetime), updated_at (datetime)
-- For MongoDB/Beanie foreign keys: Use type "PydanticObjectId" (NOT "int")
-- Use proper Python types: str, int, bool, float, datetime, Optional[str], PydanticObjectId
-- Do NOT hallucinate fields - be minimal and realistic
+4. ID TYPE RULE (CRITICAL):
+   - ALL internal models MUST use PydanticObjectId for `id`
+   - NEVER use `id: str` in backend models
+   - Conversion to string happens ONLY at API/router layer
 
-🚨 CRITICAL - MONGODB/BEANIE TYPE RULES:
-- For foreign key references (e.g., owner_id, channel_id), use type: "PydanticObjectId"
-- Example: {{"name": "owner", "type": "PydanticObjectId", "required": true, "description": "Reference to Owner"}}
-- Do NOT use "int" for foreign keys when using MongoDB/Beanie
-- Do NOT use type "EmbeddedDocument" - this does NOT exist in Beanie!
-- For nested objects, just use BaseModel (handled by code generator)
+5. Validation MUST match architecture EXACTLY:
+   - min_length / max_length → Field(...)
+   - enums → Use Literal["A", "B"] directly in the field type.
+   - ❌ DO NOT create separate class definitions for Enums (no Enum classes).
+   - If architecture mentions an Enum, convert it to Literal in the Pydantic model.
+   - optional → Optional[] (e.g. `Optional[List[str]] = None` if architecture says Optional)
+   - lists → Field(default_factory=list) (unless architecture says Optional, then default to None)
+   - UNIQUE FIELDS → Use `Indexed(str, unique=True)`.
+     ❌ DO NOT use `Field(..., unique=True)`
+     ❌ DO NOT use `unique_items=True` (this is for lists only)
+
+6. Embedded data:
+   - Use plain Pydantic models ONLY if explicitly stated
+   - Otherwise reference via ObjectId or primitive (e.g. tag names)
+
+7. FORBIDDEN:
+   - Routers
+   - Business logic
+   - Database init
+   - Validators (@validator, @model_validator)
 
 ═══════════════════════════════════════════════════════
-OUTPUT FORMAT
+SCHEMA REQUIREMENTS (MANDATORY)
 ═══════════════════════════════════════════════════════
 
-Return ONLY valid JSON (no markdown, no code blocks):
+For EACH AGGREGATE entity X, you MUST generate:
 
-{{
-  "thinking": "Brief analysis of the data model...",
-  "models": [
-    {{
-      "name": "User",
-      "table_name": "users",
-      "description": "System user with authentication",
-      "fields": [
-        {{"name": "id", "type": "int", "required": true, "description": "Unique identifier", "primary_key": true}},
-        {{"name": "email", "type": "str", "required": true, "description": "User email"}},
-        {{"name": "username", "type": "str", "required": true, "description": "Username"}},
-        {{"name": "password_hash", "type": "str", "required": true, "description": "Hashed password"}},
-        {{"name": "created_at", "type": "datetime", "required": true, "description": "Creation timestamp"}},
-        {{"name": "updated_at", "type": "datetime", "required": true, "description": "Last update timestamp"}}
-      ]
-    }},
-    {{
-      "name": "Note",
-      "table_name": "notes",
-      "description": "User's notes",
-      "fields": [
-        {{"name": "id", "type": "int", "required": true, "description": "Unique identifier", "primary_key": true}},
-        {{"name": "title", "type": "str", "required": true, "description": "Note title"}},
-        {{"name": "content", "type": "str", "required": true, "description": "Note content"}},
-        {{"name": "owner", "type": "PydanticObjectId", "required": true, "description": "Foreign key to User", "foreign_key": "users.id"}},
-        {{"name": "created_at", "type": "datetime", "required": true, "description": "Creation timestamp"}},
-        {{"name": "updated_at", "type": "datetime", "required": true, "description": "Last update timestamp"}}
-      ]
-    }}
-  ]
-}}
+1. class X(Document)
+2. class XCreate(BaseModel)
+3. class XUpdate(BaseModel) → ALL fields Optional
+4. class XResponse(BaseModel)
 
-CRITICAL: Return ONLY the JSON object. No markdown, no explanations, no code fences.
+Rules:
+- Create: no id, no system fields
+- Update: Optional fields only
+- Response: includes id, created_at, updated_at
+- NO class body may be empty
+- NEVER use `pass`
+
+═══════════════════════════════════════════════════════
+OUTPUT FORMAT (HDAP — STRICT)
+═══════════════════════════════════════════════════════
+
+<<<FILE path="backend/app/models.py">>>
+# complete models.py content
+<<<END_FILE>>>
+
+Only ONE file is allowed.
+Missing <<<END_FILE>>> = rejection.
+
+THIS STEP IS FATAL IF ANY AGGREGATE ENTITY IS MISSING.
 """
-    
+
     try:
-        max_tokens = MULTI_ENTITY_BUDGETS.get("backend_models", 10000)
-        
-        llm_result = await call_llm_with_usage(
-            prompt=prompt,
-            system_prompt=DEREK_PROMPT,
-            provider=provider,
-            model=model,
-            temperature=0.2,
-            max_tokens=max_tokens,
+        # Extract retry/override context
+        temperature_override = branch.intent.get("temperature_override")
+        is_retry = branch.intent.get("is_retry", False)
+
+        # Use supervised agent call for ARTIFACT enforcement + auto-recovery
+        result = await supervised_agent_call(
+            project_id=project_id,
+            manager=manager,
+            agent_name="Derek",
+            step_name="Backend Models",
+            base_instructions=derek_instructions,
+            project_path=project_path,
+            user_request=user_request,
+            contracts=contracts_content,
+            temperature_override=temperature_override,
+            is_retry=is_retry,
         )
         
-        raw = llm_result.get("text", "")
-        token_usage = llm_result.get("usage", {"input": 0, "output": 0})
+        if not result.get("approved"):
+            raise RuntimeError(f"Backend models rejected by supervisor: {result.get('error', 'Low quality output')}")
         
-        log("TOKENS", f"📊 Backend models usage: {token_usage.get('input', 0):,} in / {token_usage.get('output', 0):,} out")
+        # Extract token usage
+        token_usage = result.get("token_usage", {"input": 0, "output": 0})
         
-        # Clean markdown if present
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
+        # Extract generated files
+        parsed = result.get("output", {})
+        files = parsed.get("files", [])
         
-        spec = json.loads(raw.strip())
+        # ═══════════════════════════════════════════════════════════════════════════
+        # PHASE-0/1: Orchestrator handles empty file detection and retry
+        # Handler just extracts and returns the model file content
+        # ═══════════════════════════════════════════════════════════════════════════
         
+        # Extract Python code from files
+        # Look for backend/app/models.py or similar
+        model_file = None
+        if files:
+            model_file = next((f for f in files if "models.py" in f["path"]), None)
+            
+            # Fallback: Just take the first valid python file
+            if not model_file:
+                model_file = next((f for f in files if f["path"].endswith(".py")), None)
+        
+        # Return model content (or empty if no files - orchestrator will handle)
         return {
-            "spec": spec,
+            "code": model_file["content"] if model_file else "",
             "token_usage": token_usage
         }
         
-    except json.JSONDecodeError as e:
-        log("BACKEND_MODELS", f"❌ Failed to parse Derek response: {e}")
-        log("BACKEND_MODELS", f"   Raw response: {raw[:500]}")
-        
-        # Fallback to minimal spec
-        fallback_spec = {
-            "thinking": "Failed to parse Derek response; using fallback",
-            "models": [
-                {
-                    "name": entity.name,
-                    "table_name": entity.plural,
-                    "description": f"{entity.name} model",
-                    "fields": [
-                        {"name": "id", "type": "int", "required": True, "description": "Unique identifier", "primary_key": True},
-                        {"name": "name", "type": "str", "required": True, "description": f"{entity.name} name"},
-                        {"name": "created_at", "type": "datetime", "required": True, "description": "Creation timestamp"},
-                    ]
-                }
-                for entity in entities
-            ]
-        }
-        
-        return {
-            "spec": fallback_spec,
-            "token_usage": token_usage if 'token_usage' in locals() else {"input": 0, "output": 0}
-        }
+    except StepInvariantError as e:
+        log("BACKEND_MODELS", f"❌ Step invariant violated: {e}")
+        raise RuntimeError(f"Backend models step failed inventory check: {e}")
     except Exception as e:
         log("BACKEND_MODELS", f"❌ Derek model spec generation failed: {e}")
         raise
 
 
-def merge_model_specs_to_python(
-    model_spec: Dict[str, Any],
-    entities: List[EntitySpec],
-    relationships: List[Any]
-) -> str:
+
+
+def _synthesize_entity_plan(project_path: Path, branch) -> None:
     """
-    Convert JSON model spec to Python SQLModel/Pydantic code.
+    Synthesize entity_plan.json from detected entities when it doesn't exist.
     
-    Args:
-        model_spec: JSON specification from Derek
-        entities: Original entity specs
-        relationships: Relationship specs
-    
-    Returns:
-        Complete models.py Python code
+    This enables the unified two-step flow for ALL projects, even if
+    the contracts step didn't create an entity plan.
     """
+    import json
+    from app.orchestration.utils import pluralize
+    from app.utils.entity_discovery import discover_primary_entity, extract_entity_from_request
     
-    # Build imports
-    imports = """# backend/app/models.py
-\"\"\"
-Data Models - Auto-generated by GenCode Studio
-\"\"\"
-from typing import Optional, List
-from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr
-from beanie import Document, PydanticObjectId
+    entities = []
+    
+    # Try 1: Discover from architecture/backend.md (Direct Authority)
+    from app.utils.entity_discovery import discover_all_entities
+    entities_specs = discover_all_entities(project_path)
+    
+    if entities_specs:
+        entities = [e.name for e in entities_specs]
+    
+    # Fallback only if architecture is missing
+    if not entities:
+        user_request = branch.intent.get("user_request", "")
+        entity_name = extract_entity_from_request(user_request)
+        if entity_name:
+            entities = [entity_name]
+    
+    # Absolute Fallback
+    if not entities:
+        entities = ["Item"]
+    
+    # Build entity plan structure
+    # Use discovered specs if available to correct types
+    plan_entities = []
+    
+    if entities_specs:
+        # Use specs directly
+        for i, spec in enumerate(entities_specs):
+            plan_entities.append({
+                "name": spec.name.capitalize(),
+                "plural": spec.plural,
+                "type": spec.type, # Use captured type (AGGREGATE/EMBEDDED)
+                "generation_order": i + 1
+            })
+    else:
+        # Fallback for manual/user_request entity names
+        for i, e in enumerate(entities):
+            plan_entities.append({
+                "name": e.capitalize(),
+                "plural": pluralize(e),
+                "type": "AGGREGATE",
+                "generation_order": i + 1
+            })
 
-# Phase 0: Failure Boundary Enforcement
-from app.core.failure_boundary import FailureBoundary
-
-"""
+    entity_plan = {
+        "entities": plan_entities,
+        "relationships": []
+    }
     
-    models_code = []
-    
-    # Build entity type lookup map
-    entity_type_map = {e.name: e.type for e in entities}
-    
-    for model_def in model_spec.get("models", []):
-        name = model_def["name"]
-        
-        # FIX #5: Determine if this entity is AGGREGATE or EMBEDDED
-        entity_type = entity_type_map.get(name, "AGGREGATE")  # Default to AGGREGATE
-        is_aggregate = (entity_type == "AGGREGATE")
-        table_name = model_def.get("table_name", name.lower() + "s")
-        description = model_def.get("description", f"{name} model")
-        fields_list = model_def.get("fields", [])
-        
-        # Build field definitions for Document class
-        doc_fields = []
-        create_fields = []
-        response_fields = []
-        
-        for field in fields_list:
-            field_name = field["name"]
-            field_type = field["type"]
-            required = field.get("required", True)
-            desc = field.get("description", "")
-            is_primary = field.get("primary_key", False)
-            
-            # Convert type names
-            type_map = {
-                "datetime": "datetime",
-                "str": "str",
-                "int": "int",
-                "bool": "bool",
-                "float": "float",
-            }
-            python_type = type_map.get(field_type, field_type)
-            
-            # Document field (for database)
-            if is_primary and field_name == "id":
-                # Beanie uses PydanticObjectId for _id, skip manual id field
-                continue
-            elif field_name in ["created_at", "updated_at"]:
-                doc_fields.append(f'    {field_name}: datetime = Field(default_factory=datetime.utcnow, description="{desc}")')
-            elif not required:
-                doc_fields.append(f'    {field_name}: Optional[{python_type}] = Field(None, description="{desc}")')
-            else:
-                doc_fields.append(f'    {field_name}: {python_type} = Field(..., description="{desc}")')
-            
-            # Create schema (exclude id, created_at, updated_at)
-            if field_name not in ["id", "created_at", "updated_at"]:
-                if not required:
-                    create_fields.append(f'    {field_name}: Optional[{python_type}] = None')
-                else:
-                    create_fields.append(f'    {field_name}: {python_type}')
-            
-            # Response schema (include all fields)
-            if not required:
-                response_fields.append(f'    {field_name}: Optional[{python_type}] = None')
-            else:
-                response_fields.append(f'    {field_name}: {python_type}')
-        
-        doc_fields_str = "\n".join(doc_fields)
-        create_fields_str = "\n".join(create_fields)
-        response_fields_str = "\n".join(response_fields)
-        
-        # Generate model code based on entity type
-        if is_aggregate:
-            # AGGREGATE: Document class (Beanie collection with Settings)
-            model_code = f'''
-class {name}(Document):
-    """{description} (AGGREGATE - Beanie Document)"""
-{doc_fields_str}
-    
-    class Settings:
-        name = "{table_name}"
-
-'''
-        else:
-            # EMBEDDED: BaseModel (nested object, no Settings)
-            model_code = f'''
-class {name}(BaseModel):
-    """{description} (EMBEDDED - Pydantic BaseModel)"""
-{doc_fields_str}
-
-'''
-        
-        # Always add Create and Response schemas
-        model_code += f'''
-class {name}Create(BaseModel):
-    """Create {name} request"""
-{create_fields_str}
-
-
-class {name}Response(BaseModel):
-    """Response for {name}"""
-    id: str  # Beanie uses string IDs
-{response_fields_str}
-    
-    class Config:
-        from_attributes = True
-'''
-        
-        models_code.append(model_code)
-    
-    full_code = imports + "\n".join(models_code)
-    return full_code
+    # Write to disk
+    entity_plan_path = project_path / "entity_plan.json"
+    entity_plan_path.write_text(json.dumps(entity_plan, indent=2), encoding="utf-8")
+    log("BACKEND_MODELS", f"✅ Synthesized entity_plan.json with {len(entities)} entity(ies)")

@@ -110,6 +110,8 @@ async def test_delete_{{ENTITY}}(client):
     DELETE /api/{{ENTITY_PLURAL}}/{id}
     Must delete the {{ENTITY}} and return 204 No Content.
     """
+    # Use actual entity fields from models.py - example:
+    # payload = {"title": fake.sentence(), "description": fake.text()}
     payload = {
         "title": fake.sentence(),
         "description": fake.text(),

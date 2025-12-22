@@ -64,14 +64,11 @@ export enum WorkflowStatus {
  * Uses Emergent E1 Frontend-First pattern (12 steps)
  */
 export enum WorkflowStepName {
-  Analysis = 'analysis',
   Architecture = 'architecture',
   FrontendMock = 'frontend_mock',
-  ScreenshotVerify = 'screenshot_verify',
-  Contracts = 'contracts',
   BackendModels = 'backend_models',
   BackendRouters = 'backend_routers',
-  BackendMain = 'backend_main',
+  SystemIntegration = 'system_integration',
   TestingBackend = 'testing_backend',
   FrontendIntegration = 'frontend_integration',
   TestingFrontend = 'testing_frontend',

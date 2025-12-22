@@ -23,10 +23,10 @@ async def broadcast_status(
     project_id: str,
     step: str,
     status: str,
-    current_turn: int,
-    max_turns: int,
+    step_number: int,
+    total_steps: int,
 ) -> None:
-    """Broadcast workflow status update."""
+
     broadcast_to_project = _get_broadcast_to_project()
     await broadcast_to_project(
         manager,
@@ -36,8 +36,8 @@ async def broadcast_status(
             "projectId": project_id,
             "step": step,
             "status": status,
-            "currentTurn": current_turn,
-            "maxTurns": max_turns,
+            "currentTurn": step_number,
+            "maxTurns": total_steps,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
     )

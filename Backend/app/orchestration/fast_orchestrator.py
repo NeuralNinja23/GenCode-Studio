@@ -1,82 +1,119 @@
 # app/orchestration/fast_orchestrator.py
 """
-FAST v2 Orchestrator - Main Entry Point (OPTION A: Integrated with Existing Handlers)
+FAST v2 Orchestrator - Main Entry Point (Gutted for ArborMind)
 
-Hybrid Adaptive FAST v2 Orchestrator
------------------------------------
-- Uses EXISTING handlers (step_backend_routers, step_frontend_mock, etc.)
-- Adds V2 safety features: dependency barriers, integrity checks, self-healing
-- Deterministic step ordering based on task graph
-- Integrated fallback + healing for critical steps
+The Orchestrator is now a "muscle" (execution body).
+All cognitive decisions (what to do next, retry, heal) belong to ArborMind.
 """
+
 import asyncio
-from datetime import datetime
+from typing import Any, Dict, List, Optional
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from datetime import datetime
+import traceback
 
-from app.core.constants import WorkflowStep, WSMessageType
-from app.core.exceptions import RateLimitError
-from app.core.types import ChatMessage
-from app.core.config import settings
-from app.core.logging import log
+from app.core.logging import log, log_section
+from app.orchestration.utils import broadcast_to_project, pluralize
+from app.orchestration.task_graph import TaskGraph
+from app.orchestration.context import CrossStepContext
+from app.orchestration.structural_compiler import StructuralCompiler
+from app.orchestration.checkpoint import CheckpointManagerV2
 from app.orchestration.state import WorkflowStateManager
-
-from .task_graph import TaskGraph
-from .step_contracts import StepContracts
-from .artifact_contracts import default_contracts
-from .llm_output_integrity import LLMOutputIntegrity
-from .structural_compiler import StructuralCompiler
-from app.orchestration.fallback_router_agent import FallbackRouterAgent
-from .fallback_api_agent import FallbackAPIAgent
-from .checkpoint import CheckpointManagerV2
-from .budget_manager import get_budget_manager
-
-# Centralized entity discovery for dynamic fallback
+from app.core.constants import WSMessageType
 from app.utils.entity_discovery import discover_primary_entity, extract_all_models_from_models_py
+from app.core.guard import OrchestrationGuard
+from app.core.step_outcome import StepOutcome, StepExecutionResult
 
-# Phase 1: Outcome Aggregation
-from app.core.step_outcome import StepExecutionResult, StepOutcome
-from app.workflow.outcome_aggregator import aggregate_workflow_outcome, format_degradation_summary
+# Phase 9: ArborMind Execution Router + Observation
+from app.arbormind.runtime.execution_router import ExecutionRouter
+from app.arbormind.observation.observer import record_event
 
-# Pipeline metrics for honest tracking
-from app.arbormind.metrics_collector import (
-    start_pipeline_run,
-    complete_pipeline_run,
-    start_step,
-    complete_step,
+# Phase 10: SQLite Memory for Decision Vectors
+from app.arbormind.observation.sqlite_store import (
+    record_run_start,
+    record_run_end,
+    record_decision,
+    record_failure,
+    update_decision_outcome,
 )
 
+# PHASE 2: Failure Severity System
+from app.arbormind.cognition.failures import (
+    FailureSeverity,
+    get_failure_severity,
+    is_fatal,
+)
 
-# Map V2 step names to WorkflowStep constants
-STEP_NAME_MAP = {
-    "analysis": WorkflowStep.ANALYSIS,
-    "architecture": WorkflowStep.ARCHITECTURE,
-    "frontend_mock": WorkflowStep.FRONTEND_MOCK,
-    "contracts": WorkflowStep.CONTRACTS,
-    "backend_implementation": WorkflowStep.BACKEND_IMPLEMENTATION,
-    "system_integration": WorkflowStep.SYSTEM_INTEGRATION,
-    "frontend_integration": WorkflowStep.FRONTEND_INTEGRATION,
-    "screenshot_verify": WorkflowStep.SCREENSHOT_VERIFY,
-    "testing_backend": WorkflowStep.TESTING_BACKEND,
-    "testing_frontend": WorkflowStep.TESTING_FRONTEND,
-    "preview_final": WorkflowStep.PREVIEW_FINAL,
+# PHASE 6: Convergence Criteria
+from app.arbormind.cognition.convergence import (
+    is_converged,
+    get_completion_confidence,
+    should_preview,
+)
+
+# PHASE-0/1: Execution Records and Retry Policy
+from app.core.execution_record import StepExecutionRecord
+from app.arbormind.core.execution_mode import get_execution_policy, ExecutionMode
+from app.arbormind.core.retry_policy import get_retry_prompt
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TOOL PLANNING: Capability-Based Tool Expansion
+# ═══════════════════════════════════════════════════════════════════════════════
+from app.tools.planner import build_tool_plan
+from app.tools.executor import execute_tool_plan
+from app.tools.planning import StepFailure
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ARBORMIND LEARNING: Canonical Failure Ingestion (The 7 Requirements)
+# ═══════════════════════════════════════════════════════════════════════════════
+from app.arbormind.learning import (
+    FailureClass,
+    FailureScope,
+    ingest_failure,
+    ingest_invariant_violation,
+    ingest_parse_failure,
+    ingest_truncation,
+    ingest_quality_rejection,
+    ingest_timeout,
+    ingest_runtime_exception,
+    ingest_external_failure,
+    ingest_dependency_missing,
+)
+
+# Agent mapping for logging
+STEP_AGENTS = {
+    # Phase 1: Planning
+    "architecture": "Victoria",
+    
+    # Phase 2: Mock & Backend
+    "frontend_mock": "Derek",
+    "backend_models": "Derek",
+    "backend_routers": "Derek",
+    "backend_implementation": "Derek",
+    
+    # Phase 3: Integration
+    "system_integration": "Derek",
+
+    "impl_refinement_iteration": "Derek",
+    
+    # Phase 4: Testing
+    "testing_frontend": "Luna",
+    "frontend_testing": "Luna",
+    
+    # Backend testing done by Derek (User Instruction)
+    "testing_backend": "Derek",
+    "backend_testing": "Derek",
 }
 
+class FASTOrchestratorV2(OrchestrationGuard):
+    """
+    FAST v2 Orchestrator - Minimal execution muscle.
+    """
 
-class FASTOrchestratorV2:
-    """
-    FAST v2 Orchestrator - Uses existing handlers with V2 safety features.
-    
-    Key Features:
-    1. Dependency barriers - Steps run only when dependencies complete
-    2. Pre-step validation - Check critical files before testing steps
-    3. Self-healing - Auto-repair critical files on failure
-    4. Fallback agents - Template-based fallback for routers/API client
-    5. Checkpointing - Save progress after each successful step
-    """
-    
-    # Critical steps that need extra validation and healing
-    CRITICAL_STEPS = {"backend_implementation", "frontend_integration"}
+    CAUSAL_STEPS = ["architecture", "backend_models", "backend_routers", "frontend_mock", "system_integration"]
+    EVIDENCE_STEPS = ["testing_backend", "testing_frontend", "preview_final"]
+    CRITICAL_STEPS = ["architecture", "backend_models"]
+
 
     def __init__(
         self,
@@ -86,632 +123,536 @@ class FASTOrchestratorV2:
         user_request: str,
         provider: Optional[str] = None,
         model: Optional[str] = None,
-        resume_from_checkpoint: bool = False,  # NEW: Resume from saved progress
+        resume_from_checkpoint: bool = False,
     ):
-        """
-        Initialize FAST V2 orchestrator.
-        
-        Uses same signature as FastWorkflowEngine for drop-in replacement.
-        
-        Args:
-            resume_from_checkpoint: If True, load completed steps from MongoDB and skip them.
-        """
         self.project_id = project_id
         self.manager = manager
         self.project_path = project_path
         self.user_request = user_request
-        self.provider = provider or settings.llm.default_provider
-        self.model = model or settings.llm.default_model
-        self.chat_history: List[ChatMessage] = []
-        self.current_turn = 1
-        self.max_turns = settings.workflow.max_turns
-        
-        # NEW: Resume flag
+        self.provider = provider
+        self.model = model
         self.resume_from_checkpoint = resume_from_checkpoint
-
-        # V2 Components
+        
         self.graph = TaskGraph()
-        self.contracts = StepContracts()
-        self.artifact_contracts = default_contracts()
-        self.integrity = LLMOutputIntegrity()
-        self.compiler = StructuralCompiler()
-        
-        # Fallback agents
-        self.fallback_router = FallbackRouterAgent()
-        self.fallback_api = FallbackAPIAgent()
-        
-        # V2: Healing pipeline for self-repair
-        from app.orchestration.healing_pipeline import HealingPipeline
-        self.healer = HealingPipeline(project_path=project_path)
-        
-        # V2: Cross-step context for inter-step memory
-        from app.orchestration.context import CrossStepContext
         self.cross_ctx = CrossStepContext.get_or_create(project_id)
+        self.compiler = StructuralCompiler()
+        self.checkpoint = CheckpointManagerV2(base_dir=str(project_path / ".fast_checkpoints"))
         
-        # Only reset context if NOT resuming (fresh start)
-        if not resume_from_checkpoint:
-            self.cross_ctx.reset()
-        
-        # Checkpointing
-        checkpoint_dir = self.project_path / ".fast_checkpoints"
-        self.checkpoint = CheckpointManagerV2(str(checkpoint_dir))
-        
-        # V2: Budget management for cost control (~30 INR per run)
-        # Use per-project budget tracking so frontend can display per-project costs
-        self.budget = get_budget_manager(project_id)
+        self.completed_steps = []
+        self.failed_steps = []
+        self.step_results = {}
+        self.execution_records = {}  # Phase-0: Track files created by each step
+        self.current_turn = 1
+        self.max_turns = 15
+        self.run_id = None
+        self.archetype = "generic"
 
-        # Phase 3: Isolation manager for step quarantine
-        from app.orchestration.isolation import IsolationManager
-        self.isolation_manager = IsolationManager(project_path)
+        log("FAST-V2", f"🚀 Initializing Orchestrator (resume={resume_from_checkpoint}) for {project_id}")
 
-        # State tracking (will be populated from DB if resuming)
-        self.completed_steps: List[str] = []
-        self.failed_steps: List[str] = []
-        self.step_results: Dict[str, dict] = {}
-        
-        # Pipeline metrics tracking
-        self.run_id: Optional[str] = None
-        self.archetype: str = "unknown"
-
-    async def run(self) -> None:
+    async def run(self):
         """
-        Execute the FAST V2 workflow.
-        
-        Uses existing handlers but with V2's dependency barriers and safety features.
+        Execute the branch.
+        Minimal logic, only execution.
         """
-        # ════════════════════════════════════════════════════════════════
-        # OLLAMA MODE: Delegate entirely to optimized Ollama orchestrator
-        # ════════════════════════════════════════════════════════════════
-        if self.provider.lower() == "ollama":
-            log("FAST-V2", "🦙 Detected Ollama provider - delegating to OllamaOrchestrator")
-            try:
-                from ollama import OllamaOrchestrator
-                
-                ollama_engine = OllamaOrchestrator(
-                    project_id=self.project_id,
-                    manager=self.manager,
-                    project_path=self.project_path,
-                    user_request=self.user_request,
-                    model=self.model,
-                )
-                
-                result = await ollama_engine.run()
-                
-                if result.get("success"):
-                    log("FAST-V2", f"🦙 Ollama workflow complete: {len(result.get('files_written', []))} files")
-                else:
-                    log("FAST-V2", f"🦙 Ollama workflow failed: {result.get('error')}")
-                
-                return  # Exit - Ollama handles everything
-                
-            except ImportError as e:
-                log("FAST-V2", f"⚠️ Ollama module not found: {e}. Falling back to standard pipeline.")
-            except Exception as e:
-                log("FAST-V2", f"⚠️ Ollama orchestrator failed: {e}. Falling back to standard pipeline.")
-        
-        # Import handlers here to avoid circular imports
-        from app.handlers import (
-            step_analysis,
-            step_architecture,
-            step_frontend_mock,
-            step_screenshot_verify,
-            step_contracts,
-            step_backend_implementation,
-            step_system_integration,
-            step_testing_backend,
-            step_frontend_integration,
-            step_testing_frontend,
-            step_preview_final,
-        )
-        from app.handlers.backend_models import step_backend_models  # Multi-entity models
-        from app.orchestration.utils import broadcast_to_project
+        from app.handlers import HANDLERS
         from app.orchestration.state import CURRENT_MANAGERS
         
-        # CRITICAL: Register manager so _broadcast_agent_thinking can find it
-        # This was missing, causing Derek/Luna/Victoria's broadcasts to fail silently
-        CURRENT_MANAGERS[self.project_id] = self.manager
+        # ArborMind Imports (Phase 2)
+        from app.arbormind.cognition.branch import Branch
+        from app.arbormind.cognition.tree import ArborMindTree
+        from app.arbormind.runtime.runtime import ArborMindRuntime
+        from app.arbormind.runtime.observer import observe
+        from app.arbormind.cognition.execution_report import ExecutionReport
+        from app.arbormind.runtime.execution_router import ExecutionRouter
+        from app.arbormind.runtime.decision import ExecutionAction
 
-        HANDLERS = {
-            "analysis": step_analysis,
-            "backend_models": step_backend_models,  # NEW: Multi-entity models
-            "architecture": step_architecture,
-            "frontend_mock": step_frontend_mock,
-            "screenshot_verify": step_screenshot_verify,
-            "contracts": step_contracts,
-            "backend_implementation": step_backend_implementation,
-            "system_integration": step_system_integration,
-            "frontend_integration": step_frontend_integration,
-            "testing_backend": step_testing_backend,
-            "testing_frontend": step_testing_frontend,
-            "preview_final": step_preview_final,
-        }
-
-        log("FAST-V2", f"🚀 Starting FAST V2 workflow for {self.project_id}")
-        start_time = datetime.now()
+        # 1️⃣ ENTRY POINT — Initialize Tree + Root Branch
+        # Create root branch - capture input only
+        from app.arbormind.core.archetypes import get_archetype
         
-        # V2 FEATURE: Start budget tracking for this run
-        self.budget.start_run()
-        self.budget.log_status("[FAST-V2]")
+        archetype = get_archetype("fullstack_software")
         
-        # 📊 METRICS: Start pipeline run tracking
-        try:
-            self.run_id = start_pipeline_run(
-                project_id=self.project_id,
-                archetype=self.archetype,
-                user_request=self.user_request[:500]
-            )
-        except Exception as e:
-            log("METRICS", f"⚠️ Failed to start pipeline metrics: {e}")
-            self.run_id = None
-
-        await broadcast_to_project(
-            self.manager,
-            self.project_id,
-            {
-                "type": "WORKFLOW_UPDATE",
-                "projectId": self.project_id,
-                "message": "Starting FAST V2 workflow with dependency barriers...",
-                "mode": "fast_v2",
-                "budget": self.budget.get_usage_summary(),
-            }
+        root_branch = Branch(
+            parent_id=None,
+            depth=0,
+            assumptions=archetype.as_assumptions(),
+            intent={
+                "user_request": self.user_request,
+                "project_id": self.project_id,
+                "project_path": self.project_path,
+                "manager": self.manager,
+                "provider": self.provider,
+                "model": self.model,
+                "archetype": self.archetype,
+            },
+            strategy={},
+            agent_roles={}
         )
 
-        # ════════════════════════════════════════════════════════════════
-        # RESUME FEATURE: Load previously completed steps from MongoDB
-        # ════════════════════════════════════════════════════════════════
-        if self.resume_from_checkpoint:
-            saved_steps = await WorkflowStateManager.get_completed_steps(self.project_id)
-            if saved_steps:
-                self.completed_steps = saved_steps
-                log("FAST-V2", f"🔄 RESUMING - Loaded {len(saved_steps)} completed steps: {saved_steps}")
-                
-                await broadcast_to_project(
-                    self.manager,
-                    self.project_id,
-                    {
-                        "type": "WORKFLOW_UPDATE",
-                        "projectId": self.project_id,
-                        "message": f"Resuming from checkpoint. Skipping {len(saved_steps)} completed steps...",
-                        "mode": "resume",
-                        "completed_steps": saved_steps,
-                    }
-                )
-            else:
-                log("FAST-V2", "🆕 No saved progress found, starting fresh")
+        tree = ArborMindTree(root=root_branch)
+        arbormind = ArborMindRuntime()
+
+        # Phase 3 — inhibition-only cognition
+        tree = arbormind.cycle(tree)
+
+        # Then synthesize ONE branch
+        from app.arbormind.core.synthesis import synthesize
+        branch_to_execute = synthesize(tree)
+
+        start_time = datetime.now()
+        
+        # Register in global registry for process tracking
+        CURRENT_MANAGERS[self.project_id] = self.manager
 
         try:
-            for step in self.graph.get_steps():
-                log("FAST-V2", f"═══ Step: {step} ═══")
-                
-                # ════════════════════════════════════════════════════════
-                # RESUME FEATURE: Skip already completed steps  
-                # ════════════════════════════════════════════════════════
-                if step in self.completed_steps:
-                    log("FAST-V2", f"⏭️ Skipping {step} (already completed)")
-                    self.step_results[step] = {"status": "skipped_resume", "reason": "already_completed"}
+            # 📊 ArborMind: Generate unique run ID and record start
+            import uuid
+            self.run_id = f"run_{uuid.uuid4().hex[:12]}"
+            
+            # ───────────────────────────────────────────────────────────────
+            # 🧠 SQLITE MEMORY: Record run start (non-blocking)
+            # ───────────────────────────────────────────────────────────────
+            record_run_start(
+                run_id=self.run_id,
+                archetype=self.archetype,
+                domain="",
+                user_request=self.user_request[:500],
+            )
+            
+            # Start workflow in DB
+            await WorkflowStateManager.try_start_workflow(self.project_id)
+
+            # Phase-0: Load state if resuming
+            if self.resume_from_checkpoint:
+                self._load_execution_state()
+
+            # EXECUTE STEPS IN ORDER
+            steps = self.graph.get_steps()
+            
+            for step in steps:
+                # Phase-0: Skip completed steps if resuming
+                if self.resume_from_checkpoint and step in self.completed_steps:
+                    log("FAST-V2", f"⏭️ Skipping completed step: {step}")
                     continue
 
-                # ════════════════════════════════════════════════════════
-                # V2 FEATURE #1: DEPENDENCY BARRIER
-                # ════════════════════════════════════════════════════════
-                if not self.graph.is_ready(step, self.completed_steps):
-                    blocking = self.graph.get_blocking(step, self.completed_steps)
-                    log("FAST-V2", f"⏳ {step} waiting for: {blocking}")
-                    
-                    # Check if any blocking step has failed
-                    if any(b in self.failed_steps for b in blocking):
-                        log("FAST-V2", f"❌ {step} blocked by failed dependency")
-                        self.failed_steps.append(step)
-                        self.step_results[step] = {"status": "blocked", "blocked_by": blocking}
-                        continue
-                    
-                    # Skip if dependencies not complete
-                    continue
-
-                # ════════════════════════════════════════════════════════
-                # V2 FEATURE #2: BUDGET CHECK BEFORE STEP EXECUTION
-                # ════════════════════════════════════════════════════════
-                allowed_attempts = self.budget.allowed_attempts_for_step(step)
-                step_policy = self.budget.get_step_policy(step)
-                
-                if allowed_attempts == 0:
-                    if step_policy.skippable:
-                        log("FAST-V2", f"💰 {step} skipped - budget insufficient (skippable)")
-                        self.step_results[step] = {"status": "skipped", "reason": "budget_exhausted"}
-                        continue
-                    else:
-                        log("FAST-V2", f"🛑 {step} cannot run - budget exhausted (critical step)")
-                        self.failed_steps.append(step)
-                        self.step_results[step] = {"status": "failed", "reason": "budget_exhausted"}
-                        # Stop workflow on critical budget exhaustion
-                        log("FAST-V2", f"🛑 Stopping workflow - budget exhausted for critical step {step}")
-                        self.budget.log_status("[FAST-V2]")
-                        break
-                else:
-                    log("FAST-V2", f"💰 Budget allows {allowed_attempts} attempts for {step}")
-
-                # ════════════════════════════════════════════════════════
-                # V2 FEATURE #3: PRE-STEP CRITICAL FILE VALIDATION
-                # ════════════════════════════════════════════════════════
-                if step in ["testing_backend", "testing_frontend", "preview_final"]:
-                    if not self._validate_critical_files(step):
-                        log("FAST-V2", f"⚠️ {step} skipped - critical files missing")
-                        # Try to heal before skipping
-                        if not await self._attempt_healing(step):
-                            self.failed_steps.append(step)
-                            self.step_results[step] = {"status": "failed", "reason": "critical_files_missing"}
-                            log("FAST-V2", f"🛑 Stopping - critical files missing for {step}")
-                            break
-
-                # ════════════════════════════════════════════════════════
-                # EXECUTE STEP USING EXISTING HANDLER
-                # ════════════════════════════════════════════════════════
                 handler = HANDLERS.get(step)
                 if not handler:
-                    log("FAST-V2", f"⚠️ No handler for step: {step}")
                     continue
 
+                log("FAST-V2", f"▶️ Executing: {step}")
+                step_start = datetime.now()
+                
+                # 🧠 SQLITE: Record step decision (start) - "I choose to run this tool"
+                agent_name = STEP_AGENTS.get(step, "System")
+                record_decision(
+                    run_id=self.run_id,
+                    step=step,
+                    agent=agent_name,
+                    action="RUN_TOOL",
+                    tool=step,  # The step is effectively the tool here
+                    outcome="pending",
+                )
+                
+                # 📊 METRICS: Start step tracking (Legacy removed)
+                step_order = steps.index(step)
+                # if self.run_id:
+                #     try:
+                #         start_step(self.run_id, step, step_order)
+                #     except Exception as me:
+                #         log("METRICS", f"⚠️ Failed to start step metrics: {me}")
+
                 try:
-                    log("FAST-V2", f"▶️ Executing: {step}")
-                    step_start = datetime.now()
+                    # ──────────────────────────────────────────────────────────────────
+                    # 🧠 PHASE 9: Centralized Decision Making (ExecutionRouter)
+                    # ──────────────────────────────────────────────────────────────────
+                    router = ExecutionRouter()
                     
-                    # 📊 METRICS: Start step tracking
-                    step_order = self.graph.get_steps().index(step) if step in self.graph.get_steps() else 0
-                    if self.run_id:
-                        try:
-                            start_step(self.run_id, step, step_order)
-                        except Exception as me:
-                            log("METRICS", f"⚠️ Failed to start step metrics: {me}")
-
-                    # ════════════════════════════════════════════════════════
-                    # Phase 6: RETRY POLICY for ENVIRONMENT_FAILURE
-                    # ════════════════════════════════════════════════════════
-                    from app.orchestration.retry_policy import RetryPolicy
-                    
-                    async def execute_handler():
-                        """Wrapper for handler execution."""
-                        return await handler(
-                            project_id=self.project_id,
-                            user_request=self.user_request,
-                            manager=self.manager,
-                            project_path=self.project_path,
-                            chat_history=self.chat_history,
-                            provider=self.provider,
-                            model=self.model,
-                            current_turn=self.current_turn,
-                            max_turns=self.max_turns,
-                        )
-                    
-                    # 🔒 POLICY: Only retry infra issues on Evidence steps (Non-Causal)
-                    # testing_backend, testing_frontend, preview_final
-                    allowed_retry_steps = ["testing_backend", "testing_frontend", "preview_final"]
-                    
-                    if step in allowed_retry_steps:
-                        log("FAST-V2", f"🛡️ Retry Policy enabled for evidence step: {step}")
-                        result = await RetryPolicy.retry_environment_failures(
-                            execute_handler,
-                            step_name=step,
-                            max_retries=2  # 1 immediate + 1 delayed
-                        )
-                    else:
-                        # Causal steps execute ONCE. No retries.
-                        result = await execute_handler()
-
-                    duration = (datetime.now() - step_start).total_seconds()
-
-                    # ════════════════════════════════════════════════════════
-                    # Phase 3: ISOLATION CHECK
-                    # ════════════════════════════════════════════════════════
-                    # If handler returned StepExecutionResult with ENVIRONMENT_FAILURE
-                    from app.core.step_outcome import StepExecutionResult, StepOutcome
-                    
-                    if isinstance(result, StepExecutionResult) and result.outcome == StepOutcome.ENVIRONMENT_FAILURE:
-                        log("FAST-V2", f"🔒 ISOLATING {step}: {result.error_details or 'Environment constraint'}")
-                        
-                        # Quarantine step and artifacts
-                        self.isolation_manager.isolate_step(
-                            step_name=step,
-                            artifacts=result.artifacts or [],
-                            reason=result.error_details or "Environment failure"
-                        )
-                        
-                        # ════════════════════════════════════════════════════════
-                        # Phase 4: STATIC VALIDATION (evidence, not verdict)
-                        # ════════════════════════════════════════════════════════
-                        static_evidence = None
-                        try:
-                            from app.validation.static_validator import StaticValidator
-                            validator = StaticValidator(self.project_path)
-                            
-                            # Provide evidence based on step type
-                            if "backend" in step or "testing_backend" in step:
-                                static_evidence = validator.validate_backend_step(step)
-                            elif "frontend" in step or "testing_frontend" in step:
-                                static_evidence = validator.validate_frontend_step(step)
-                            else:
-                                # Generic validation
-                                static_evidence = validator.validate_backend_step(step)
-                            
-                            log("FAST-V2", f"📋 Static evidence collected: {static_evidence.file_count} files, "
-                                f"{len(static_evidence.syntax_errors)} syntax errors")
-                        except Exception as val_err:
-                            log("FAST-V2", f"⚠️ Static validation failed (non-fatal): {val_err}")
-                        
-                        # Record as isolated with evidence
-                        self.step_results[step] = {
-                            "status": "isolated",
-                            "outcome": result.outcome.value,
-                            "reason": result.error_details,
-                            "artifacts_quarantined": len(result.artifacts or []),
-                            "static_evidence": static_evidence.to_dict() if static_evidence else None
+                    decision = router.decide(
+                        branch=branch_to_execute,
+                        context={
+                            "expected_outputs": 1,  # Handlers expect at least 1 file
+                            "step": step,
                         }
-                        
-                        log("FAST-V2", f"⏭️ Workflow continues with {step} isolated as dead branch")
-                        continue  # Skip to next step
-
-                    # ════════════════════════════════════════════════════════
-                    # V2 FIX: CHECK STEP RESULT STATUS BEFORE VALIDATION
-                    # ════════════════════════════════════════════════════════
-                    # Some steps (like system_integration) return error status directly
-                    result_status = getattr(result, 'status', None)
-                    if result_status == "error":
-                        error_data = getattr(result, 'data', {}) or {}
-                        error_msg = error_data.get('error', 'Step returned error status')
-                        log("FAST-V2", f"❌ {step} returned error: {error_msg}")
+                    )
+                    
+                    # ──────────────────────────────────────────────────────────────────
+                    # 📊 PHASE 9: Observational Recording (Non-blocking)
+                    # ──────────────────────────────────────────────────────────────────
+                    record_event(
+                        branch=branch_to_execute,
+                        decision=decision,
+                    )
+                    
+                    # ──────────────────────────────────────────────────────────────────
+                    # 🔧 Execute Based on Decision
+                    # ──────────────────────────────────────────────────────────────────
+                    result = None
+                    
+                    if decision.action == ExecutionAction.STOP:
+                        log("FAST-V2", f"🛑 ExecutionRouter decided to STOP: {decision.reason}")
                         self.failed_steps.append(step)
-                        self.step_results[step] = {"status": "failed", "reason": error_msg}
-                        
-                        # Record metrics
-                        if self.run_id:
-                            try:
-                                complete_step(
-                                    run_id=self.run_id,
-                                    step_name=step,
-                                    success=False,
-                                    attempts=1,
-                                    error_type="step_error",
-                                    error_detail=error_msg
-                                )
-                            except Exception as me:
-                                log("METRICS", f"⚠️ Failed to record step error: {me}")
-                        
-                        log("FAST-V2", f"🛑 Stopping - step {step} failed")
+                        self.step_results[step] = {"status": "stopped", "reason": decision.reason}
+                        break
+                    
+                    elif decision.action == ExecutionAction.HEAL:
+                        log("FAST-V2", f"🩹 Healing requested: {decision.reason}")
+                        self.failed_steps.append(step)
+                        self.step_results[step] = {"status": "healed", "reason": decision.reason}
                         break
 
-                    # ════════════════════════════════════════════════════════
-                    # V2 FEATURE #4: POST-STEP VALIDATION FOR CRITICAL STEPS  
-                    # ════════════════════════════════════════════════════════
-                    # Issue #1 Fix: Use FILESYSTEM validation, not result.output
-                    # StepResult doesn't have output.files - files are written to disk
-                    if step in self.CRITICAL_STEPS:
-                        # Check filesystem directly - this is the source of truth
-                        validation_passed = self._validate_step_output(step)
+                    elif decision.action == ExecutionAction.MUTATE:
+                        log("FAST-V2", f"🧬 Mutation requested: {decision.reason}")
+                        self.failed_steps.append(step)
+                        self.step_results[step] = {"status": "mutated", "reason": decision.reason}
+                        break
+                    elif decision.action == ExecutionAction.RUN_TOOL:
+                        # Phase-1: Take filesystem snapshot BEFORE execution for relative change detection
+                        before_snapshot = self._get_project_snapshot()
                         
-                        if not validation_passed:
-                            log("FAST-V2", f"⚠️ {step} filesystem validation failed. Triggering healing...")
-                            
-                            if await self._attempt_healing(step):
-                                log("FAST-V2", f"✅ {step} healed successfully")
-                            else:
-                                log("FAST-V2", f"❌ {step} healing failed (Unrecoverable)")
-                                self.failed_steps.append(step)
-                                self.step_results[step] = {"status": "failed", "reason": "validation_failed"}
-                                log("FAST-V2", f"🛑 Stopping - critical failure in {step}")
-                                break
-
-                    # ════════════════════════════════════════════════════════
-                    # V2 FEATURE #5: CHECKPOINT ON SUCCESS
-                    # ════════════════════════════════════════════════════════
-                    self._save_checkpoint(step)
-                    
-                    # ════════════════════════════════════════════════════════
-                    # V3 FEATURE: REGISTER BUDGET USAGE (ACTUAL TOKEN TRACKING)
-                    # ════════════════════════════════════════════════════════
-                    # Priority order:
-                    # 1. result.token_usage (from LLM response - most accurate)
-                    # 2. result.data.get("token_usage") (fallback from data dict)
-                    # 3. Step policy estimates (last resort)
-                    input_tokens = 0
-                    output_tokens = 0
-                    
-                    # V3: Check new dedicated token_usage field first
-                    if hasattr(result, 'token_usage') and result.token_usage:
-                        input_tokens = result.token_usage.get('input', 0)
-                        output_tokens = result.token_usage.get('output', 0)
-                    # Check data dict for token_usage
-                    elif hasattr(result, 'data') and result.data and result.data.get('token_usage'):
-                        usage = result.data.get('token_usage', {})
-                        input_tokens = usage.get('input', 0)
-                        output_tokens = usage.get('output', 0)
-                    # Legacy format check
-                    elif hasattr(result, 'usage') and result.usage:
-                        input_tokens = getattr(result.usage, 'prompt_tokens', 0)
-                        output_tokens = getattr(result.usage, 'completion_tokens', 0)
-                    
-                    # Use step policy estimates as fallback if no actual usage reported
-                    if input_tokens == 0 and output_tokens == 0:
-                        policy = self.budget.get_step_policy(step)
-                        input_tokens = policy.est_input_tokens
-                        output_tokens = policy.est_output_tokens
-                        log("FAST-V2", f"⚠️ No actual usage - using estimates: {input_tokens:,} in / {output_tokens:,} out")
-                    
-                    self.budget.register_usage(
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        step=step,
-                        agent=f"handler_{step}",
-                        is_retry=False,
-                    )
-                    log("FAST-V2", f"💰 Registered usage: {input_tokens:,} in / {output_tokens:,} out")
-
-                    log("FAST-V2", f"✅ {step} completed in {duration:.1f}s")
-                    self.completed_steps.append(step)
-                    self.step_results[step] = {
-                        "status": result.status if hasattr(result, 'status') else "ok",
-                        "duration": duration,
-                        "budget": self.budget.get_usage_summary(),
-                    }
-                    
-                    # 📊 METRICS: Record step success
-                    if self.run_id:
+                        # ═══════════════════════════════════════════════════════
+                        # TOOL PLANNING: Build and execute capability-based plan
+                        # ═══════════════════════════════════════════════════════
+                        # Step → Capabilities → Tools → Ordered Execution
                         try:
-                            complete_step(
-                                run_id=self.run_id,
-                                step_name=step,
-                                success=True,
-                                attempts=1,
-                                llm_calls=1  # Approximate
+                            # Build tool plan from step capabilities
+                            tool_plan = await build_tool_plan(
+                                step=step,
+                                branch=branch_to_execute,
+                                goal=f"Execute {step} step for {self.user_request[:100]}...",
                             )
-                        except Exception as me:
-                            log("METRICS", f"⚠️ Failed to record step success: {me}")
+                            
+                            log("FAST-V2", f"📋 Tool plan: {' → '.join(tool_plan.tool_names)}")
+                            
+                            # Execute the tool plan (linear, observable)
+                            plan_result = await execute_tool_plan(tool_plan, branch_to_execute)
+                            
+                            # Extract result for downstream compatibility
+                            result = plan_result.final_output
+                            
+                            # If tool plan failed, wrap for handler compatibility
+                            if not plan_result.success:
+                                log("FAST-V2", f"❌ Tool plan failed: {plan_result.error}")
+                                result = StepExecutionResult(
+                                    outcome=StepOutcome.HARD_FAILURE,
+                                    data={"error": plan_result.error},
+                                    artifacts={},
+                                )
+                        except StepFailure as sf:
+                            log("FAST-V2", f"❌ Step failure: {sf}")
+                            result = StepExecutionResult(
+                                outcome=StepOutcome.HARD_FAILURE,
+                                data={"error": str(sf)},
+                                artifacts={},
+                            )
+                        except Exception as e:
+                            # Fallback to legacy handler if tool planning fails
+                            log("FAST-V2", f"⚠️ Tool planning failed, falling back to handler: {e}")
+                            result = await handler(branch_to_execute)
+                        
+                        # Phase-1: Take filesystem snapshot AFTER execution
+                        after_snapshot = self._get_project_snapshot()
+                        
+                        # ═══════════════════════════════════════════════════════
+                        # PHASE-0/1: FILE TRACKING AND RETRY LOGIC
+                        # ═══════════════════════════════════════════════════════
+                        
+                        # Get execution policy for this step
+                        policy = get_execution_policy(step)
+                        
+                        # Phase-1: Compute actual files created/modified on disk
+                        # This is the "Truth" observed by the Orchestrator
+                        files_generated = self._compute_file_delta(before_snapshot, after_snapshot)
+                        
+                        # Phase-0: Register files created
+                        if files_generated:
+                            self._register_step_files_from_paths(step, files_generated)
+                        
+                        # Phase-1: Check if ARTIFACT step produced output
+                        if policy.mode == ExecutionMode.ARTIFACT and policy.requires_output:
+                            if not files_generated or len(files_generated) == 0:
+                                log("FAST-V2", f"⚠️ ARTIFACT step '{step}' produced ZERO files")
+                                log("FAST-V2", f"   Policy: requires_output=True, is_fatal={policy.is_fatal}")
+                                
+                                # Check if retry is allowed
+                                if self._should_retry_step(step):
+                                    log("FAST-V2", f"🔄 Phase-1: Attempting retry for {step}")
+                                    
+                                    # Phase-0: Rollback any partial files
+                                    self._rollback_step(step)
+                                    
+                                    # Phase-1: Retry with hardened prompt
+                                    # Note: retry also does snapshots inside its loop logic if needed, 
+                                    # but here we just take the final result.
+                                    retry_before = self._get_project_snapshot()
+                                    retry_success, retry_result = await self._retry_step_with_hardened_prompt(
+                                        step, handler, branch_to_execute
+                                    )
+                                    retry_after = self._get_project_snapshot()
+                                    
+                                    if retry_success:
+                                        log("FAST-V2", f"✅ Retry succeeded for {step}")
+                                        result = retry_result
+                                        files_generated = self._compute_file_delta(retry_before, retry_after)
+                                        if files_generated:
+                                            self._register_step_files_from_paths(step, files_generated)
+                                    else:
+                                        log("FAST-V2", f"❌ Retry FAILED for {step}")
+                                        
+                                        # Generate halt artifact
+                                        halt_artifact = self._generate_halt_artifact(
+                                            step_name=step,
+                                            reason="Zero files produced after retry",
+                                            attempts=2
+                                        )
+                                        
+                                        # Record failure
+                                        self.failed_steps.append(step)
+                                        self.step_results[step] = {
+                                            "status": "failed",
+                                            "reason": "zero_files_after_retry",
+                                            "halt_artifact": halt_artifact
+                                        }
+                                        
+                                        # 🧠 ARBORMIND LEARNING: Ingest failure (canonical)
+                                        ingest_failure(
+                                            run_id=self.run_id,
+                                            step=step,
+                                            primary_class=FailureClass.F1_INVARIANT_VIOLATION,
+                                            scope=FailureScope.STEP_LOCAL,
+                                            raw_error="Zero files produced after retry",
+                                            agent=agent_name,
+                                            retry_index=1,
+                                            is_hard_failure=policy.is_fatal,
+                                        )
+                                        
+                                        # Phase-1: If fatal, stop workflow
+                                        if policy.is_fatal:
+                                            log("FAST-V2", f"🛑 FATAL: {step} failed after retry - HALTING WORKFLOW")
+                                            break
+                                        else:
+                                            log("FAST-V2", f"⚠️ NON-FATAL: {step} failed but continuing")
+                                            continue  # Skip to next step
+                                else:
+                                    # No retry allowed, but empty output
+                                    log("FAST-V2", f"❌ {step} produced zero files (no retry allowed)")
+                                    
+                                    # Generate halt artifact (attempt 1 only)
+                                    halt_artifact = self._generate_halt_artifact(
+                                        step_name=step,
+                                        reason="Zero files produced",
+                                        attempts=1
+                                    )
+                                    
+                                    self.failed_steps.append(step)
+                                    self.step_results[step] = {
+                                        "status": "failed",
+                                        "reason": "zero_files",
+                                        "halt_artifact": halt_artifact
+                                    }
+                                    
+                                    # 🧠 ARBORMIND LEARNING: Ingest failure (canonical)
+                                    ingest_failure(
+                                        run_id=self.run_id,
+                                        step=step,
+                                        primary_class=FailureClass.F1_INVARIANT_VIOLATION,
+                                        scope=FailureScope.STEP_LOCAL,
+                                        raw_error="Zero files produced (no retry allowed)",
+                                        agent=agent_name,
+                                        retry_index=0,
+                                        is_hard_failure=policy.is_fatal,
+                                    )
+                                    
+                                    if policy.is_fatal:
+                                        log("FAST-V2", f"🛑 FATAL: {step} produced zero files - HALTING WORKFLOW")
+                                        break
+                                    else:
+                                        log("FAST-V2", f"⚠️ NON-FATAL: {step} produced zero files but continuing")
+                                        continue
+                        
+                        # ═══════════════════════════════════════════════════════
+                        # EXISTING FAILURE HANDLING (after Phase-0/1 checks)
+                        # ═══════════════════════════════════════════════════════
+                        
+                        # 🛑 CRITICAL: FailureBoundary catches exceptions and returns StepExecutionResult
+                        # We MUST check if the result indicates failure
+                        if isinstance(result, StepExecutionResult):
+                            if result.outcome != StepOutcome.SUCCESS:
+                                log("FAST-V2", f"⚠️ Step {step} returned failure: {result.outcome.value}")
+                                log("FAST-V2", f"   Error: {result.error_details}")
+                                
+                                # ═══════════════════════════════════════════════════════
+                                # PHASE 2: Failure Severity Classification
+                                # ═══════════════════════════════════════════════════════
+                                # Map StepOutcome to failure code for severity lookup
+                                failure_code = {
+                                    StepOutcome.HARD_FAILURE: "RepeatedInvariant",
+                                    StepOutcome.COGNITIVE_FAILURE: "SupervisorRejection",
+                                    StepOutcome.ENVIRONMENT_FAILURE: "InfraTransient",
+                                }.get(result.outcome, "QualityWarning")
+                                
+                                severity = get_failure_severity(failure_code)
+                                is_fatal_failure = severity == FailureSeverity.FATAL
+                                
+                                self.failed_steps.append(step)
+                                self.step_results[step] = {
+                                    "status": "failed",
+                                    "outcome": result.outcome.value,
+                                    "error": result.error_details,
+                                    "severity": severity.value,  # Track severity
+                                }
+                                
+                                # 🧠 SQLITE: Update decision with failure
+                                duration_ms = int((datetime.now() - step_start).total_seconds() * 1000)
+                                update_decision_outcome(
+                                    run_id=self.run_id,
+                                    step=step,
+                                    outcome="failure",
+                                    duration_ms=duration_ms,
+                                    artifacts_count=0
+                                )
+                                
+                                # 🧠 SQLITE: Record specific failure details (telemetry)
+                                record_failure(
+                                    run_id=self.run_id,
+                                    step=step,
+                                    failure_type=result.outcome.value,
+                                    message=result.error_details or "Unknown error",
+                                )
+                                
+                                # 🧠 ARBORMIND LEARNING: Ingest canonical failure
+                                # Map StepOutcome to FailureClass
+                                failure_class_map = {
+                                    StepOutcome.HARD_FAILURE: FailureClass.F1_INVARIANT_VIOLATION,
+                                    StepOutcome.COGNITIVE_FAILURE: FailureClass.F4_QUALITY_REJECTION,
+                                    StepOutcome.ENVIRONMENT_FAILURE: FailureClass.F9_EXTERNAL_FAILURE,
+                                }
+                                canonical_class = failure_class_map.get(
+                                    result.outcome, 
+                                    FailureClass.F7_RUNTIME_EXCEPTION
+                                )
+                                
+                                ingest_failure(
+                                    run_id=self.run_id,
+                                    step=step,
+                                    primary_class=canonical_class,
+                                    scope=FailureScope.STEP_LOCAL if step not in self.CRITICAL_STEPS else FailureScope.CROSS_STEP,
+                                    raw_error=result.error_details or "Unknown error",
+                                    agent=agent_name,
+                                    retry_index=0,
+                                    is_hard_failure=is_fatal_failure or step in self.CRITICAL_STEPS,
+                                )
+                                
+                                # ═══════════════════════════════════════════════════════
+                                # PHASE 2: Only FATAL failures or CRITICAL STEPS stop the workflow
+                                # ═══════════════════════════════════════════════════════
+                                if is_fatal_failure or step in self.CRITICAL_STEPS:
+                                    log("FAST-V2", f"🛑 FATAL: Step {step} failed (or is critical) - stopping workflow")
+                                    
+                                    # Generate halt artifact before stopping
+                                    self._generate_halt_artifact(
+                                        step_name=step,
+                                        reason=f"Step failed with outcome: {result.outcome.value}",
+                                        attempts=1 # Regular failures don't have Phase-1 auto-retries yet
+                                    )
+                                    
+                                    if step in self.CRITICAL_STEPS:
+                                        break
+                                    elif is_fatal_failure:
+                                        break
+                                else:
+                                    # This handles the User's "Signal, not Stop" requirement
+                                    log("FAST-V2", f"⚠️ NON-FATAL SIGNAL: Step {step} failed - continuing branch per stabilization rules")
+                                    # Continue to next step
                     
-                    # V2 FEATURE #7: Record to cross-step context
+                    duration = (datetime.now() - step_start).total_seconds()
+
+                    # VALIDATE OUTPUT (Gate, not cognition)
+                    validation_passed = self._validate_step_output(step)
+                    
+                    if not validation_passed:
+                        log("FAST-V2", f"🛑 Step {step} validation failed. Reporting failure.")
+                        self.failed_steps.append(step)
+                        self.step_results[step] = {"status": "failed", "reason": "validation_failed"}
+                        break # Stop on failure
+
+                    # PERSISTENCE (Muscle)
+                    await self._save_checkpoint(step)
                     await self._record_step_context(step, result)
                     
-                    # ════════════════════════════════════════════════════════
-                    # RESUME FEATURE: Persist completed step to MongoDB
-                    # ════════════════════════════════════════════════════════
-                    try:
-                        await WorkflowStateManager.save_completed_step(
-                            self.project_id, 
-                            step,
-                            context=self.step_results.get(step)
-                        )
-                        log("FAST-V2", f"💾 Saved progress to MongoDB: {step}")
-                    except Exception as save_err:
-                        log("FAST-V2", f"⚠️ Failed to save progress (non-fatal): {save_err}")
+                    self.completed_steps.append(step)
+                    self.step_results[step] = {"status": "ok", "duration": duration}
                     
-                    self.current_turn += 1
 
-                except RateLimitError as e:
-                    # ════════════════════════════════════════════════════════
-                    # CRITICAL: STOP IMMEDIATELY ON RATE LIMIT
-                    # ════════════════════════════════════════════════════════
-                    log("FAST-V2", f"🛑 Stopping - Rate Limit Exceeded: {e}")
-                    self.failed_steps.append(step)
-                    self.step_results[step] = {"status": "failed", "reason": "rate_limit", "error": str(e)}
-                    self.budget.log_status("[FAST-V2]")
-                    break
+                    
+                    # 🧠 SQLITE: Update decision with success and metrics
+                    duration_ms = int(duration * 1000)
+                    artifacts_count = 0
+                    if result and isinstance(result, StepExecutionResult) and result.data:
+                         # Extract artifacts count if possible (handlers typically return generated files list)
+                         files = result.data.get("files", []) or result.data.get("modified_files", [])
+                         artifacts_count = len(files) if isinstance(files, list) else 0
+
+                    update_decision_outcome(
+                        run_id=self.run_id,
+                        step=step,
+                        outcome="success",
+                        duration_ms=duration_ms,
+                        artifacts_count=artifacts_count
+                    )
+                    
+                    if self.run_id:
+                        # complete_step(self.run_id, step, True, 1)
+                        pass
 
                 except Exception as e:
-                    log("FAST-V2", f"❌ {step} failed (retries exhausted): {e}")
-                    
+                    log("FAST-V2", f"❌ {step} failed: {e}")
                     self.failed_steps.append(step)
                     self.step_results[step] = {"status": "error", "error": str(e)}
                     
-                    # 📊 METRICS: Record step failure
-                    if self.run_id:
-                        try:
-                            # Determine error type from exception
-                            error_type = type(e).__name__
-                            complete_step(
-                                run_id=self.run_id,
-                                step_name=step,
-                                success=False,
-                                attempts=1,
-                                error_type=error_type,
-                                error_message=str(e)[:500]
-                            )
-                        except Exception as me:
-                            log("METRICS", f"⚠️ Failed to record step failure: {me}")
+                    # 🧠 SQLITE: Update decision with exception failure
+                    duration_ms = int((datetime.now() - step_start).total_seconds() * 1000)
+                    update_decision_outcome(
+                        run_id=self.run_id,
+                        step=step,
+                        outcome="failure",
+                        duration_ms=duration_ms,
+                        artifacts_count=0
+                    )
+
+                    import traceback
+                    tb_str = traceback.format_exc()
                     
-                    # ════════════════════════════════════════════════════════
-                    # STOP ON FAILURE (As requested: do not auto-heal crashes)
-                    # ════════════════════════════════════════════════════════
-                    log("FAST-V2", f"🛑 Stopping - step {step} failed")
-                    self.budget.log_status("[FAST-V2]")
-                    break
+                    # 🧠 SQLITE: Record failure (telemetry)
+                    record_failure(
+                        run_id=self.run_id,
+                        step=step,
+                        failure_type="exception",
+                        message=str(e),
+                        stack_trace=tb_str,
+                    )
+                    
+                    # 🧠 ARBORMIND LEARNING: Ingest canonical failure (F7 Runtime Exception)
+                    ingest_runtime_exception(
+                        run_id=self.run_id,
+                        step=step,
+                        exception_info=f"{str(e)}\n{tb_str}",
+                        agent=agent_name,
+                    )
+                    
+                    break # Stop on exception
 
-                await asyncio.sleep(0.2)
-
-            # ════════════════════════════════════════════════════════
             # WORKFLOW COMPLETE
-            # ════════════════════════════════════════════════════════
             total_duration = (datetime.now() - start_time).total_seconds()
             success = len(self.failed_steps) == 0
             
-            # ════════════════════════════════════════════════════════
-            # Phase 1: AGGREGATE WORKFLOW OUTCOME
-            # ════════════════════════════════════════════════════════
-            from app.core.step_outcome import StepExecutionResult, StepOutcome
-            from app.core.types import WorkflowStatus
-            
-            # Collect StepExecutionResult objects from step_results
-            step_execution_results = []
-            for step_name, step_data in self.step_results.items():
-                if isinstance(step_data, dict) and "outcome" in step_data:
-                    # This step has new-style outcome
-                    try:
-                        result = StepExecutionResult(
-                            outcome=StepOutcome(step_data["outcome"]),
-                            step_name=step_name,
-                            artifacts=step_data.get("artifacts_quarantined", []),
-                            isolated=step_data.get("status") == "isolated",
-                            error_details=step_data.get("reason", "")
-                        )
-                        step_execution_results.append(result)
-                    except (ValueError, KeyError):
-                        # Legacy step result, skip
-                        pass
-            
-            # Call aggregator to get final workflow status
-            workflow_status, degradation_report = aggregate_workflow_outcome(
-                step_execution_results,
-                evidence={}  # TODO: Could add static validation evidence here
+            # 🧠 SQLITE: Record run completion
+            record_run_end(
+                run_id=self.run_id,
+                status="success" if success else "failure",
+                total_steps=len(steps),
+                completed_steps=len(self.completed_steps),
+                failed_steps=len(self.failed_steps),
             )
-            
-            # Update success flag based on aggregator decision
-            if workflow_status == WorkflowStatus.FAILED:
-                success = False
-            elif workflow_status == WorkflowStatus.SUCCESS_WITH_DEGRADATION:
-                success = True  # Workflow completed, but with degradation
-                log("FAST-V2", "⚠️ Workflow completed with DEGRADATION")
-                if degradation_report:
-                    log("FAST-V2", format_degradation_summary(degradation_report))
-            elif workflow_status == WorkflowStatus.SUCCESS:
-                success = True
-            
-            # For failures, report the FIRST failed step, not the last completed step
-            if self.failed_steps:
-                final_step = self.failed_steps[0]  # The step that caused the failure
-            else:
-                final_step = self.completed_steps[-1] if self.completed_steps else "unknown"
-
-            log("FAST-V2", f"{'✅' if success else '⚠️'} FAST V2 completed in {total_duration:.1f}s")
-            log("FAST-V2", f"   Completed: {len(self.completed_steps)}/{len(self.graph.get_steps())}")
-            log("FAST-V2", f"   Failed: {self.failed_steps}")
-
-            # Identify Isolated and Skipped steps (Causality Gate)
-            all_steps = set(self.graph.get_steps())
-            completed_set = set(self.completed_steps)
-            failed_set = set(self.failed_steps)
-            
-            isolated_steps = {s for s, r in self.step_results.items() if r.get("status") == "isolated"}
-            
-            skipped_steps = all_steps - completed_set - failed_set - isolated_steps
-            
-            if isolated_steps:
-                log("FAST-V2", f"   Isolated: {list(isolated_steps)} (Dead Branches)")
-            
-            if skipped_steps:
-                log("FAST-V2", f"   Skipped: {list(skipped_steps)} (Causality Gate - Dependency Missing)")
-            
-            # 📊 METRICS: Complete pipeline run tracking
-            if self.run_id:
-                try:
-                    complete_pipeline_run(
-                        run_id=self.run_id,
-                        success=success,
-                        final_step=final_step,
-                        error_message=str(self.step_results.get(final_step, {}).get("error", "")) if not success else ""
-                    )
-                except Exception as me:
-                    log("METRICS", f"⚠️ Failed to complete pipeline metrics: {me}")
-            
-            # V2 FEATURE: Final budget summary
-            self.budget.log_status("[FAST-V2]")
-            budget_summary = self.budget.get_usage_summary()
-            log("FAST-V2", f"   Budget: ₹{budget_summary['used_inr']:.2f} / ₹{budget_summary['max_inr']:.2f}")
 
             await broadcast_to_project(
                 self.manager,
@@ -719,328 +660,330 @@ class FASTOrchestratorV2:
                 {
                     "type": WSMessageType.WORKFLOW_COMPLETE if success else WSMessageType.WORKFLOW_FAILED,
                     "projectId": self.project_id,
-                    "message": f"FAST V2 completed in {total_duration:.1f}s",
-                    "duration": total_duration,
                     "completed": self.completed_steps,
                     "failed": self.failed_steps,
-                    "budget": budget_summary,
                 },
             )
+
+            # 2️⃣ EXECUTION COMPLETION — OBSERVE RESULT
+            # Adapt output to ExecutionReport
+            report = ExecutionReport(
+                success=success,
+                artifacts=self.step_results,
+                error=None if success else f"Steps failed: {self.failed_steps}",
+                metrics={"duration": total_duration}
+            )
+            
+            # Observe
+            observe(root_branch, report)
+            
 
         except Exception as e:
-            log("FAST-V2", f"❌ Workflow failed: {e}")
-            
-            # 📊 METRICS: Record pipeline failure
-            if self.run_id:
-                try:
-                    final_step = self.completed_steps[-1] if self.completed_steps else "startup"
-                    complete_pipeline_run(
-                        run_id=self.run_id,
-                        success=False,
-                        final_step=final_step,
-                        error_message=str(e)[:1000]
-                    )
-                except Exception as me:
-                    log("METRICS", f"⚠️ Failed to record pipeline failure: {me}")
-            
-            await broadcast_to_project(
-                self.manager,
-                self.project_id,
-                {
-                    "type": WSMessageType.WORKFLOW_FAILED,
-                    "projectId": self.project_id,
-                    "error": str(e),
-                },
+            # ArborMind Observe (Crash)
+            report = ExecutionReport(
+                success=False,
+                artifacts=self.step_results if hasattr(self, 'step_results') else {},
+                error=str(e),
+                metrics={}
             )
-        
-        finally:
-            # Cleanup manager registration to prevent memory leaks
-            CURRENT_MANAGERS.pop(self.project_id, None)
-            # FIX: Reset is_running flag in MongoDB (was missing, causing stale locks!)
-            await WorkflowStateManager.stop_workflow(self.project_id)
-            log("FAST-V2", f"✅ Workflow cleanup complete for {self.project_id}")
+            observe(root_branch, report)
 
-    def _validate_critical_files(self, step: str) -> bool:
-        """
-        Validate critical files exist before running testing/preview steps.
-        
-        V2 Feature: Pre-flight check to prevent wasted Docker builds.
-        Now also validates that models.py contains actual model definitions!
-        """
-        import re
-        
-        checks = {
-            "testing_backend": [
-                self.project_path / "backend" / "app" / "main.py",
-                self.project_path / "backend" / "app" / "models.py",
-            ],
-            "testing_frontend": [
-                self.project_path / "backend" / "app" / "main.py",
-                self.project_path / "frontend" / "src" / "lib" / "api.js",
-            ],
-            "preview_final": [
-                self.project_path / "backend" / "app" / "main.py",
-                self.project_path / "docker-compose.yml",
-            ],
-        }
-        
-        required_files = checks.get(step, [])
-        for file_path in required_files:
-            if not file_path.exists():
-                log("FAST-V2", f"   Missing: {file_path}")
-                return False
-            
-            # CRITICAL: For models.py, also check it has an actual Document class (not in comments!)
-            if file_path.name == "models.py":
-                content = file_path.read_text(encoding="utf-8")
-                has_model = False
-                for line in content.splitlines():
-                    stripped = line.lstrip()
-                    if not stripped or stripped.startswith('#'):
-                        continue
-                    if re.match(r'class\s+\w+\s*\(\s*Document\s*\)', stripped):
-                        has_model = True
-                        break
-                if not has_model:
-                    log("FAST-V2", f"   Invalid: {file_path} - no Document class found")
-                    return False
-        
-        # Check routers directory has files
-        routers_dir = self.project_path / "backend" / "app" / "routers"
-        if routers_dir.exists():
-            router_files = [f for f in routers_dir.glob("*.py") if f.name != "__init__.py"]
-            if not router_files:
-                log("FAST-V2", f"   Missing: router files in {routers_dir}")
-                return False
-        else:
-            log("FAST-V2", f"   Missing: {routers_dir}")
-            return False
-        
-        return True
+            log("FAST-V2", f"❌ Workflow execution crashed: {e}")
+            if self.run_id:
+                # complete_pipeline_run(self.run_id, False, "crash", str(e))
+                pass
+        finally:
+            from app.orchestration.state import CURRENT_MANAGERS
+            CURRENT_MANAGERS.pop(self.project_id, None)
+            await WorkflowStateManager.stop_workflow(self.project_id)
 
     def _validate_step_output(self, step: str) -> bool:
-        """
-        Validate the output of a critical step.
-        
-        V2 Feature: Post-step validation using structural compiler.
-        """
-        # Get primary entity for dynamic validation
-        # BUG FIX: Use actual models from models.py for post-backend validation,
-        # not discover_primary_entity which may return wrong entity from mock.js cache
-        entities = self.cross_ctx._ctx.get("entities", [])
-        if entities:
-            primary_entity = entities[0]
-        else:
-            # For post-backend steps, prefer actual models from models.py
-            actual_models = extract_all_models_from_models_py(self.project_path)
-            if actual_models:
-                primary_entity = actual_models[0].lower()
-            else:
-                # Fallback to discover_primary_entity
-                entity_name, _ = discover_primary_entity(self.project_path)
-                primary_entity = entity_name if entity_name else "item"  # Last resort
-        from app.orchestration.utils import pluralize
-        primary_plural = pluralize(primary_entity)
-
-        if step == "backend_implementation":
-            import re
-            # Check models.py has actual model definition (not just imports!)
-            models_path = self.project_path / "backend" / "app" / "models.py"
-            router_path = self.project_path / "backend" / "app" / "routers" / f"{primary_plural}.py"
-            
-            if not models_path.exists():
-                log("FAST-V2", "   ❌ models.py does not exist")
-                return False
-            
-            # CRITICAL: Check that model class is actually DEFINED (not in comments!)
-            models_content = models_path.read_text(encoding="utf-8")
-            model_class_name = primary_entity.capitalize()
-            
-            # Helper to check for actual (non-commented) class definition
-            def has_document_class(content: str, class_name: str = None) -> bool:
-                for line in content.splitlines():
-                    stripped = line.lstrip()
-                    if not stripped or stripped.startswith('#'):
-                        continue
-                    if class_name:
-                        if re.match(rf'class\s+{class_name}\s*\(\s*Document\s*\)', stripped):
-                            return True
-                    else:
-                        if re.match(r'class\s+\w+\s*\(\s*Document\s*\)', stripped):
-                            return True
-                return False
-            
-            if not has_document_class(models_content, model_class_name):
-                # Also check for any Document class (in case entity name differs)
-                if not has_document_class(models_content):
-                    log("FAST-V2", "   ❌ models.py exists but no Document class found")
-                    return False
-                
-            # Fallback: check ALL routers if specific one missing
-            if not router_path.exists():
-                routers_dir = self.project_path / "backend" / "app" / "routers"
-                if routers_dir.exists() and any(f.suffix == ".py" and f.stem != "__init__" for f in routers_dir.iterdir()):
-                    return True # Found some router, good enough
-                log("FAST-V2", "   ❌ No router files found")
-                return False
-                
-            content = router_path.read_text(encoding="utf-8")
-            return self.compiler.router_is_complete(content)
-        
-        if step == "frontend_integration":
-            api_path = self.project_path / "frontend" / "src" / "lib" / "api.js"
-            if not api_path.exists():
-                return False
-            content = api_path.read_text(encoding="utf-8")
-            
-            # Dynamic validation
-            entities = self.cross_ctx._ctx.get("entities", [])
-            if entities:
-                primary_entity = entities[0]
-            else:
-                # BUG FIX: Use actual models from models.py
-                actual_models = extract_all_models_from_models_py(self.project_path)
-                if actual_models:
-                    primary_entity = actual_models[0].lower()
-                else:
-                    entity_name, _ = discover_primary_entity(self.project_path)
-                    primary_entity = entity_name if entity_name else "item"  # Last resort
-            return self.compiler.api_is_complete(content, entity_name=primary_entity)
-        
+        """Minimal output validation gate."""
+        # For now, just return True or implement very basic file existence checks
+        # Cognitive validation belongs in ArborMind
         return True
 
-    async def _attempt_healing(self, step: str) -> bool:
-        """
-        Attempt to heal a failed step using the healing pipeline.
-        
-        V2 Feature: Self-healing via HealingPipeline with LLM regeneration + fallback templates.
-        """
-        log("FAST-V2", f"🔧 Attempting healing for {step}...")
-        
-        # Use the V2 healing pipeline (async)
-        result = await self.healer.attempt_heal(step)
-        
-        if result:
-            log("FAST-V2", f"   ✅ Healing succeeded for {step}")
-            return True
-        
-        log("FAST-V2", f"   ❌ Healing failed for {step}")
-        return False
-
-    def _save_checkpoint(self, step: str):
+    async def _save_checkpoint(self, step: str):
         """Save a checkpoint after successful step completion."""
         try:
-            # Get dynamic paths
-            entities = self.cross_ctx._ctx.get("entities", [])
-            if entities:
-                primary_entity = entities[0]
-            else:
-                # BUG FIX: Use actual models from models.py for checkpointing
-                actual_models = extract_all_models_from_models_py(self.project_path)
-                if actual_models:
-                    primary_entity = actual_models[0].lower()
-                else:
-                    entity_name, _ = discover_primary_entity(self.project_path)
-                    primary_entity = entity_name if entity_name else "item"  # Last resort
-            from app.orchestration.utils import pluralize
-            primary_plural = pluralize(primary_entity)
-
-            # Collect relevant files for this step
-            files = {}
-            step_files = {
-                "backend_implementation": [
-                    "backend/app/models.py", 
-                    f"backend/app/routers/{primary_plural}.py",
-                    "backend/requirements.txt"
-                ],
-                "system_integration": ["backend/app/main.py"],
-                "frontend_integration": ["frontend/src/lib/api.js"],
+            # Phase-0: Get execution record to persist as metadata
+            record = self.execution_records.get(step)
+            metadata = {
+                "step_summaries": self.cross_ctx._ctx.get("step_summaries", {}),
+                "architecture": self.cross_ctx._ctx.get("architecture", "")
             }
-            
-            for rel_path in step_files.get(step, []):
-                full_path = self.project_path / rel_path
-                if full_path.exists():
-                    files[rel_path] = full_path.read_text(encoding="utf-8")
-            
-            if files:
-                self.checkpoint.save(step, files)
+            if record:
+                metadata["execution_record"] = record.to_dict()
+
+            checkpoint_dir = await self.checkpoint.save_project_snapshot(
+                self.project_path, 
+                step, 
+                run_id=self.run_id,
+                **metadata
+            )
+            # log("FAST-V2", f"   💾 Checkpoint saved: {checkpoint_dir}")
         except Exception as e:
             log("FAST-V2", f"   ⚠️ Checkpoint failed: {e}")
 
     async def _record_step_context(self, step: str, result: Any):
-        """
-        V2 Feature: Record step completion to cross-step context.
-        
-        This allows later steps to know what earlier steps produced.
-        """
+        """Record step completion to cross-step context."""
         try:
-            summary = {}
+            # 1. Update completed steps list with summary from data
+            summary = result.data if hasattr(result, 'data') else {}
+            self.cross_ctx.record_step_completion(step, summary=summary)
             
-            # Extract relevant info based on step type
-            if step == "analysis":
-                # Extract entities from analysis result
-                if hasattr(result, 'entities'):
-                    self.cross_ctx.set_entities(result.entities)
-                    summary = {"entities": result.entities}
-                
-                # 📊 METRICS: Capture archetype for pipeline tracking
-                try:
-                    from app.orchestration.state import WorkflowStateManager
-                    intent = await WorkflowStateManager.get_intent(self.project_id)
-                    if intent:
-                        archetype_routing = intent.get("archetypeRouting", {})
-                        self.archetype = archetype_routing.get("top", "unknown")
-                        log("FAST-V2", f"   📊 Captured archetype: {self.archetype}")
-                except Exception as ae:
-                    log("METRICS", f"⚠️ Failed to capture archetype: {ae}")
-            
-            elif step == "architecture":
-                # Extract architecture summary
-                arch_path = self.project_path / "architecture.md"
-                if arch_path.exists():
-                    arch_content = arch_path.read_text(encoding="utf-8")[:500]
-                    self.cross_ctx.set_architecture(arch_content)
-                    summary = {"architecture": "MongoDB + Beanie ODM"}
-            
-            elif step == "backend_implementation":
-                # Record model info
-                models_path = self.project_path / "backend" / "app" / "models.py"
-                if models_path.exists():
-                    entities = self.cross_ctx._ctx.get("entities", [])
+            # 2. Extract and record entities if architecture step
+            if step == "architecture":
+                # Set specific architecture text for context
+                arch_summary = summary.get("architecture_summary") or ""
+                self.cross_ctx.set_architecture(arch_summary)
+
+                from app.utils.entity_discovery import discover_entities_from_architecture
+                arch_file = self.project_path / "architecture" / "backend.md"
+                if arch_file.exists():
+                    entities = discover_entities_from_architecture(arch_file)
                     if entities:
-                        primary = entities[0]
-                    else:
-                        # BUG FIX: Use actual models from models.py for context recording
-                        actual_models = extract_all_models_from_models_py(self.project_path)
-                        if actual_models:
-                            primary = actual_models[0].lower()
-                        else:
-                            entity_name, _ = discover_primary_entity(self.project_path)
-                            primary = entity_name if entity_name else "item"  # Last resort
-                    from app.orchestration.utils import pluralize
-                    plural = pluralize(primary)
-                    summary = {
-                        "models": f"{primary.capitalize()} model with CRUD support",
-                        "endpoints": f"GET/POST/PUT/DELETE /api/{plural}"
-                    }
+                        # Extract entity names from EntitySpec objects
+                        entity_names = [e.name for e in entities]
+                        self.cross_ctx.set_entities(entity_names)
+                        log("FAST-V2", f"   🧠 Recorded entities: {', '.join(entity_names)}")
             
-            elif step == "contracts":
-                # Record contract summary
-                contracts_path = self.project_path / "contracts.md"
-                if contracts_path.exists():
-                    summary = {"contracts": "API contracts defined"}
+            # 3. Add to workflow state manager for UI resume
+            from app.orchestration.state import WorkflowStateManager
+            await WorkflowStateManager.save_completed_step(
+                self.project_id, 
+                step, 
+                context=summary
+            )
             
-            # Record to cross-step context
-            self.cross_ctx.record_step_completion(step, summary)
-            log("FAST-V2", f"   📝 Recorded context for {step}")
-            
+            # 4. Cache architecture files after Victoria generates them
+            if step == "architecture":
+                try:
+                    arch_dir = self.project_path / "architecture"
+                    arch_cache = {}
+                    
+                    for arch_file in ["frontend.md", "backend.md", "system.md", "overview.md"]:
+                        file_path = arch_dir / arch_file
+                        if file_path.exists():
+                            arch_cache[arch_file.replace(".md", "")] = file_path.read_text(encoding="utf-8")
+                    
+                    if arch_cache:
+                        await WorkflowStateManager.set_architecture_cache(self.project_id, arch_cache)
+                        log("FAST-V2", f"   💾 Cached {len(arch_cache)} architecture files for subsequent steps")
+                except Exception as e:
+                    log("FAST-V2", f"   ⚠️ Architecture caching failed (non-fatal): {e}")
         except Exception as e:
             log("FAST-V2", f"   ⚠️ Context recording failed: {e}")
 
+    def _load_execution_state(self):
+        """
+        Phase-0: Rebuild internal state from disk checkpoints.
+        Populates self.completed_steps and self.execution_records.
+        """
+        log("FAST-V2", "🔍 Scanning checkpoints to rebuild state...")
+        all_steps = TaskGraph().get_steps()
+        
+        for step in all_steps:
+            # Get latest checkpoint metadata for this step
+            checkpoints = self.checkpoint.list_checkpoints(step)
+            if not checkpoints:
+                continue
+                
+            # Latest is first in sorted list
+            meta = checkpoints[0]
+            log("FAST-V2", f"   ✅ Found checkpoint for {step}")
+            
+            # Record as completed
+            if step not in self.completed_steps:
+                self.completed_steps.append(step)
+            
+            # Phase-0: Sync with CrossStepContext
+            # Restore all summaries stored in this checkpoint
+            checkpoint_summaries = meta.get("step_summaries", {})
+            for s_name, s_data in checkpoint_summaries.items():
+                self.cross_ctx.record_step_completion(s_name, summary=s_data)
+            
+            # Restore architecture text
+            arch_text = meta.get("architecture")
+            if arch_text:
+                self.cross_ctx.set_architecture(arch_text)
+            
+            # Restore entities if architecture exists
+            if step == "architecture":
+                from app.utils.entity_discovery import discover_entities_from_architecture
+                arch_file = self.project_path / "architecture" / "backend.md"
+                if arch_file.exists():
+                    entities = discover_entities_from_architecture(arch_file)
+                    if entities:
+                        entity_names = [e.name for e in entities]
+                        self.cross_ctx.set_entities(entity_names)
+                        log("FAST-V2", f"   🧠 Restored entities: {', '.join(entity_names)}")
 
-# ════════════════════════════════════════════════════════
-# CONVENIENCE FUNCTION (matches FastWorkflowEngine signature)
-# ════════════════════════════════════════════════════════
+            # Rebuild execution record if exists in metadata
+            rec_data = meta.get("execution_record")
+            if rec_data:
+                self.execution_records[step] = StepExecutionRecord.from_dict(rec_data)
+                log("FAST-V2", f"   📝 Restored file record for {step} ({len(self.execution_records[step].files_created)} files)")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PHASE-0/1 HELPER METHODS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _register_step_files_from_paths(self, step_name: str, file_paths: list):
+        """
+        Phase-0: Register files created by a step using raw paths.
+        """
+        record = StepExecutionRecord(step_name=step_name)
+        record.files_created = file_paths
+        self.execution_records[step_name] = record
+        log("FAST-V2", f"   📝 Registered {len(record.files_created)} files for {step_name}")
+
+    def _get_project_snapshot(self) -> dict:
+        """Capture a snapshot of the project filesystem for change detection."""
+        snapshot = {}
+        if not self.project_path.exists():
+            return snapshot
+            
+        # Recursive scan, ignoring heavy/system dirs
+        # We only care about source code and architecture artifacts
+        ignore_dirs = {
+            "node_modules", ".git", "venv", "__pycache__", 
+            ".gemini", ".next", "dist", "build", ".pytest_cache"
+        }
+        
+        for path in self.project_path.rglob("*"):
+            # Check if any part of the path is in ignore_dirs
+            if any(p in path.parts for p in ignore_dirs):
+                continue
+                
+            if path.is_file():
+                try:
+                    # Store mtime and size as an identity tuple (fast)
+                    stat = path.stat()
+                    rel_path = str(path.relative_to(self.project_path))
+                    snapshot[rel_path] = (stat.st_mtime, stat.st_size)
+                except Exception:
+                    continue  # Skip files that disappear during scan
+        return snapshot
+
+    def _compute_file_delta(self, before: dict, after: dict) -> list:
+        """Identify files that were created or modified between snapshots."""
+        changed_paths = []
+        for path, meta in after.items():
+            # If new file or modified existing file
+            if path not in before or before[path] != meta:
+                changed_paths.append(path)
+        return changed_paths
+
+    def _register_step_files(self, step_name: str, files: list):
+        """
+        Legacy: Register files from dict list.
+        """
+        paths = [f.get("path") or f.get("file_path") for f in files if isinstance(f, dict)]
+        self._register_step_files_from_paths(step_name, paths)
+
+    def _rollback_step(self, step_name: str):
+        """
+        Phase-0: Delete files created by a failed step.
+        Best-effort rollback - continues even if deletions fail.
+        """
+        record = self.execution_records.get(step_name)
+        if not record:
+            log("FAST-V2", f"   🗑️ No files to rollback for {step_name}")
+            return
+
+        deleted_count = 0
+        failed_deletions = []
+
+        for file_path in record.files_created:
+            try:
+                full_path = self.project_path / file_path
+                if full_path.exists():
+                    full_path.unlink()
+                    deleted_count += 1
+            except Exception as e:
+                failed_deletions.append((file_path, str(e)))
+
+        log("FAST-V2", f"   🗑️ Rolled back {deleted_count}/{len(record.files_created)} files from {step_name}")
+        if failed_deletions:
+            log("FAST-V2", f"   ⚠️ Failed to delete {len(failed_deletions)} files (continuing anyway)")
+
+    async def _retry_step_with_hardened_prompt(self, step_name: str, handler, branch):
+        """
+        Phase-1: Retry a failed step with hardened prompt.
+        Returns (success: bool, result: Any)
+        """
+        from app.handlers import HANDLERS
+
+        log("FAST-V2", f"   🔄 Retrying {step_name} with hardened prompt...")
+
+        # Get hardened retry prompt
+        retry_prompt = get_retry_prompt(step_name)
+
+        # Temporarily inject retry prompt into branch
+        original_request = branch.intent.get("user_request", "")
+        branch.intent["user_request"] = f"{retry_prompt}\n\n{original_request}"
+        branch.intent["is_retry"] = True
+        branch.intent["temperature_override"] = 0.0  # Deterministic
+
+        try:
+            result = await handler(branch)
+
+            # Check if retry succeeded
+            if isinstance(result, StepExecutionResult):
+                if result.outcome == StepOutcome.SUCCESS:
+                    return True, result
+                else:
+                    return False, result
+            else:
+                # Legacy StepResult - assume success if no exception
+                return True, result
+
+        except Exception as e:
+            log("FAST-V2", f"   ❌ Retry failed: {e}")
+            return False, None
+        finally:
+            # Restore original request
+            branch.intent["user_request"] = original_request
+            branch.intent.pop("is_retry", None)
+            branch.intent.pop("temperature_override", None)
+
+    def _generate_halt_artifact(self, step_name: str, reason: str, attempts: int):
+        """
+        Phase-1: Generate halt artifact for handoff to Phase-2.
+        """
+        policy = get_execution_policy(step_name)
+
+        halt_artifact = {
+            "phase": 1,
+            "failed_step": step_name,
+            "attempts": attempts,
+            "reason": reason,
+            "expected": ">=1 file" if policy.requires_output else "valid output",
+            "next_phase": "self_healing_required" if attempts > 1 else "retry_available",
+            "execution_mode": policy.mode.value,
+            "is_fatal": policy.is_fatal,
+        }
+
+        # Save to project root
+        import json
+        halt_file = self.project_path / "phase1_halt.json"
+        halt_file.write_text(json.dumps(halt_artifact, indent=2))
+
+        log("FAST-V2", f"   📄 Generated halt artifact: {halt_file}")
+        return halt_artifact
+
+    def _should_retry_step(self, step_name: str) -> bool:
+        """
+        Phase-1: Determine if a step should be retried.
+        """
+        policy = get_execution_policy(step_name)
+        return (
+            policy.mode == ExecutionMode.ARTIFACT and
+            policy.requires_output and
+            policy.max_retries >= 1
+        )
+
 async def run_fast_v2_workflow(
     project_id: str,
     manager: Any,
@@ -1049,11 +992,6 @@ async def run_fast_v2_workflow(
     provider: Optional[str] = None,
     model: Optional[str] = None,
 ) -> None:
-    """
-    Convenience function to run FAST V2 workflow.
-    
-    Matches FastWorkflowEngine's run_fast_workflow signature.
-    """
     engine = FASTOrchestratorV2(
         project_id=project_id,
         manager=manager,

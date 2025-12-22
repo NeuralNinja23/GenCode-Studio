@@ -101,14 +101,13 @@ class HealthMonitor:
             print(f"[HEALTH] ⚠️ Error checking {service_name} ({container_id}): {e}")
             return False
     
-    async def _check_http_health(self, ports: str, retries: int = 5, delay: float = 2.0) -> bool:
+    async def _check_http_health(self, ports: str) -> bool:
         """
         Perform actual HTTP health check to the backend /api/health endpoint.
+        SINGLE ATTEMPT ONLY - ArborMind handles retry decisions.
         
         Args:
             ports: Docker ports string like "0.0.0.0:32783->8001/tcp"
-            retries: Number of retry attempts
-            delay: Seconds to wait between retries
         
         Returns:
             True if HTTP health check passes, False otherwise
@@ -125,24 +124,20 @@ class HealthMonitor:
         port = match.group(1)
         health_url = f"http://localhost:{port}/api/health"
         
-        for attempt in range(retries):
-            try:
-                async with httpx.AsyncClient(timeout=3.0) as client:
-                    response = await client.get(health_url)
-                    if response.status_code == 200:
-                        return True
-                    print(f"[HEALTH] Attempt {attempt+1}/{retries}: Got {response.status_code} from {health_url}")
-            except httpx.ConnectError:
-                print(f"[HEALTH] Attempt {attempt+1}/{retries}: Connection refused to {health_url}")
-            except httpx.TimeoutException:
-                print(f"[HEALTH] Attempt {attempt+1}/{retries}: Timeout connecting to {health_url}")
-            except Exception as e:
-                print(f"[HEALTH] Attempt {attempt+1}/{retries}: Error: {e}")
-            
-            if attempt < retries - 1:
-                await asyncio.sleep(delay)
-        
-        return False
+        # SINGLE EXECUTION - No retry loop
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(health_url)
+                return response.status_code == 200
+        except httpx.ConnectError:
+            print(f"[HEALTH] Connection refused to {health_url}")
+            return False
+        except httpx.TimeoutException:
+            print(f"[HEALTH] Timeout connecting to {health_url}")
+            return False
+        except Exception as e:
+            print(f"[HEALTH] Error: {e}")
+            return False
 
     def _inspect_container_state(self, container_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -202,7 +197,7 @@ class HealthMonitor:
                 
                 # INVARIANT C: For backend, add HTTP responsiveness check
                 if service_name == "backend" and ports and state.get("Status") == "running":
-                    http_healthy = await self._check_http_health(ports, retries=2, delay=1.0)
+                    http_healthy = await self._check_http_health(ports)
                     service_details["http_responsive"] = http_healthy
                 
                 details[service_name] = service_details

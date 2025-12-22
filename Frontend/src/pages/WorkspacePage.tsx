@@ -39,17 +39,15 @@ const startedWorkspaces = new Set<string>();
 // Workflow stages with agent names - Matches backend TaskGraph (11 steps)
 // Marcus supervises all agents (3 retries each)
 const WORKFLOW_STAGES = [
-  { step: 1, agent: "Marcus", stage: "Analysis", description: "Understanding requirements" },
-  { step: 2, agent: "Victoria ↔ Marcus", stage: "Architecture", description: "Design + Supervision" },
-  { step: 3, agent: "Derek ↔ Marcus", stage: "Frontend Mock", description: "Frontend with mock data" },
-  { step: 4, agent: "Marcus", stage: "Screenshot Verify", description: "Visual QA of frontend" },
-  { step: 5, agent: "Marcus", stage: "Contracts", description: "Defining API contracts" },
-  { step: 6, agent: "Derek ↔ Marcus", stage: "Backend Implementation", description: "Models + Routers + Wiring" },
-  { step: 7, agent: "System", stage: "System Integration", description: "Wiring everything together" },
-  { step: 8, agent: "Derek", stage: "Testing Backend", description: "Running pytest tests" },
-  { step: 9, agent: "Derek ↔ Marcus", stage: "Frontend Integration", description: "Replace mock with API" },
-  { step: 10, agent: "Luna ↔ Marcus", stage: "Testing Frontend", description: "Playwright E2E tests" },
-  { step: 11, agent: "Marcus", stage: "Preview", description: "Final preview ready!" },
+  { step: 1, agent: "Victoria ↔ Marcus", stage: "Architecture", description: "System Design + Architecture" },
+  { step: 2, agent: "Derek ↔ Marcus", stage: "Frontend Mock", description: "UI with Mock Data" },
+  { step: 3, agent: "Derek ↔ Marcus", stage: "Backend Models", description: "Database Schemas" },
+  { step: 4, agent: "Derek ↔ Marcus", stage: "Backend Routers", description: "FastAPI Routers" },
+  { step: 5, agent: "System", stage: "System Integration", description: "Wiring Modules Together" },
+  { step: 6, agent: "Derek", stage: "Testing Backend", description: "Pytest Integrity Check" },
+  { step: 7, agent: "Derek ↔ Marcus", stage: "Frontend Integration", description: "API Data Binding" },
+  { step: 8, agent: "Luna ↔ Marcus", stage: "Testing Frontend", description: "Playwright E2E Tests" },
+  { step: 9, agent: "Marcus", stage: "Preview", description: "Application Ready!" },
 ];
 
 const WorkspacePage: React.FC = () => {
@@ -229,7 +227,7 @@ const WorkspacePage: React.FC = () => {
             setIsWorkflowRunning(true);
             setWorkflowStage(data.currentTurn ?? data.turn ?? 0);
             setCurrentStepName(data.step || "");
-            setWorkflowTotalStages(data.maxTurns ?? data.totalTurns ?? 12);
+            setWorkflowTotalStages(data.maxTurns ?? data.totalTurns ?? 9);
             setGenerationStatus(data.status || "Processing");
 
             // Refetch file tree when backend sends updates implying files changed

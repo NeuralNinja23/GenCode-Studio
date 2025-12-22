@@ -38,6 +38,7 @@ FULL_REVIEW_PATTERNS = [
     r"frontend/src/pages/.*\.jsx?$",     # Page components
     r"frontend/src/App\.jsx?$",          # Main app component
     r"frontend/src/api/.*\.js$",         # API client code
+    r"architecture/.*\.md$",            # Architecture artifacts (Plan)
 ]
 
 # Files that only need pre-flight (syntax check)
@@ -59,7 +60,7 @@ PREFLIGHT_ONLY_PATTERNS = [
 NO_REVIEW_PATTERNS = [
     r".*\.css$",                         # Stylesheets
     r".*\.html$",                        # HTML templates
-    r".*\.md$",                          # Markdown docs
+    r"(?!architecture/).*\.md$",          # Markdown docs (exclude architecture)
     r".*\.svg$",                         # Vector graphics
     r".*\.png$",                         # Images
     r".*\.ico$",                         # Icons

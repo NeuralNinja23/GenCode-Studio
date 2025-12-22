@@ -11,7 +11,19 @@ from .health_monitor import HealthMonitor
 from .log_streamer import LogStreamer
 from .preview_manager import PreviewManager
 
-sandbox = SandboxManager()   # <--- The entire missing piece
+# Lazy initialization - only create when first accessed
+_sandbox_instance = None
+
+def get_sandbox() -> SandboxManager:
+    """Get the sandbox singleton (lazy initialization)."""
+    global _sandbox_instance
+    if _sandbox_instance is None:
+        _sandbox_instance = SandboxManager()
+    return _sandbox_instance
+
+# For backward compatibility, create a property-like access
+# NOTE: Direct access to `sandbox` still works but is now a function call
+sandbox = None  # Will be None until get_sandbox() is called
 
 
 __all__ = [
@@ -20,5 +32,7 @@ __all__ = [
     "HealthMonitor",
     "LogStreamer",
     "PreviewManager",
-    "sandbox"     
+    "sandbox",
+    "get_sandbox",
 ]
+

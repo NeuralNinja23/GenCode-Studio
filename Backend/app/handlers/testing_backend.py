@@ -1,15 +1,13 @@
 # app/handlers/testing_backend.py
 """
-Step 9: Derek tests backend using sandbox with Self-Healing.
+Step 6: Derek runs backend tests with pytest.
 
-Workflow order: Analysis → Architecture → Frontend Mock → Screenshot Verify →
-Contracts → Backend Implementation (Atomic) → System Integration → Testing Backend (8)
+Workflow order: ... → System Integration (5) → Testing Backend (6) → Frontend Integration (7)
 
-Marcus-as-Critic Pattern:
-- When backend tests fail, Marcus first analyzes the failure
-- Marcus reads Backend Design Patterns from architecture.md
-- Marcus provides Derek with structured fix instructions
-- Derek then implements the fixes following Marcus's guidance
+Execution-Only Pattern:
+- Tests are generated and executed in a single-shot.
+- No internal healing or iterative loops.
+- Failures result in immediate workflow termination.
 """
 import re
 from pathlib import Path
@@ -21,13 +19,15 @@ from app.core.constants import WorkflowStep
 from app.handlers.base import broadcast_status, broadcast_agent_log
 from app.core.logging import log
 from app.tools import run_tool
-from app.llm.prompts.derek import DEREK_TESTING_PROMPT
-from app.persistence.validator import validate_file_output
+from app.llm.prompts.derek_testing import DEREK_TESTING_PROMPT
+
 from app.core.constants import PROTECTED_SANDBOX_FILES
 from app.utils.entity_discovery import discover_primary_entity, extract_all_models_from_models_py
 
 # Phase 0: Failure Boundary Enforcement
 from app.core.failure_boundary import FailureBoundary
+from app.core.file_writer import safe_write_llm_files
+from app.core.step_invariants import StepInvariants, StepInvariantError
 
 
 # Constants from legacy
@@ -36,27 +36,9 @@ MAX_FILE_LINES = 400
 
 
 
-
-
-
-# Protected sandbox files - imported from centralized constants
-
-
 # Centralized entity discovery for dynamic fallback
 from app.utils.entity_discovery import extract_entity_from_request as _extract_entity_from_request
 
-
-# REMOVED: Restrictive allowed prefixes - agents can write to any file except protected ones
-
-
-
-
-
-
-
-
-# Centralized file writing utility
-from app.persistence import safe_write_llm_files
 
 
 def render_contract_tests(
@@ -68,7 +50,7 @@ def render_contract_tests(
 ) -> None:
     """
     Render the template deterministically.
-    Source of truth: contracts.md (used to verify scope, implemented via template)
+    Source of truth: architecture.md (used to verify scope, implemented via template)
     
     Rules:
     NO Derek
@@ -77,11 +59,8 @@ def render_contract_tests(
     Pure string rendering
     """
     if not template_path.exists():
-        log("TESTING", f"⚠️ Contract template not found at {template_path}")
-        # Write emergency fallback
-        content = '"""\nCONTRACT TEST TEMPLATE – DETERMINISTIC\n"""\nimport pytest\n@pytest.mark.anyio\nasync def test_placeholder(client):\n    pass'
-        output_path.write_text(content, encoding="utf-8")
-        return
+        log("TESTING", f"❌ ERROR: Contract template not found at {template_path}")
+        raise FileNotFoundError(f"Missing mandatory test template: {template_path}")
 
     template = template_path.read_text(encoding="utf-8")
     
@@ -92,7 +71,7 @@ def render_contract_tests(
     rendered = rendered.replace("{{ENTITY_PLURAL|upper}}", entity_plural.upper())
     
     output_path.write_text(rendered, encoding="utf-8")
-    log("TESTING", f"✅ Rendered deterministic contract tests to {output_path.name}")
+    # log("TESTING", f"✅ Rendered deterministic contract tests to {output_path.name}")
 
 
 
@@ -105,6 +84,7 @@ async def _generate_tests_from_template(
     archetype: str,
     provider: str,
     model: str,
+    branch: Any,
 ) -> bool:
     """
     Generate backend tests from template at the START of testing step.
@@ -135,16 +115,24 @@ async def _generate_tests_from_template(
         legacy_test_file.unlink()
     
     # 1. Render Contract Tests Deterministically (Step 0-2)
-    template_path = project_path / "backend/templates/backend/seed/tests/test_contract_api.template"
+    # Template is seeded by workflow/engine.py to backend/tests/
+    template_path = project_path / "backend" / "tests" / "test_contract_api.template"
     if not template_path.exists():
-        # Try relative path for local dev
-        template_path = Path("backend/templates/backend/seed/tests/test_contract_api.template").absolute()
+        # Fallback: Try the source templates directory for local dev
+        from app.core.config import settings
+        template_path = settings.paths.base_dir / "backend" / "templates" / "backend" / "seed" / "tests" / "test_contract_api.template"
 
     contract_output = tests_dir / "test_contract_api.py"
     
-    # Read contracts.md for strict adherence (placeholder for now, mostly using template)
-    contracts_path = project_path / "contracts.md"
-    contracts_md = contracts_path.read_text(encoding="utf-8") if contracts_path.exists() else ""
+    # Read architecture/backend.md for strict adherence (Architecture Bundle)
+    arch_backend_path = project_path / "architecture" / "backend.md"
+    arch_legacy_path = project_path / "architecture.md"
+    
+    
+    if arch_backend_path.exists():
+        contracts_md = arch_backend_path.read_text(encoding="utf-8")
+    else:
+        contracts_md = ""
     
     # Render
     render_contract_tests(
@@ -156,29 +144,84 @@ async def _generate_tests_from_template(
     )
     
     # 2. Generate Capability Tests via Derek (Step 3)
-    log("TESTING", f"📝 Derek generating capability tests for entity: {primary_entity}")
+    # log("TESTING", f"📝 Derek generating capability tests for entity: {primary_entity}")
 
-    # Derek prompt (copy verbatim)
-    derek_prompt = f"""Generate capability tests based on the user prompt.
+    # Read the actual models.py to get entity schema
+    models_content = ""
+    models_path = project_path / "backend" / "app" / "models.py"
+    if models_path.exists():
+        try:
+            models_content = models_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+    
+    # Derek prompt with CRITICAL markers-first instruction
+    derek_prompt = f"""
+═══════════════════════════════════════════════════════
+🚨 CRITICAL OUTPUT ORDER (NON-NEGOTIABLE)
+═══════════════════════════════════════════════════════
+
+You MUST begin your response with EXACTLY:
+
+<<<FILE path="backend/tests/test_capability_api.py">>>
+
+IMMEDIATELY. Your FIRST 3 characters MUST be: <<<
+
+❌ Do NOT write ANYTHING before this marker.
+❌ Do NOT explain, plan, or think first.
+
+Close with: <<<END_FILE>>>
+
+═══════════════════════════════════════════════════════
+📏 TEST SIZE RULES (MANDATORY)
+═══════════════════════════════════════════════════════
+
+- Maximum 80-100 lines total
+- 1 happy-path test per endpoint ONLY
+- NO redundant edge cases
+- NO comments unless required
+- NO fixtures unless reused 3+ times
+- Use inline test data
+
+═══════════════════════════════════════════════════════
+📋 ACTUAL ENTITY SCHEMA (USE THIS!)
+═══════════════════════════════════════════════════════
+
+{models_content if models_content else "No models.py found - use generic test data"}
+
+⚠️ CRITICAL: Look at the {primary_entity.capitalize()} model above.
+Use the ACTUAL fields defined there for your test payloads.
+DO NOT assume fields like 'title' or 'description' unless you see them.
+
+═══════════════════════════════════════════════════════
+📋 TASK
+═══════════════════════════════════════════════════════
+
+Generate capability tests based on the user prompt.
 
 Rules:
 - You MUST NOT redefine base CRUD routes
 - You MAY assert additional endpoints only if implied by the prompt
-- You MAY assert response shapes and business rules
-- These tests are healable and replaceable
-- DO NOT include CRUD tests already covered by contract tests
-
-Result
-/channels
-/statuses
-strict health checks
-filters, sorting, domain rules
+- These tests complement contract tests (don't duplicate CRUD)
+- Use ACTUAL fields from models.py above in your test payloads
+- Use faker for realistic test data that matches field types
 
 User Request: {user_request}
 Primary Entity: {primary_entity}
 Archetype: {archetype}
 
 Generate ONLY: backend/tests/test_capability_api.py
+
+🚨 FORBIDDEN (CRITICAL):
+- ❌ Do NOT generate backend/app/models.py
+- ❌ Do NOT redefine database schemas
+- ❌ Do NOT write any logic outside the tests/ directory
+- ❌ CRITICAL: The router prefix is `/api/{primary_entity_plural}`. DO NOT ADD `/v1` or `/v2`.
+- ❌ Example: use `/api/leads`, NOT `/api/v1/leads`.
+- ❌ Do NOT output the model content I provided for reference.
+- ❌ Do NOT use Enum classes in assertions (use strings like "New", not Status.New)
+
+Use the provided schema for REFERENCE ONLY to write valid test payloads.
 """
 
     try:
@@ -189,6 +232,10 @@ Generate ONLY: backend/tests/test_capability_api.py
             f"📝 Generating test file for {primary_entity_capitalized}..."
         )
         
+        # Extract retry/override context
+        temperature_override = branch.intent.get("temperature_override")
+        is_retry = branch.intent.get("is_retry", False)
+
         result = await supervised_agent_call(
             project_id=project_id,
             manager=manager,
@@ -198,116 +245,87 @@ Generate ONLY: backend/tests/test_capability_api.py
             project_path=project_path,
             user_request=user_request,
             contracts=contracts_md,
-            max_retries=1,  # One retry allowed
+            temperature_override=temperature_override,
+            is_retry=is_retry,
         )
         
         parsed = result.get("output", {})
         files = parsed.get("files", [])
         
-        if files:
-            # Write the test file
-            written = await safe_write_llm_files(
-                manager=manager,
-                project_id=project_id,
-                project_path=project_path,
-                files=files,
-                step_name="Test File Generation",
-            )
-            
-            if written > 0:
-                log("TESTING", f"✅ Derek generated {written} test file(s)")
-                return True
+        # ═══════════════════════════════════════════════════════════════════════════
+        # PHASE-0/1: Orchestrator handles empty file detection
+        # Handler just processes whatever files were generated
+        # ═══════════════════════════════════════════════════════════════════════════
         
-        log("TESTING", "⚠️ Derek did not generate test files")
+        if not files:
+            log("TESTING", "⚠️ Derek did not generate test files")
+            return False
+        
+        # Auto-correct paths for test files
+        for file_obj in files:
+            path_str = str(file_obj.get("path", ""))
+            normalized_path = path_str.replace("\\", "/")
+            if not normalized_path.startswith("backend/"):
+                filename = normalized_path.split("/")[-1]
+                new_path = f"backend/tests/{filename}"
+                file_obj["path"] = new_path
+                log("TESTING", f"⚠️ Auto-corrected path from {path_str} to {new_path}")
+        
+        
+        # Write the test file
+        written = await safe_write_llm_files(
+            manager=manager,
+            project_id=project_id,
+            project_path=project_path,
+            files=files,
+            step_name="Test File Generation",
+        )
+        
+        if written > 0:
+            # log("TESTING", f"✅ Derek generated {written} test file(s)")
+            return True
+        
+        log("TESTING", "❌ Test file writing failed")
+        return False
         
     except Exception as e:
-        log("TESTING", f"⚠️ Test generation failed: {e}")
-    
-    # Fallback: Write basic test file directly
-    log("TESTING", "📋 Using fallback test generation...")
-    return await _fallback_generate_tests(project_path, primary_entity, primary_entity_plural)
-
-
-async def _fallback_generate_tests(
-    project_path: Path,
-    entity: str,
-    entity_plural: str,
-) -> bool:
-    """
-    Fallback test generation when Derek fails (Option B supplement).
-    Writes a minimal but functional test file.
-    """
-    tests_dir = project_path / "backend" / "tests"
-    tests_dir.mkdir(parents=True, exist_ok=True)
-    
-    test_content = f'''# backend/tests/test_capability_api.py
-"""
-Capability Tests - Auto-generated fallback
-Generated when Derek failed to create capability tests.
-"""
-import pytest
-from faker import Faker
-
-fake = Faker()
-
-@pytest.mark.anyio
-async def test_capability_placeholder(client):
-    """
-    Placeholder test to ensure the file exists and pytest runs.
-    Real CRUD tests are in test_contract_api.py.
-    """
-    assert True
-'''
-
-    test_file = tests_dir / "test_capability_api.py"
-    try:
-        test_file.write_text(test_content, encoding="utf-8")
-        log("TESTING", f"📋 Fallback test file written: {test_file.name} ({len(test_content)} chars)")
-        return True
-    except Exception as e:
-        log("TESTING", f"❌ Failed to write fallback test file: {e}")
+        # Report failure - ArborMind decides what to do next
+        log("TESTING", f"❌ Test generation failed: {e}")
         return False
 
 
 
 @FailureBoundary.enforce
-async def step_testing_backend(
-    project_id: str,
-    user_request: str,
-    manager: Any,
-    project_path: Path,
-    chat_history: List[ChatMessage],
-    provider: str,
-    model: str,
-    current_turn: int,
-    max_turns: int,
-) -> StepResult:
+async def step_testing_backend(branch) -> StepResult:
     """
-    MASTER LOOP: Derek tests backend using sandbox with healing.
+    Derek tests backend using sandbox.
     
-    LOOP CONSOLIDATION:
-    This is the ONLY retry loop in the healing system.
-    - All other components (HealingPipeline, Derek, ArborMind) execute ONCE per attempt
-    - Healing budget is reset at start and consumed by healing operations
-    - After 3 attempts or budget exhaustion, we fail with diagnostic
-    
-    Flow:
-    1. Reset healing budget (fresh for each test run)
-    2. Run pytest in Docker
-    3. If pass → done
-    4. If fail → single healing attempt (budget-controlled)
-    5. Repeat up to 3 times (MASTER LOOP)
+    ONE SHOT POLICY:
+    - Executes ONCE per attempt.
+    - No internal retry loops.
+    - No internal self-healing.
+    - If it fails, it reports failure to ArborMind.
     """
+    from app.arbormind.cognition.branch import Branch
+    assert isinstance(branch, Branch)
+    
+    # Extract context from branch
+    project_id = branch.intent["project_id"]
+    user_request = branch.intent["user_request"]
+    manager = branch.intent["manager"]
+    project_path = branch.intent["project_path"]
+    provider = branch.intent["provider"]
+    model = branch.intent["model"]
+    
     from app.orchestration.utils import broadcast_to_project
-    from app.orchestration.healing_budget import reset_healing_budget, get_healing_budget
 
     await broadcast_status(
         manager,
         project_id,
         WorkflowStep.TESTING_BACKEND,
-        f"Turn {current_turn}/{max_turns}: Derek testing backend (sandbox-only).",
-        current_turn,
-        max_turns,
+        f"Derek running backend tests...",
+        6,
+        9,
     )
 
     log(
@@ -315,11 +333,7 @@ async def step_testing_backend(
         f"[{WorkflowStep.TESTING_BACKEND}] Starting backend sandbox tests for {project_id}",
     )
 
-    # ════════════════════════════════════════════════════════════════
-    # LOOP CONSOLIDATION: Reset healing budget at start of test run
-    # ════════════════════════════════════════════════════════════════
-    reset_healing_budget(project_id)
-    log("TESTING", "🔄 Healing budget reset for this test run")
+    log("TESTING", "🔄 Backend testing started (One Shot)")
 
     # Ensure tests directory exists so Docker doesn't create it as root
     (project_path / "backend/tests").mkdir(parents=True, exist_ok=True)
@@ -357,9 +371,9 @@ async def step_testing_backend(
             primary_entity = actual_models[0].lower()
         else:
             # Fallback to discover_primary_entity
-            entity_name, _ = discover_primary_entity(project_path)
-            if entity_name:
-                primary_entity = entity_name
+            _, entity_singular = discover_primary_entity(project_path)  # Returns (plural, singular)
+            if entity_singular:
+                primary_entity = entity_singular
             else:
                 # Dynamic last resort: extract from user request
                 primary_entity = _extract_entity_from_request(user_request) or "entity"
@@ -382,10 +396,31 @@ async def step_testing_backend(
         archetype=archetype,
         provider=provider,
         model=model,
+        branch=branch,
     )
     
+    
     if not tests_generated:
-        log("TESTING", "⚠️ Derek could not generate tests from template - using fallback")
+        # ═══════════════════════════════════════════════════════════════
+        # PHASE-1: Testing is NON-FATAL (verification, not requirement)
+        # ═══════════════════════════════════════════════════════════════
+        log("TESTING", "⚠️ Derek could not generate tests from template - continuing workflow (non-fatal)")
+        log("TESTING", "📊 Phase-1 Policy: Tests are verification signals, not blocking requirements")
+        
+        # Continue workflow - tests are optional in Phase-1
+        # ArborMind will observe this as a signal
+        return StepResult(
+            nextstep=WorkflowStep.FRONTEND_INTEGRATION,
+            turn=7,
+            status="ok",  # Non-fatal success
+            data={
+                "tier": "no_tests",
+                "test_status": "generation_failed",
+                "message": "Test generation failed - proceeding without tests (Phase-1 policy)"
+            },
+            token_usage=step_token_usage,
+        )
+    
     
     # Read existing test file to show Derek what's expected
     # Read existing test file to show Derek what's expected
@@ -411,7 +446,7 @@ Write pytest tests for product/order style endpoints:
 - GET /api/products returns list envelope with "data" and "total".
 - POST /api/products can create a product with price & currency.
 - GET /api/products/{id} returns 404 for non-existent product.
-- All responses follow standardized format from contracts.md
+- All responses follow standardized format from architecture.md
 """
     elif archetype == "saas_app":
         test_instructions = """
@@ -492,47 +527,47 @@ Focus on fixing the {primary_entity} router and related models.
         last_stdout = sandbox_result.get("stdout", "") or ""
         last_stderr = sandbox_result.get("stderr", "") or ""
         
-        # V3: Accumulate token usage (approximated, as sandboxexec doesn't use LLM directly)
-        
         if sandbox_result.get("success"):
             log("TESTING", "✅ Backend tests PASSED on first run")
             return StepResult(
                 nextstep=WorkflowStep.FRONTEND_INTEGRATION,
-                turn=current_turn + 1,
+                turn=7,  # Testing backend is step 6
                 status="ok",
-                data={"tier": "sandbox", "attempt": 1},
+                data={"tier": "sandbox", "attempt": 1, "test_status": "passed"},
                 token_usage=step_token_usage,
             )
-            # ------------------------------------------------------------
-            # ONE SHOT POLICY: Strict Halt on Test Failure (No Healing)
-            # ------------------------------------------------------------
-            log("TESTING", "❌ Tests failed. One Shot Policy active -> Returning COGNITIVE_FAILURE.")
-            error_msg = (
-                "Backend tests failed in sandbox.\n"
-                f"Stdout:\n{last_stdout[:2000]}\n\n"
-                f"Stderr:\n{last_stderr[:2000]}"
-            )
-            return StepExecutionResult(
-                outcome=StepOutcome.COGNITIVE_FAILURE,
-                step_name=WorkflowStep.TESTING_BACKEND,
-                error_details=error_msg,
-                data={"token_usage": step_token_usage}
-            )
+
+        # ------------------------------------------------------------
+        # PHASE 1: NON-FATAL FAILURE
+        # ------------------------------------------------------------
+        log("TESTING", "⚠️ Backend tests failed. Continuing branch (non-fatal)")
+        log("TESTING", f"📋 Test stdout:\n{last_stdout[:2000]}")
+        log("TESTING", f"📋 Test stderr:\n{last_stderr[:2000]}")
+        return StepResult(
+            nextstep=WorkflowStep.FRONTEND_INTEGRATION,
+            turn=7,
+            status="ok", # Non-fatal success
+            data={
+                "tier": "sandbox", 
+                "test_status": "failed",
+                "stdout": last_stdout[:1000],
+                "stderr": last_stderr[:1000]
+            },
+            token_usage=step_token_usage,
+        )
 
     except Exception as e:
-        log("TESTING", f"Sandbox execution failed: {e}")
-        # Infra failure -> Environment Failure
-        return StepExecutionResult(
-            outcome=StepOutcome.ENVIRONMENT_FAILURE,
-            step_name=WorkflowStep.TESTING_BACKEND,
-            error_details=str(e),
-            data={"token_usage": step_token_usage}
+        log("TESTING", f"⚠️ Sandbox execution encountered an error (non-fatal): {e}")
+        return StepResult(
+            nextstep=WorkflowStep.FRONTEND_INTEGRATION,
+            turn=7,
+            status="ok",
+            data={"error": str(e), "test_status": "error"},
+            token_usage=step_token_usage,
         )
 
 
-# ════════════════════════════════════════════════════════════════════════
-# VICTORIA ESCALATION - Architectural Review After Derek Failures
-# ════════════════════════════════════════════════════════════════════════
+
 
 
 

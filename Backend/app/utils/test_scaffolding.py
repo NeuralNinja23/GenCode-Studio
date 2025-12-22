@@ -95,8 +95,8 @@ def create_matching_smoke_test(project_path: Path) -> str:
     testids = extract_testids_from_project(project_path)
     
     if not testids:
-        # Fallback to generic smoke test
-        return create_robust_smoke_test()
+        log("TESTS", "❌ No testids found in project - cannot create robust smoke test.")
+        raise RuntimeError("No testids found. Frontend Implementation step likely failed or lacks data-testid.")
     
     # Categorize testids by their likely state
     loading_ids = [t for t in testids if 'loading' in t.lower()]
@@ -131,11 +131,8 @@ def create_matching_smoke_test(project_path: Path) -> str:
     
     # Default fallbacks if categories are empty
     if not state_selectors:
-        state_selectors = [
-            "page.locator('[data-testid]').first()",
-            "page.locator('button').first()",
-            "page.locator('h1, h2, h3').first()"
-        ]
+        log("TESTS", "⚠️ No state selectors found. Hard failure.")
+        raise RuntimeError("Could not find any loading/error/content testids to verify UI state.")
     
     # Build the OR chain for state detection
     or_chain = state_selectors[0]

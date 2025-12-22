@@ -12,7 +12,8 @@ from functools import wraps
 import logging
 
 from app.core.step_outcome import StepOutcome, StepExecutionResult
-from app.orchestration.failure_classifier import FailureClassifier
+# Phase 7: Legacy FailureClassifier removed
+# from app.orchestration.failure_classifier import FailureClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +54,12 @@ class FailureBoundary:
                         extra={"handler": fn.__name__}
                     )
                     
-                    # Force classification
-                    outcome = FailureClassifier.classify(
-                        error=result.error or "Unknown failure",
-                        context=result.data or {}
-                    )
+                    # Force classification (Simplified for Phase 7)
+                    # outcome = FailureClassifier.classify(
+                    #     error=result.error or "Unknown failure",
+                    #     context=result.data or {}
+                    # )
+                    outcome = StepOutcome.COGNITIVE_FAILURE
                     
                     # Convert to new format
                     return StepExecutionResult(
@@ -75,11 +77,8 @@ class FailureBoundary:
                 return result
                 
             except Exception as e:
-                logger.error(
-                    f"Exception in handler {fn.__name__}: {e}",
-                    exc_info=True,
-                    extra={"handler": fn.__name__}
-                )
+                from app.core.logging import log
+                log("BOUNDARY", f"❌ Exception in handler {fn.__name__}: {e}")
                 
                 # Classify exception
                 context = {
@@ -92,19 +91,50 @@ class FailureBoundary:
                 if 'context' in kwargs:
                     context.update(kwargs['context'])
                 
-                outcome = FailureClassifier.classify(
-                    error=e,
-                    context=context
-                )
+                # Simple Inline Classification (replacing FailureClassifier)
+                # PHASE 2: StepInvariantError and LLMOutputIntegrityError are COGNITIVE (healable)
+                err_str = str(e).lower()
                 
-                logger.info(
-                    f"Classified error as {outcome.value}",
-                    extra={
-                        "handler": fn.__name__,
-                        "outcome": outcome.value,
-                        "error": str(e)[:200]
-                    }
-                )
+                # Import error types for classification
+                from app.core.step_invariants import StepInvariantError
+                from app.core.llm_output_integrity import LLMOutputIntegrityError
+                
+                if isinstance(e, StepInvariantError):
+                     # Invariant violations are COGNITIVE - healable, not fatal
+                     outcome = StepOutcome.COGNITIVE_FAILURE
+                elif isinstance(e, LLMOutputIntegrityError):
+                     # Truncation/incomplete output is COGNITIVE - retry with more tokens
+                     outcome = StepOutcome.COGNITIVE_FAILURE
+                elif isinstance(e, (IOError, OSError)):
+                     outcome = StepOutcome.ENVIRONMENT_FAILURE
+                elif isinstance(e, TypeError):
+                     # TypeErrors from function signatures are SYSTEM failures
+                     # TypeErrors from LLM output parsing are COGNITIVE
+                     err_msg = str(e)
+                     if "argument" in err_msg or "positional" in err_msg or "keyword" in err_msg:
+                         # Function call error - this is a CODE BUG, not LLM
+                         outcome = StepOutcome.HARD_FAILURE
+                     else:
+                         # Type error during processing - likely LLM output issue
+                         outcome = StepOutcome.COGNITIVE_FAILURE
+                elif isinstance(e, AttributeError):
+                     # AttributeErrors are usually code bugs, not LLM issues
+                     outcome = StepOutcome.HARD_FAILURE
+                elif isinstance(e, ImportError):
+                     # Import failures are system/code issues
+                     outcome = StepOutcome.HARD_FAILURE
+                elif isinstance(e, (SyntaxError, ValueError)):
+                     # Syntax/Value errors could be from LLM output
+                     outcome = StepOutcome.COGNITIVE_FAILURE
+                else:
+                     outcome = StepOutcome.HARD_FAILURE
+                     
+                # outcome = FailureClassifier.classify(
+                #     error=e,
+                #     context=context
+                # )
+                
+                log("BOUNDARY", f"📊 Classified error as {outcome.value}")
                 
                 return StepExecutionResult(
                     outcome=outcome,
@@ -143,8 +173,9 @@ class LegacyStepResultConverter:
         if status == 'ok':
             outcome = StepOutcome.SUCCESS
         elif status == 'failed' and error:
-            # Classify the error
-            outcome = FailureClassifier.classify(error, data)
+            # Classify the error (Simplified)
+            # outcome = FailureClassifier.classify(error, data)
+            outcome = StepOutcome.COGNITIVE_FAILURE
         else:
             # Unknown status, classify as cognitive
             outcome = StepOutcome.COGNITIVE_FAILURE

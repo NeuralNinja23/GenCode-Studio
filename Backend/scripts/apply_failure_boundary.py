@@ -19,7 +19,7 @@ HANDLERS_TO_UPDATE = [
    ('contracts.py', 'step_contracts'),
     ('architecture.py', 'step_architecture'),
     ('analysis.py', 'step_analysis'),
-    ('frontend_integration.py', 'step_frontend_integration'),
+
     ('frontend_mock.py', 'step_frontend_mock'),
 ]
 

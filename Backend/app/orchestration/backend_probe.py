@@ -91,10 +91,10 @@ class HTTPBackendProbe(BackendProbe):
         
         # Try to get backend URL from sandbox manager
         try:
-            from app.tools.implementations import SANDBOX
+            from app.tools.implementations import get_sandbox
             
             if self.project_id:
-                backend_url = await SANDBOX.get_backend_url(self.project_id)
+                backend_url = await get_sandbox().get_backend_url(self.project_id)
                 if backend_url:
                     log("PROBE", f"📍 Detected backend URL: {backend_url}")
                     self._base_url = backend_url
@@ -182,98 +182,6 @@ class HTTPBackendProbe(BackendProbe):
     async def is_healthy(self, timeout: float = 5.0) -> bool:
         """Check health endpoint."""
         return await self.check_route("GET", "/api/health", 200, timeout)
-    
-    async def validate_all_contract_routes(self, contracts_path: Path) -> dict:
-        """
-        PHASE 4: Validate ALL routes from contracts.md.
-        
-        This replaces the old approach of only checking /api/health.
-        Now we validate every route to ensure they're actually working.
-        
-        Args:
-            contracts_path: Path to contracts.md file
-        
-        Returns:
-            {
-                "passed": ["GET /api/tasks", ...],
-                "failed": ["POST /api/tasks -> 404", ...],
-                "total": 10,
-                "success_rate": 0.9
-            }
-        """
-        from app.orchestration.contract_parser import ContractParser
-        import httpx
-        
-        parser = ContractParser(contracts_path.parent)
-        routes = parser.get_expected_routes()
-        
-        if not routes:
-            return {
-                "passed": [],
-                "failed": [],
-                "total": 0,
-                "success_rate": 1.0  # No routes = 100% pass
-            }
-        
-        passed = []
-        failed = []
-        base_url = await self._get_base_url()
-        
-        for route in routes:
-            method = route.method
-            path = route.path
-            
-            if not path:
-                continue
-            
-            url = f"{base_url}{path}"
-            
-            try:
-                async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-                    # Make minimal request (empty body for POST/PUT)
-                    if method.upper() == "GET":
-                        response = await client.get(url)
-                    elif method.upper() == "POST":
-                        response = await client.post(url, json={})
-                    elif method.upper() == "PUT":
-                        # Use fake ID for PUT requests
-                        response = await client.put(url, json={})
-                    elif method.upper() == "DELETE":
-                        response = await client.delete(url)
-                    else:
-                        failed.append(f"{method} {path} -> Unsupported method")
-                        continue
-                    
-                    # Accept:
-                    # - 2xx (success)
-                    # - 422 (validation error is OK - route exists, just needs valid data)
-                    # - 400 (bad request is OK - route exists)
-                    # Reject:
-                    # - 404 (route not found - this is what we're testing for!)
-                    # - 500 (server error)
-                    
-                    if response.status_code == 404:
-                        failed.append(f"{method} {path} -> 404 Not Found")
-                    elif response.status_code >= 500:
-                        failed.append(f"{method} {path} -> {response.status_code} Server Error")
-                    else:
-                        # 2xx, 3xx, 4xx (except 404) = route exists
-                        passed.append(f"{method} {path}")
-                        
-            except httpx.TimeoutException:
-                failed.append(f"{method} {path} -> Timeout")
-            except Exception as e:
-                failed.append(f"{method} {path} -> {type(e).__name__}")
-        
-        total = len(routes)
-        success_rate = len(passed) / total if total > 0 else 0.0
-        
-        return {
-            "passed": passed,
-            "failed": failed,
-            "total": total,
-            "success_rate": success_rate
-        }
 
 
 class ASGIBackendProbe(BackendProbe):

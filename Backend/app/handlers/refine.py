@@ -16,41 +16,45 @@ from app.core.logging import log
 from app.tools import run_tool
 from app.utils.parser import normalize_llm_output
 from app.orchestration.state import WorkflowStateManager
-from app.arbormind import compute_ui_vibe_routing
-from app.persistence import safe_write_llm_files, validate_file_output
+# Phase 7: Legacy
+# from app.arbormind import compute_ui_vibe_routing
+
 
 # Phase 0: Failure Boundary Enforcement
 from app.core.failure_boundary import FailureBoundary
+from app.core.file_writer import safe_write_llm_files, validate_file_output
+from app.core.step_invariants import StepInvariants, StepInvariantError
 
 # Constants from legacy
 MAX_FILES_PER_STEP = 20
 
 
 @FailureBoundary.enforce
-async def step_refine(
-    project_id: str,
-    user_request: str,
-    manager: Any,
-    project_path: Path,
-    chat_history: List[ChatMessage],
-    provider: str,
-    model: str,
-    current_turn: int,
-    max_turns: int,
-) -> StepResult:
+async def step_refine(branch) -> StepResult:
     """
     Refine Mode - Conversational Iteration (post-workflow).
     
     Allows the user to modify the existing codebase using natural language.
     Example: "Change the button color to blue" or "Add a phone number field".
     """
+    from app.arbormind.cognition.branch import Branch
+    assert isinstance(branch, Branch)
+    
+    # Extract context from branch
+    project_id = branch.intent["project_id"]
+    user_request = branch.intent["user_request"]
+    manager = branch.intent["manager"]
+    project_path = branch.intent["project_path"]
+    provider = branch.intent["provider"]
+    model = branch.intent["model"]
+    
     await broadcast_status(
         manager,
         project_id,
         WorkflowStep.REFINE,
         f"Refining codebase: {user_request[:50]}...",
-        current_turn,
-        max_turns,
+        1,  # Refine is a post-workflow step
+        1,
     )
 
     # 🔥 NEW: detect if user is changing vibe/style
@@ -60,7 +64,8 @@ async def step_refine(
 
     new_vibe = None
     try:
-        routing = await compute_ui_vibe_routing(user_request)
+        # routing = await compute_ui_vibe_routing(user_request)
+        routing = {"top": "modern", "selected": "modern", "confidence": 1.0}
         new_vibe = (routing or {}).get("top")
         if new_vibe:
             intent["uiVibeRouting"] = routing
@@ -94,16 +99,15 @@ async def step_refine(
     file_list_str = "\n".join(all_files[:200])  # Limit to avoid token overflow
 
     # 2. Ask Derek to identify which files need to be modified
-    analysis_prompt = f"""
-    USER REQUEST: "{user_request}"
-    
-    PROJECT FILES:
-    {file_list_str}
-    
-    Identify which files need to be modified to satisfy the user request.
-    Return ONLY a JSON object with a "files_to_read" list.
-    Example: {{ "files_to_read": ["frontend/src/App.jsx", "backend/app/models.py"] }}
-    """
+    analysis_prompt = f"""USER REQUEST: "{user_request}"
+
+PROJECT FILES:
+{file_list_str}
+
+Identify which files need to be modified to satisfy the user request.
+Return ONLY a JSON object with a "files_to_read" list.
+Example: {{ "files_to_read": ["frontend/src/App.jsx", "backend/app/models.py"] }}
+"""
 
     try:
         log("REFINE", f"Analyzing project to find files related to: {user_request[:80]}...", project_id=project_id)
@@ -120,7 +124,8 @@ async def step_refine(
         )
         
         raw_output = tool_result.get("output", {})
-        parsed = raw_output if isinstance(raw_output, dict) else normalize_llm_output(str(raw_output))
+        # STEP 4: Pass step_name for causal step detection (disables salvage)
+        parsed = raw_output if isinstance(raw_output, dict) else normalize_llm_output(str(raw_output), step_name="refine")
         files_to_read = parsed.get("files_to_read", [])
         
         log("REFINE", f"Derek identified {len(files_to_read)} files to modify: {files_to_read}", project_id=project_id)
@@ -144,10 +149,10 @@ async def step_refine(
 This refine request appears to be BACKEND/BUSINESS-LOGIC related.
 
 You MUST:
-1. Update `contracts.md` and the `## Backend Design Patterns` section in `architecture.md`
+1. Update the `API Design` and `## Backend Design Patterns` sections in `architecture.md`
    to reflect the new behaviour (fields, status values, flows).
 2. Then update backend models/routers (`backend/app/models.py`, `backend/app/routers/**`)
-   so they strictly follow the updated contracts and patterns.
+   so they strictly follow the updated rules in architecture.md.
 3. Add or fix backend tests in `backend/tests/**` to cover the new behaviour.
 """
 
@@ -161,32 +166,38 @@ You MUST:
                     "then update components to use the updated tokens.\n"
                 )
 
-        refine_prompt = f"""
-        USER REQUEST: "{user_request}"
-        
-        ARCHETYPE: {archetype}
-        
-        {backend_hint}
-        
-        {vibe_note}
-        
-        CONTEXT FILES:
-        {context_str}
-        
-        TASK:
-        Apply the requested changes.
+        refine_prompt = f"""USER REQUEST: "{user_request}"
 
-        If the requested change is primarily visual or vibe-related:
-        - Prefer editing `architecture.md` (UI Design System section) and `frontend/src/design/tokens.json` / `theme.ts`
-          to update global styling.
-        - Then adjust only the minimal set of components needed to align with the new design system.
-        
-        OUTPUT FORMAT:
-        Return a JSON object with EITHER:
-        1. "files": [ {{ "path": "...", "content": "FULL NEW CONTENT" }} ]
-        OR
-        2. "patch": "Unified Diff String"
-        """
+ARCHETYPE: {archetype}
+
+{backend_hint}
+
+{vibe_note}
+
+CONTEXT FILES:
+{context_str}
+
+TASK:
+Apply the requested changes.
+
+If the requested change is primarily visual or vibe-related:
+- Prefer editing `architecture.md` (UI Design System section) and `frontend/src/design/tokens.json` / `theme.ts`
+  to update global styling.
+- Then adjust only the minimal set of components needed to align with the new design system.
+
+OUTPUT FORMAT (HDAP):
+Use artifact markers to output modified files:
+
+<<<FILE path="frontend/src/App.jsx">>>
+// Complete updated file content
+<<<END_FILE>>>
+
+<<<FILE path="backend/app/models.py">>>
+// Complete updated file content
+<<<END_FILE>>>
+
+🚨 Every file MUST end with <<<END_FILE>>>!
+"""
 
         log("REFINE", "Derek is generating code changes...", project_id=project_id)
         
@@ -202,7 +213,8 @@ You MUST:
 
         # 5. Apply the changes
         raw_output = tool_result.get("output", {})
-        parsed = raw_output if isinstance(raw_output, dict) else normalize_llm_output(str(raw_output))
+        # STEP 4: Pass step_name for causal step detection (disables salvage)
+        parsed = raw_output if isinstance(raw_output, dict) else normalize_llm_output(str(raw_output), step_name="refine")
 
         changes_made = 0
         
@@ -229,14 +241,13 @@ You MUST:
                 log("REFINE", f"Patch failed: {patch_res.get('error')}", project_id=project_id)
 
         log("REFINE", f"✅ Applied {changes_made} file changes", project_id=project_id)
-        chat_history.append({"role": "assistant", "content": str(parsed)})
-        
-    except RateLimitError:
-        log("REFINE", "Rate limit exhausted - stopping workflow", project_id=project_id)
-        raise
+        branch.artifacts["refine_result"] = str(parsed)
         
     except Exception as e:
-        log("REFINE", f"Refinement failed: {e}", project_id=project_id)
+        if isinstance(e, RuntimeError):
+            raise
+        log("REFINE", f"❌ Refinement failed: {e}", project_id=project_id)
+        raise RuntimeError(f"Refinement process failed: {e}")
 
     # FIX #5: Return to REFINE step (not PREVIEW_FINAL) to allow multiple refinements
     # The workflow will pause at REFINE waiting for more user input
@@ -247,12 +258,12 @@ You MUST:
     if wants_preview:
         return StepResult(
             nextstep=WorkflowStep.PREVIEW_FINAL,
-            turn=current_turn + 1,
+            turn=2,  # Refine step
         )
     else:
         # Stay in refine mode for further iterations
         return StepResult(
             nextstep=WorkflowStep.COMPLETE,  # Mark as complete but allow resume_workflow to start REFINE again
-            turn=current_turn + 1,
+            turn=2,  # Refine step
             data={"refine_complete": True, "awaiting_more_input": True}
         )

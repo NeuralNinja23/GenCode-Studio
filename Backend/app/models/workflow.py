@@ -38,6 +38,9 @@ class WorkflowSession(Document):
     # NEW: Store step context data for resume
     step_context: Dict[str, Any] = Field(default_factory=dict)
     
+    # NEW: Cache architecture files from Victoria (avoids re-reading from disk)
+    architecture_cache: Dict[str, str] = Field(default_factory=dict)
+    
     last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:

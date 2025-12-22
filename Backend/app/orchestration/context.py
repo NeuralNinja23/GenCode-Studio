@@ -15,60 +15,51 @@ from app.utils.entity_discovery import discover_primary_entity
 # Define which files are relevant for each step
 # Define which files are relevant for each step
 STEP_CONTEXT_RULES = {
-    "ARCHITECTURE": {
+    "architecture": {
         "include": [],  # Only architecture.md (which doesn't exist yet)
         "max_files": 0,
     },
-    "FRONTEND_MOCK": {
-        "include": ["architecture.md"],
-        "max_files": 1,
+    "frontend_mock": {
+        "include": ["architecture/frontend.md", "architecture/overview.md"],
+        "max_files": 2,
     },
-    "SCREENSHOT_VERIFY": {
-        "include": ["frontend/src/pages/*.jsx", "frontend/src/components/*.jsx"],
-        "max_files": 5,
+    "backend_models": {
+        "include": ["architecture/backend.md", "entity_plan.json"],
+        "max_files": 2,
     },
-    "CONTRACTS": {
-        "include": [
-            "frontend/src/data/mock.js",
-            "frontend/src/pages/*.jsx",
-        ],
-        "max_files": 5,
-    },
-    "BACKEND_IMPLEMENTATION": {
-        "include": ["contracts.md", "architecture.md", "backend/app/models.py", "backend/app/routers/*.py"],
-        "max_files": 5,
-    },
-    "SYSTEM_INTEGRATION": {
-        "include": ["backend/app/main.py", "backend/app/routers/*.py"],
+    "backend_routers": {
+        "include": ["architecture/backend.md", "backend/app/models.py", "entity_plan.json"],
         "max_files": 3,
     },
-    "TESTING_BACKEND": {
+    "system_integration": {
+        "include": ["architecture/system.md", "backend/app/main.py", "backend/app/routers/*.py", "backend/app/models.py"],
+        "max_files": 5,
+    },
+    "testing_backend": {
         "include": [
-            "contracts.md",
+            "architecture/invariants.md",
+            "architecture/backend.md",
             "backend/app/routers/*.py",
             "backend/app/models.py",
             "backend/app/main.py",
             "backend/tests/*.py",
         ],
-        "max_files": 5,
-    },
-    "FRONTEND_INTEGRATION": {
-        "include": [
-            "contracts.md",
-            "frontend/src/lib/api.js",
-            "frontend/src/pages/*.jsx",
-            "frontend/src/data/mock.js",
-        ],
         "max_files": 6,
     },
-    "TESTING_FRONTEND": {
+    "testing_frontend": {
         "include": [
+            "architecture/invariants.md",
+            "architecture/frontend.md",
             "frontend/src/pages/*.jsx",
             "frontend/src/components/*.jsx",
             "frontend/tests/*.spec.js",
         ],
         "max_files": 8,
     },
+    "preview_final": {
+        "include": ["architecture/*.md", "package.json"],
+        "max_files": 6,
+    }
 }
 
 
@@ -159,8 +150,8 @@ def get_entity_context(project_id: str, user_request: str = "", project_path: Pa
             primary_entity = actual_models[0].lower()
         else:
             # Fallback to discover_primary_entity
-            entity_name, _ = discover_primary_entity(project_path)
-            primary_entity = entity_name if entity_name else "item"  # Last resort
+            _, entity_singular = discover_primary_entity(project_path)  # Returns (plural, singular)
+            primary_entity = entity_singular if entity_singular else "item"  # Last resort
     else:
         primary_entity = "item"  # No project path available
     
@@ -187,7 +178,7 @@ File Locations:
 - Frontend Page: frontend/src/pages/{primary_entity_capitalized}sPage.jsx
 - Frontend Card: frontend/src/components/{primary_entity_capitalized}Card.jsx
 
-API Endpoints (per contracts.md):
+API Endpoints (per architecture.md):
 - GET /api/{primary_entity_plural}
 - POST /api/{primary_entity_plural}
 - GET /api/{primary_entity_plural}/{{id}}
@@ -273,7 +264,8 @@ class CrossStepContext:
             self._ctx["step_summaries"][step] = summary
     
     def set_entities(self, entities: List[str]):
-        """Set the primary entities from analysis step."""
+        """Set the primary entities from architecture step."""
+
         self._ctx["entities"] = entities
     
     def set_architecture(self, arch_summary: str):
@@ -299,13 +291,6 @@ class CrossStepContext:
         
         # Include relevant previous step summaries
         summaries = self._ctx["step_summaries"]
-        
-        # Step-specific context
-        if current_step == "frontend_integration":
-            if "backend_implementation" in summaries:
-                lines.append(f"BACKEND VERTICAL: {summaries['backend_implementation']}")
-            if "contracts" in summaries:
-                lines.append(f"CONTRACTS: {summaries['contracts']}")
         
         if current_step in ["testing_backend", "testing_frontend"]:
             lines.append(f"COMPLETED STEPS: {', '.join(self._ctx['completed_steps'])}")

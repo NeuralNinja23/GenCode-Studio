@@ -45,7 +45,7 @@ def example_workflow_completion():
         ),
         StepExecutionResult(
             outcome=StepOutcome.SUCCESS,
-            step_name="frontend_integration",
+            step_name="system_integration",
             artifacts=[]
         ),
     ]

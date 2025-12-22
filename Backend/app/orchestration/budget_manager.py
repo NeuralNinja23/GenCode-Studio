@@ -71,70 +71,47 @@ class BudgetConfig:
     
     # Step-level policies
     step_policies: Dict[str, StepPolicy] = field(default_factory=lambda: {
-        # Deep reasoning / correctness-critical steps
-        "analysis": StepPolicy(
-            skippable=False,
-            max_attempts=2,
-            est_input_tokens=5000,
-            est_output_tokens=2500,
-        ),
         "architecture": StepPolicy(
             skippable=False,
             max_attempts=2,
             est_input_tokens=6000,
             est_output_tokens=3000,
         ),
-        "backend_implementation": StepPolicy(
+        "frontend_mock": StepPolicy(
             skippable=False,
-            max_attempts=3,
-            est_input_tokens=10000,
-            est_output_tokens=20000,
+            max_attempts=2,
+            est_input_tokens=6000,
+            est_output_tokens=4000,
+        ),
+        "backend_models": StepPolicy(
+            skippable=False,
+            max_attempts=2,
+            est_input_tokens=4000,
+            est_output_tokens=2000,
+        ),
+        "backend_routers": StepPolicy(
+            skippable=False,
+            max_attempts=2,
+            est_input_tokens=6000,
+            est_output_tokens=4000,
         ),
         "system_integration": StepPolicy(
             skippable=False,
             max_attempts=1,
-            est_input_tokens=0,
-            est_output_tokens=0,
-        ),
-        "frontend_integration": StepPolicy(
-            skippable=False,
-            max_attempts=3,
-            est_input_tokens=10000,
-            est_output_tokens=20000, # Critical step: increased to 20k
-        ),
-        
-        # Medium complexity, less sensitive
-        "frontend_mock": StepPolicy(
-            skippable=False,
-            max_attempts=2,
-            est_input_tokens=5000,
-            est_output_tokens=3000,
-        ),
-        "contracts": StepPolicy(
-            skippable=False,
-            max_attempts=2,
-            est_input_tokens=3500,
+            est_input_tokens=4000,
             est_output_tokens=2000,
-        ),
-        
-        # Nice-to-have / QA steps that can be skipped if needed
-        "screenshot_verify": StepPolicy(
-            skippable=True,
-            max_attempts=1,
-            est_input_tokens=3000,
-            est_output_tokens=1500,
         ),
         "testing_backend": StepPolicy(
             skippable=True,
             max_attempts=1,
-            est_input_tokens=2500,
-            est_output_tokens=1500,
+            est_input_tokens=4000,
+            est_output_tokens=2000,
         ),
         "testing_frontend": StepPolicy(
             skippable=True,
             max_attempts=1,
-            est_input_tokens=2500,
-            est_output_tokens=1500,
+            est_input_tokens=4000,
+            est_output_tokens=2000,
         ),
         "preview_final": StepPolicy(
             skippable=True,

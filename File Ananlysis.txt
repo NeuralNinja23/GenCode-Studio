@@ -1,6 +1,6 @@
 # Project GenCode Backend - File Analysis
 
-Total Files: 137
+Total Files: 154
 
 | File Path | Primary Function (1-2 Words) | Description |
 |-----------|------------------------------|-------------|
@@ -27,11 +27,18 @@ Total Files: 137
 | `core\config.py` | **Config** | Application configuration - single source of truth for all settings. |
 | `core\constants.py` | **Constants** | Application constants - all magic numbers and strings in one place. |
 | `core\exceptions.py` | **Exceptions** | Custom exceptions for the application. |
+| `core\failure_boundary.py` | **Failure Boundary** | Failure boundary enforcer. |
 | `core\integration.py` | **Integration** | Integration Manager logic ported from legacy agents/integration.py. |
 | `core\logging.py` | **Logging** | No description available |
+| `core\step_outcome.py` | **Step Outcome** | Canonical step-level outcome types. |
 | `core\types.py` | **Types** | Shared type definitions used across the application. |
 | `db\__init__.py` | **  Init  ** | Database module. |
 | `handlers\__init__.py` | **  Init  ** | Workflow step handlers - one function per workflow step. |
+| `handlers\_add_confidence_metric.py` | ** Add Confidence Metric** | No description available |
+| `handlers\_implement_learning.py` | ** Implement Learning** | No description available |
+| `handlers\_patch_backend_models.py` | ** Patch Backend Models** | No description available |
+| `handlers\_patch_contracts.py` | ** Patch Contracts** | No description available |
+| `handlers\_patch_marcus_prompt.py` | ** Patch Marcus Prompt** | No description available |
 | `handlers\analysis.py` | **Analysis** | Step 1: Marcus analyzes user intent. |
 | `handlers\archetype_guidance.py` | **Archetype Guidance** | Archetype-Specific UI Guidance for Frontend Mock Generation. |
 | `handlers\architecture.py` | **Architecture** | Step 2: Victoria creates architecture plan with Marcus supervision. |
@@ -79,11 +86,12 @@ Total Files: 137
 | `orchestration\backend_probe.py` | **Backend Probe** | BackendProbe: Environment-agnostic HTTP testing for backend services. |
 | `orchestration\budget_manager.py` | **Budget Manager** | BudgetManager for Gemini 2.5 Flash - Cost Controller for FAST Runs |
 | `orchestration\checkpoint.py` | **Checkpoint** | FAST v2 Checkpoint Manager |
-| `orchestration\code_validator.py` | **Code Validator** | Universal Code Validation Framework |
 | `orchestration\context.py` | **Context** | Context selection for agents - only provide relevant files per step. |
+| `orchestration\contract_expansion.py` | **Contract Expansion** | Contract Expansion Manager |
 | `orchestration\contract_parser.py` | **Contract Parser** | ContractParser: Extract expected routes from contracts.md and test_api.py |
 | `orchestration\critical_step_barriers.py` | **Critical Step Barriers** | Hard Barriers: Prevent FAST from Continuing if Critical Steps Fail |
 | `orchestration\error_router.py` | **Error Router** | FAST v2 Error Router (Self-Evolving + AM) |
+| `orchestration\failure_classifier.py` | **Failure Classifier** | Strict failure classifier with explicit rules. |
 | `orchestration\fallback_api_agent.py` | **Fallback Api Agent** | Minimal JS API Client Generator (Used When Derek Fails) |
 | `orchestration\fallback_model_agent.py` | **Fallback Model Agent** | Fallback Model Generator - Single source of truth for model fallback generation. |
 | `orchestration\fallback_router_agent.py` | **Fallback Router Agent** | Minimal Router Generator (Used When Derek Fails) |
@@ -93,13 +101,15 @@ Total Files: 137
 | `orchestration\healing_budget.py` | **Healing Budget** | Global Healing Budget Controller |
 | `orchestration\healing_pipeline.py` | **Healing Pipeline** | HealingPipeline - High-level healing orchestrator |
 | `orchestration\healing_policy.py` | **Healing Policy** | HealingPolicy: Stateful policy engine for determining healing actions. |
-| `orchestration\llm_output_integrity.py` | **Llm Output Integrity** | LLM Output Structural Integrity Validator â€” Python 3.12 |
+| `orchestration\isolation.py` | **Isolation** | Isolation manager with runtime enforcement. |
+| `orchestration\llm_output_integrity.py` | **Llm Output Integrity** | LLM Output Structural Integrity Validator — Python 3.12 |
 | `orchestration\prompt_adapter.py` | **Prompt Adapter** | FAST v2 Prompt Adapter |
+| `orchestration\retry_policy.py` | **Retry Policy** | CHANGE C: Brief retry for environment failures. |
 | `orchestration\router_utils.py` | **Router Utils** | Router Wiring Utilities - Single source of truth for router detection. |
 | `orchestration\self_healing_manager.py` | **Self Healing Manager** | Self-Healing Workflow Manager (HYBRID VERSION - Phase 1 & 2) |
 | `orchestration\state.py` | **State** | Workflow state management. |
 | `orchestration\step_contracts.py` | **Step Contracts** | FAST v2 Step Contracts |
-| `orchestration\structural_compiler.py` | **Structural Compiler** | Compiler-Layer Structural Validator (Python + JS) â€” Python 3.12 |
+| `orchestration\structural_compiler.py` | **Structural Compiler** | Compiler-Layer Structural Validator (Python + JS) — Python 3.12 |
 | `orchestration\task_graph.py` | **Task Graph** | FAST v2 Task Graph - Fixed Pipeline with Dependencies |
 | `orchestration\token_policy.py` | **Token Policy** | Step-specific token allocation policies. |
 | `orchestration\utils.py` | **Utils** | Workflow utilities - shared helper functions. |
@@ -120,9 +130,12 @@ Total Files: 137
 | `supervision\supervisor.py` | **Supervisor** | Marcus supervision of agent output. |
 | `supervision\tiered_review.py` | **Tiered Review** | Tiered Review System - Smart quality gates based on file criticality. |
 | `tools\__init__.py` | **  Init  ** | Tools module - actions agents can take. |
-| `tools\implementations.py` | **Implementations** | GenCode Studio â€“ Complete Tool System (Full Production Version) |
+| `tools\catalog.py` | **Catalog** | No description available |
+| `tools\implementations.py` | **Implementations** | GenCode Studio – Complete Tool System (Full Production Version) |
 | `tools\patching.py` | **Patching** | Centralized Patching Utilities. |
 | `tools\registry.py` | **Registry** | Tool registry - routes tool calls to implementations. |
+| `tools\specs.py` | **Specs** | No description available |
+| `tools\tool_policy.py` | **Tool Policy** | Tool policy - Filtering and selection logic for tools. |
 | `tracking\__init__.py` | **  Init  ** | Tracking module - placeholder for BudgetManager. |
 | `tracking\memory.py` | **Memory** | No description available |
 | `tracking\metrics.py` | **Metrics** | Code quality metrics tracking. |
@@ -130,6 +143,7 @@ Total Files: 137
 | `utils\__init__.py` | **  Init  ** | Utility modules for GenCode Studio. |
 | `utils\component_copier.py` | **Component Copier** | Just-in-Time Shadcn Component Copier |
 | `utils\dependency_fixer.py` | **Dependency Fixer** | Dependency Auto-Fixer for Backend Testing |
+| `utils\entity_classification.py` | **Entity Classification** | Dynamic Entity Classification System |
 | `utils\entity_discovery.py` | **Entity Discovery** | Centralized Entity Discovery Utility |
 | `utils\integration_playbooks.py` | **Integration Playbooks** | No description available |
 | `utils\parser.py` | **Parser** | No description available |
@@ -138,6 +152,9 @@ Total Files: 137
 | `utils\test_scaffolding.py` | **Test Scaffolding** | Utilities for generating robust frontend tests. |
 | `utils\ui_beautifier.py` | **Ui Beautifier** | UI Beautifier - Post-processes frontend files to ensure consistency. |
 | `validation\__init__.py` | **  Init  ** | Validation Module - Single Entry Point for All Validation. |
+| `validation\static_validator.py` | **Static Validator** | Static validator - Evidence-based verification without execution. |
 | `validation\syntax_validator.py` | **Syntax Validator** | PRE-FLIGHT VALIDATION - Layer 1 Quality Gate |
 | `workflow\__init__.py` | **  Init  ** | Workflow module - Orchestrates the GenCode Studio workflow engine. |
 | `workflow\engine.py` | **Engine** | Workflow Engine - The main orchestration loop. |
+| `workflow\integration_example.py` | **Integration Example** | Example of how to integrate Phase 1 outcome aggregation. |
+| `workflow\outcome_aggregator.py` | **Outcome Aggregator** | Aggregates step outcomes into workflow status. |

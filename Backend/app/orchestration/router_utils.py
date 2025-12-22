@@ -3,9 +3,8 @@
 Router Wiring Utilities - Single source of truth for router detection.
 
 This module provides shared functions for detecting whether routers
-are already imported or registered in main.py. Used by both:
+are already imported or registered in main.py. Used by:
 - handlers/backend.py (step_system_integration)
-- orchestration/self_healing_manager.py
 
 Having a single implementation prevents inconsistent idempotency checks.
 """

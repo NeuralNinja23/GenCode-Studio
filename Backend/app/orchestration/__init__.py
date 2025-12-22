@@ -1,11 +1,11 @@
 # app/orchestration/__init__.py
 """
-FAST V2 Engine - Complete Workflow Overhaul
+FAST V2 Engine - ArborMind Execution Body
 
-Key improvements over V1:
+Key improvements:
 1. Dependency barriers prevent cascade failures
 2. Pre-step validation for critical files
-3. Self-healing with fallback agents
+3. ArborMind handles all cognitive decisions (retry, heal, escalate)
 4. Uses existing handlers (Derek, Luna, Victoria, Marcus)
 5. Post-step validation for critical outputs
 6. Checkpointing after each successful step
@@ -27,11 +27,8 @@ Usage:
 
 from .fast_orchestrator import FASTOrchestratorV2, run_fast_v2_workflow
 from .task_graph import TaskGraph
-from .step_contracts import StepContracts
-from .llm_output_integrity import LLMOutputIntegrity
+from app.core.llm_output_integrity import validate_llm_files, LLMOutputIntegrityError
 from .structural_compiler import StructuralCompiler
-from .fallback_router_agent import FallbackRouterAgent
-from .fallback_api_agent import FallbackAPIAgent
 from .budget_manager import (
     BudgetManager,
     BudgetConfig,
@@ -49,11 +46,9 @@ __all__ = [
     "FASTOrchestratorV2",
     "run_fast_v2_workflow",
     "TaskGraph", 
-    "StepContracts",
-    "LLMOutputIntegrity",
+    "validate_llm_files",
+    "LLMOutputIntegrityError",
     "StructuralCompiler",
-    "FallbackRouterAgent",
-    "FallbackAPIAgent",
     # Budget management
     "BudgetManager",
     "BudgetConfig",
