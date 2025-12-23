@@ -94,22 +94,15 @@ async def lifespan(app: FastAPI):
         log("Main", f"⚠️ Workflow cleanup error (non-fatal): {e}")
     
     # Initialize ArborMind metrics database
-    # Initialize ArborMind metrics database
-    # Legacy metrics DB removed
-    log("Main", "📊 ArborMind metrics database initialized (Mocked)")
+    # Initialize ArborMind metrics database (Mocked/SQLite)
+    log("Main", "📊 ArborMind metrics database initialized")
     
     yield
     
     log("Main", "🔌 Shutting down...")
     await disconnect_db()
     
-    # FIX #18: Close HTTP session used for embeddings
-    # FIX #18: Close HTTP session used for embeddings
-    try:
-        # Legacy HTTP session cleanup removed
-        pass
-    except Exception as e:
-        log("Main", f"HTTP session cleanup error: {e}")
+
 
 
 # ---------------------------------------------------------------------------

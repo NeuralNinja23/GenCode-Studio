@@ -57,7 +57,13 @@ class ToolPlanBuilder:
     3. Build ToolPlan
     
     NO LLM INVOLVED. DETERMINISTIC. OBSERVABLE.
+    
+    PHASE C2: Tool limits enforced by planner, not prompt.
     """
+    
+    # PHASE C2: Hard cap on tools per step
+    MAX_PRE_TOOLS = 3   # Max pre-step tools (context gathering)
+    MAX_POST_TOOLS = 2  # Max post-step tools (validation)
     
     def __init__(self):
         pass
@@ -72,8 +78,6 @@ class ToolPlanBuilder:
         """
         Build a tool plan for a step.
         """
-        log("PLANNER", f"📐 Building plan for step '{step}'")
-        
         # Get all tools for this phase
         phase_tools = get_tools_for_phase(step)
         
@@ -82,15 +86,22 @@ class ToolPlanBuilder:
         post_tools = [t for t in phase_tools if t.is_post_step]
         core_tools = [t for t in phase_tools if not t.is_pre_step and not t.is_post_step]
         
+        # PHASE C2: Enforce tool limits
+        pre_tools = pre_tools[:self.MAX_PRE_TOOLS]
+        post_tools = post_tools[:self.MAX_POST_TOOLS]
+        
         # Build ordered sequence: pre → core (just subagentcaller) → post
         sequence = []
+        tool_names = []  # For one-line log
         
         # Add pre-step tools (only if their context exists)
         project_path = self._get_project_path(branch)
+        pre_count = 0
         for tool_def in pre_tools:
-            # Skip pre-tools if their required context doesn't exist yet
             if self._should_skip_pre_tool(tool_def.id, step, project_path):
                 continue
+            if pre_count >= self.MAX_PRE_TOOLS:
+                break
                 
             args = self._build_tool_args(tool_def.id, step, branch, goal, override_args)
             invocation = ToolInvocationPlan(
@@ -100,23 +111,30 @@ class ToolPlanBuilder:
                 required=tool_def.required_for_phase,
             )
             sequence.append(invocation)
-            log("PLANNER", f"   + {tool_def.id} (optional)")
+            tool_names.append(tool_def.id)
+            pre_count += 1
         
-        # Add core tool (subagentcaller)
-        subagent = get_tool("subagentcaller")
-        if subagent:
-            args = self._build_tool_args("subagentcaller", step, branch, goal, override_args)
-            invocation = ToolInvocationPlan(
-                tool_name="subagentcaller",
-                args=args,
-                reason="Core LLM call",
-                required=True,
-            )
-            sequence.append(invocation)
-            log("PLANNER", f"   + subagentcaller (REQUIRED)")
+        # Add core tool (subagentcaller) - only for GENERATION steps
+        from app.arbormind.core.execution_mode import is_generation_step
+        if is_generation_step(step):
+            subagent = get_tool("subagentcaller")
+            if subagent:
+                args = self._build_tool_args("subagentcaller", step, branch, goal, override_args)
+                invocation = ToolInvocationPlan(
+                    tool_name="subagentcaller",
+                    args=args,
+                    reason="Core LLM call",
+                    required=True,
+                )
+                sequence.append(invocation)
+                tool_names.append("subagentcaller")
         
-        # Add post-step tools
+        # Add post-step tools (limited)
+        post_count = 0
         for tool_def in post_tools:
+            if post_count >= self.MAX_POST_TOOLS:
+                break
+                
             args = self._build_tool_args(tool_def.id, step, branch, goal, override_args)
             invocation = ToolInvocationPlan(
                 tool_name=tool_def.id,
@@ -125,7 +143,8 @@ class ToolPlanBuilder:
                 required=tool_def.required_for_phase,
             )
             sequence.append(invocation)
-            log("PLANNER", f"   + {tool_def.id} (optional)")
+            tool_names.append(tool_def.id)
+            post_count += 1
         
         # Get agent for this step
         agent = STEP_AGENTS.get(step, "System")
@@ -137,7 +156,8 @@ class ToolPlanBuilder:
             sequence=sequence,
         )
         
-        log("PLANNER", f"   ✅ Plan built: {plan.tool_count} tools")
+        # ONE LINE LOG: Tool chain summary
+        log("PLANNER", f"Plan: {' → '.join(tool_names) or 'no tools'}")
         
         return plan
     

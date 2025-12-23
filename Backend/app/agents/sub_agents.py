@@ -384,7 +384,6 @@ async def marcus_call_sub_agent(
         
         if instructions:
             base_prompt = f"{global_persona}\n\n═══════════════════════════════════════════════════════\n📥 STEP-SPECIFIC INSTRUCTIONS (OVERRIDING AUTHORITY)\n═══════════════════════════════════════════════════════\n\n{instructions}"
-            log("MARCUS", f"Combined global persona with custom instructions for {agent_name} ({step_name})")
         else:
             base_prompt = global_persona
         
@@ -409,7 +408,6 @@ async def marcus_call_sub_agent(
         try:
              # Use Attention to select and configure tools
              from app.tools.registry import get_relevant_tools_for_query
-             log("ATTENTION", f"🧠 Selecting tools for {step_name}...")
              tool_result = await get_relevant_tools_for_query(
                  query, 
                  top_k=3,
@@ -422,14 +420,13 @@ async def marcus_call_sub_agent(
              if isinstance(tool_result, dict):
                  tool_decision_id = tool_result.get("decision_id", "")
                  selected_tools = tool_result.get("tools", [])
-        except Exception as e:
-             log("ATTENTION", f"⚠️ Tool selection failed: {e}")
+        except Exception:
+             pass  # Tool selection is optional
         
         # ═══════════════════════════════════════════════════════════════
         # ARTIFACT MODE ENFORCEMENT (Phase-1 Critical Fix)
         # ═══════════════════════════════════════════════════════════════
         if is_artifact_mode:
-            log("MARCUS", f"🔒 ARTIFACT mode enforced for {step_name}")
             
             # Use enforcement layer to build prompts correctly
             prompts = enforce_artifact_mode(
@@ -472,16 +469,13 @@ async def marcus_call_sub_agent(
         # Allow override from healing (progressive token scaling)
         if max_tokens_override is not None:
             max_tokens = max_tokens_override
-            log("MARCUS", f"Using max_tokens override: {max_tokens}")
         
         # Allow temperature override from healing
         temperature = 0.7  # Default
         if temperature_override is not None:
             temperature = temperature_override
-            log("MARCUS", f"Using temperature override: {temperature}")
 
-        log("MARCUS", f"Calling {agent_name} (retry={is_retry}) with max_tokens={max_tokens}")
-        log("OPTIMIZATION", f"Core prompt: ~{len(core_prompt)//4} tokens, Context: ~{len(dynamic_context)//4} tokens")
+        log("MARCUS", f"Calling {agent_name} (max_tokens={max_tokens})")
         
         # ============================================================
         # LLM CALL with OPTIMIZED PROMPTS + V3 USAGE TRACKING
@@ -499,8 +493,8 @@ async def marcus_call_sub_agent(
         raw = llm_result.get("text", "")
         token_usage = llm_result.get("usage", {"input": 0, "output": 0})
 
-        log("MARCUS", f"Received {len(raw)} chars from {agent_name}")
-        log("TOKENS", f"📊 Actual usage: {token_usage.get('input', 0):,} in / {token_usage.get('output', 0):,} out")
+        # ONE LINE TOKEN LOG (kept)
+        log("TOKENS", f"in={token_usage.get('input', 0)} out={token_usage.get('output', 0)}")
 
         # ════════════════════════════════════════════════════════
         # HDAP PARSING (strict protocol enforcement)
@@ -570,7 +564,6 @@ async def marcus_call_sub_agent(
             # PHASE-1: Auto-Recovery for ARTIFACT Mode
             # ═══════════════════════════════════════════════════════════════
             if is_artifact_mode and execution_policy.auto_recover:
-                log("MARCUS", f"🔄 HDAP violation detected - attempting auto-recovery for {agent_name}")
                 
                 from app.llm.artifact_enforcement import auto_recover_hdap
                 from app.llm import call_llm
@@ -586,7 +579,6 @@ async def marcus_call_sub_agent(
                 
                 if recovery_result.get("recovered"):
                     # Success! Use recovered output
-                    log("MARCUS", f"✅ Auto-recovery successful for {agent_name}")
                     files = recovery_result.get("files", [])
                     
                     # Broadcast recovery success
@@ -612,10 +604,10 @@ async def marcus_call_sub_agent(
                         }
                     }
                 else:
-                    log("MARCUS", f"❌ Auto-recovery failed for {agent_name}")
+                    pass  # Recovery failed - fall through to error return
             
             # Recovery failed or not enabled - return protocol violation
-            log("MARCUS", f"❌ {agent_name} did not use HDAP artifact markers. Protocol violation.")
+            log("HDAP", f"❌ No HDAP markers from {agent_name}")
             return {
                 "passed": False,
                 "output": "",
@@ -632,7 +624,7 @@ async def marcus_call_sub_agent(
             }
         
         if not hdap_result["complete"]:
-            log("MARCUS", f"⚠️ Truncated output from {agent_name}. Incomplete files: {hdap_result['incomplete_files']}")
+            log("HDAP", f"⚠️ Truncated ({hdap_result['incomplete_files']})")
             return {
                 "passed": False,
                 "output": "",

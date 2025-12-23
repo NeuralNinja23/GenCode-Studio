@@ -298,96 +298,58 @@ async def resume_workflow_endpoint(request: Request, data: ResumeRequest):
     """
     Resume a paused workflow OR start a refine workflow for completed projects.
     
-    - If workflow is paused: Resume from saved state
-    - If project exists but not paused: Start refine workflow
+    Delegates to the consolidated engine.resume_workflow which handles:
+    - Resuming paused workflows (ArborMind/FAST V2)
+    - Starting refine workflows for existing projects (Refine Mode)
     """
-    from app.orchestration.state import WorkflowStateManager
     from app.workflow import resume_workflow as engine_resume_workflow
-    from app.core.constants import WorkflowStep, WSMessageType
+    from app.orchestration.state import WorkflowStateManager
     from app.orchestration.utils import broadcast_to_project
+    from app.core.constants import WSMessageType
     
     project_path = get_project_path(data.project_id)
     
-    # Check if workflow is paused
-    if await WorkflowStateManager.is_paused(data.project_id):
-        # Resume paused workflow using the engine's resume_workflow
-        try:
-            manager = request.app.state.manager
-            
-            # Broadcast resume event
-            await broadcast_to_project(
-                manager, 
-                data.project_id, 
-                {
-                    "type": WSMessageType.WORKFLOW_RESUMED,
-                    "projectId": data.project_id,
-                    "message": "Resuming workflow..."
-                }
-            )
-            
-            # Use engine's resume_workflow which properly handles paused state
-            asyncio.create_task(
-                engine_resume_workflow(
-                    project_id=data.project_id,
-                    user_message=data.user_message,
-                    manager=manager,
-                    workspaces_dir=settings.paths.workspaces_dir,
-                )
-            )
-            
-            return {
-                "success": True,
-                "message": "Workflow resumed",
-                "project_id": data.project_id,
-                "mode": "resume",
-            }
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    # Check if project exists - start refine workflow
-    elif project_path.exists():
-        # Guard: Atomically check and set running state (FIX #5: prevent race condition)
-        can_start = await WorkflowStateManager.try_start_workflow(data.project_id)
-        if not can_start:
-            return {
-                "success": True,
-                "message": "Workflow already in progress",
-                "project_id": data.project_id,
-                "already_running": True,
-            }
-        
+    if not project_path.exists():
+         raise HTTPException(status_code=404, detail=f"Project {data.project_id} not found")
+
+    try:
         manager = request.app.state.manager
         
-        # Import refine handler to start directly at refine step
-        from app.workflow.engine import WorkflowEngine
+        # NOTE: engine_resume_workflow handles checks for paused state, existing project, 
+        # and atomic start constraints internally.
         
-        async def run_refine():
-            try:
-                engine = WorkflowEngine(
-                    project_id=data.project_id,
-                    manager=manager,
-                    project_path=project_path,
-                    user_request=data.user_message,
-                )
-                engine.current_step = WorkflowStep.REFINE
-                await engine.run()
-            except Exception as e:
-                # Engine.run() handles cleanup in finally block
-                log("WORKSPACE", f"Refine workflow error: {e}")
-        
-        asyncio.create_task(run_refine())
+        # Broadcast intent to resume
+        await broadcast_to_project(
+            manager, 
+            data.project_id, 
+            {
+                "type": WSMessageType.WORKFLOW_RESUMED,
+                "projectId": data.project_id,
+                "message": "Initiating workflow resume/refine..."
+            }
+        )
+
+        asyncio.create_task(
+            engine_resume_workflow(
+                project_id=data.project_id,
+                user_message=data.user_message,
+                manager=manager,
+                workspaces_dir=settings.paths.workspaces_dir,
+            )
+        )
         
         return {
             "success": True,
-            "message": "Refine workflow started",
+            "message": "Workflow resume/refine initiated",
             "project_id": data.project_id,
-            "mode": "refine",
+            "mode": "auto",
         }
-    
-    else:
-        raise HTTPException(status_code=404, detail=f"Project {data.project_id} not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log("WORKSPACE", f"Resume endpoint error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class ApplyInstructionRequest(BaseModel):

@@ -194,18 +194,16 @@ def record_tool_invocation_start(
     
     # Record to ArborMind (if available)
     try:
-        from app.arbormind.observation.sqlite_store import record_decision, get_current_run_id
+        from app.arbormind.observation.execution_ledger import record_decision_event, get_current_run_id
         
         run_id = get_current_run_id()
         if run_id:
-            record_decision(
+            record_decision_event(
                 run_id=run_id,
                 step=step,
                 agent=agent,
-                action="TOOL_INVOKE",
-                tool=invocation.tool_name,
-                outcome="pending",
-                reason=invocation.reason,
+                decision="TOOL_INVOKE",
+                reason=f"{invocation.tool_name}: {invocation.reason}",
             )
     except Exception:
         pass  # Observation is best-effort
@@ -219,46 +217,46 @@ def record_tool_invocation_end(
 ) -> None:
     """
     Record the end of a tool invocation.
+    
+    PHASE 3: Records tool trace + step exit + failure event (if applicable)
     """
     status = "✅" if result.success else "❌"
     log("TOOL-EXEC", f"{status} [{result.tool_name}] Completed in {result.duration_ms}ms")
     
     # Record to ArborMind (if available)
     try:
-        from app.arbormind.observation.sqlite_store import update_decision_outcome, get_current_run_id
+        from app.arbormind.observation.execution_ledger import (
+            record_tool_trace,
+            record_step_exit,
+            record_failure_event,
+            get_current_run_id,
+        )
+        import hashlib
         
         run_id = get_current_run_id()
         if run_id:
-            update_decision_outcome(
+            # TIT: Tool Invocation Trace (CRITICAL for cost/duration attribution)
+            input_hash = hashlib.md5(str(result.invocation_id).encode()).hexdigest()[:8]
+            record_tool_trace(
                 run_id=run_id,
                 step=step,
-                outcome="success" if result.success else "failure",
+                tool_name=result.tool_name,
+                input_hash=input_hash,
+                exit_code=0 if result.success else 1,
                 duration_ms=result.duration_ms,
-                artifacts_count=1 if result.success else 0,
             )
-    except Exception:
-        pass  # Observation is best-effort
-    
-    # If failed, record to failure memory
-    if not result.success:
-        try:
-            from app.arbormind.learning import (
-                ingest_runtime_exception,
-                ingest_external_failure,
-                FailureScope,
-            )
-            from app.arbormind.observation.sqlite_store import get_current_run_id
             
-            run_id = get_current_run_id()
-            if run_id:
-                ingest_runtime_exception(
+            # If failed, record failure event
+            if not result.success:
+                record_failure_event(
                     run_id=run_id,
                     step=step,
-                    exception_info=f"Tool '{result.tool_name}' failed: {result.error}",
-                    agent=agent,
+                    origin="TOOL",
+                    signal=result.tool_name,
+                    message=str(result.error or "Unknown error")[:1024],
                 )
-        except Exception:
-            pass  # Observation is best-effort
+    except Exception:
+        pass  # Observation is best-effort
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -291,9 +289,7 @@ async def execute_tool_plan(
     """
     from app.tools.registry import run_tool
     
-    log("TOOL-EXEC", f"📋 Executing plan '{plan.plan_id}' for step '{plan.step}'")
-    log("TOOL-EXEC", f"   Goal: {plan.goal}")
-    log("TOOL-EXEC", f"   Tools: {' → '.join(plan.tool_names)}")
+    # Removed verbose start logs - planner already logs tool chain
     
     results: list[ToolInvocationResult] = []
     final_output = None
@@ -302,7 +298,43 @@ async def execute_tool_plan(
     total_start = datetime.now(timezone.utc)
     
     for i, invocation in enumerate(plan.sequence):
-        log("TOOL-EXEC", f"   [{i+1}/{plan.tool_count}] {invocation.tool_name}")
+        log("TOOL-EXEC", f"▶️ {invocation.tool_name}")
+        
+        # ═══════════════════════════════════════════════════════════════
+        # PHASE E1: Check lockfile cache for subagentcaller
+        # ═══════════════════════════════════════════════════════════════
+        if invocation.tool_name == "subagentcaller":
+            try:
+                from app.arbormind.core.lockfile import should_skip_generation
+                
+                project_path = invocation.args.get("project_path", "")
+                user_request = invocation.args.get("user_request", "")
+                
+                should_skip, cached = should_skip_generation(
+                    project_path=project_path,
+                    step_name=plan.step,
+                    user_request=user_request,
+                )
+                
+                if should_skip and cached:
+                    # CACHE HIT - skip LLM call entirely!
+                    log("TOOL-EXEC", f"✅ {invocation.tool_name} (CACHED, files={cached.get('files', []).__len__()})")
+                    
+                    result = ToolInvocationResult(
+                        invocation_id=invocation.invocation_id,
+                        tool_name=invocation.tool_name,
+                        success=True,
+                        output={"cached": True, "files": cached.get("files", [])},
+                        error=None,
+                        duration_ms=0,
+                        started_at=datetime.now(timezone.utc).isoformat(),
+                        ended_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                    results.append(result)
+                    final_output = result.output
+                    continue  # Skip to next tool
+            except Exception:
+                pass  # Cache check failed - proceed with normal execution
         
         # Record start
         record_tool_invocation_start(
@@ -353,7 +385,6 @@ async def execute_tool_plan(
                     step=plan.step,
                 )
                 if files_written:
-                    log("TOOL-EXEC", f"   📝 Wrote {len(files_written)} files from HDAP output")
                     # Attach written files to output for downstream
                     if isinstance(output, dict):
                         output["_written_files"] = files_written
@@ -367,6 +398,23 @@ async def execute_tool_plan(
                             started_at=result.started_at,
                             ended_at=result.ended_at,
                         )
+                    
+                    # ═══════════════════════════════════════════════════════
+                    # PHASE E1: Record in lockfile for future cache hits
+                    # ═══════════════════════════════════════════════════════
+                    try:
+                        from app.arbormind.core.lockfile import record_step_completion
+                        project_path = invocation.args.get("project_path", "")
+                        user_request = invocation.args.get("user_request", "")
+                        
+                        record_step_completion(
+                            project_path=project_path,
+                            step_name=plan.step,
+                            user_request=user_request,
+                            files_written=files_written,
+                        )
+                    except Exception:
+                        pass  # Cache recording is non-critical
             
             # Track last successful output
             if success:
@@ -400,7 +448,7 @@ async def execute_tool_plan(
         # ═══════════════════════════════════════════════════════════════
         if ARBORMIND_TIT_ENABLED:
             try:
-                from app.arbormind.observation.sqlite_store import get_current_run_id
+                from app.arbormind.observation.execution_ledger import get_current_run_id
                 run_id = get_current_run_id() or "unknown"
                 
                 tit_event = build_tool_event(
@@ -423,12 +471,17 @@ async def execute_tool_plan(
         
         results.append(result)
         
+        # Log tool completion with outcome
+        status = "✅" if result.success else "❌"
+        files_count = len(result.output.get("_written_files", [])) if isinstance(result.output, dict) else 0
+        file_info = f", files={files_count}" if files_count > 0 else ""
+        log("TOOL-EXEC", f"{status} {invocation.tool_name} ({result.duration_ms}ms{file_info})")
+        
         # Handle failure
         if not result.success:
             if invocation.required and stop_on_failure:
                 overall_success = False
                 overall_error = f"Required tool '{invocation.tool_name}' failed: {result.error}"
-                log("TOOL-EXEC", f"   ❌ STOPPING: Required tool failed")
                 
                 raise StepFailure(
                     step=plan.step,
@@ -436,13 +489,11 @@ async def execute_tool_plan(
                     error=result.error or "Unknown error",
                     invocation_id=invocation.invocation_id,
                 )
-            else:
-                log("TOOL-EXEC", f"   ⚠️ Optional tool failed, continuing...")
+            # Optional failures already logged above - no extra noise
     
     total_end = datetime.now(timezone.utc)
     total_duration = int((total_end - total_start).total_seconds() * 1000)
-    
-    log("TOOL-EXEC", f"📋 Plan '{plan.plan_id}' completed in {total_duration}ms")
+    # Plan completion logged implicitly by step completion
     
     return ToolPlanExecutionResult(
         plan_id=plan.plan_id,

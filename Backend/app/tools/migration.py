@@ -103,7 +103,7 @@ def _record_handler_start(plan: ToolPlan, step: str, agent: str):
     log("TOOL-OBS", f"▶️ [{step}] Starting (agent={agent}, plan={plan.plan_id})")
     
     try:
-        from app.arbormind.observation.sqlite_store import record_decision, get_current_run_id
+        from app.arbormind.observation.execution_ledger import record_decision, get_current_run_id
         
         run_id = get_current_run_id()
         if run_id:
@@ -134,7 +134,7 @@ def _record_handler_end(
     log("TOOL-OBS", f"{status} [{step}] Completed in {duration_ms}ms")
     
     try:
-        from app.arbormind.observation.sqlite_store import update_decision_outcome, get_current_run_id
+        from app.arbormind.observation.execution_ledger import update_decision_outcome, get_current_run_id
         
         run_id = get_current_run_id()
         if run_id:
@@ -152,7 +152,7 @@ def _record_handler_end(
     if not success and error:
         try:
             from app.arbormind.learning import ingest_runtime_exception
-            from app.arbormind.observation.sqlite_store import get_current_run_id
+            from app.arbormind.observation.execution_ledger import get_current_run_id
             
             run_id = get_current_run_id()
             if run_id:

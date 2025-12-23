@@ -44,6 +44,27 @@ class FilePersistence:
             # Atomic rename
             os.replace(tmp, full_path)
             log("FILE", f"✅ Written: {path} ({len(text)} chars)")
+            
+            # ═══════════════════════════════════════════════════════════════
+            # PHASE 3: Record artifact birth event at materialization boundary
+            # ═══════════════════════════════════════════════════════════════
+            try:
+                from app.arbormind.observation.execution_ledger import (
+                    record_artifact_event, 
+                    get_current_run_id
+                )
+                run_id = get_current_run_id()
+                if run_id:
+                    record_artifact_event(
+                        run_id=run_id,
+                        step="file_persistence",  # Generic step marker
+                        file_path=path,
+                        event_type="CREATED",
+                        size_bytes=len(text.encode("utf-8")),
+                    )
+            except Exception:
+                pass  # Observation is best-effort
+            
             return True
             
         except Exception as e:

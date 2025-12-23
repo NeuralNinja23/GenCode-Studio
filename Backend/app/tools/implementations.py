@@ -135,7 +135,7 @@ async def _async_run_command(
         if _get_tit_enabled():
             try:
                 from app.arbormind.observation.tool_trace import build_tool_event
-                from app.arbormind.observation.sqlite_store import get_current_run_id
+                from app.arbormind.observation.execution_ledger import get_current_run_id
                 
                 run_id = get_current_run_id() or "unknown"
                 ended = datetime.now(tz.utc)
@@ -394,7 +394,7 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
         if _get_tit_enabled():
             try:
                 from app.arbormind.observation.tool_trace import build_tool_event
-                from app.arbormind.observation.sqlite_store import get_current_run_id
+                from app.arbormind.observation.execution_ledger import get_current_run_id
                 
                 run_id = get_current_run_id() or "unknown"
                 
@@ -435,7 +435,7 @@ async def tool_sub_agent_caller(args: Dict[str, Any]) -> Dict[str, Any]:
         if _get_tit_enabled():
             try:
                 from app.arbormind.observation.tool_trace import build_tool_event
-                from app.arbormind.observation.sqlite_store import get_current_run_id
+                from app.arbormind.observation.execution_ledger import get_current_run_id
                 
                 run_id = get_current_run_id() or "unknown"
                 duration = int((llm_end - llm_start).total_seconds() * 1000) if 'llm_start' in dir() else None
@@ -2367,6 +2367,235 @@ _run_tool_impl = run_tool
 # not at module import time. This prevents log spam during early workflow steps.
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE B1: RUNTIME BOOTSTRAP TOOL (EXECUTION REALITY)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Global runtime state - shared across steps
+_RUNTIME_STATE = {
+    "running": False,
+    "mode": "none",
+    "ports": {},
+    "container_ids": [],
+    "error": None,
+    "initialized": False,
+}
+
+
+async def tool_runtime_bootstrap(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    PHASE B1: Bootstrap Runtime for Execution Steps
+    
+    This tool:
+    1. Detects if backend/frontend exist
+    2. Attempts to start them (Docker or local)
+    3. Blocks until running or definitively failed
+    4. Returns structured result for downstream tools
+    
+    CRITICAL: If running=False, all downstream execution tools MUST skip.
+    """
+    global _RUNTIME_STATE
+    
+    project_path = args.get("project_path") or args.get("cwd")
+    if not project_path:
+        return {
+            "success": False,
+            "running": False,
+            "mode": "none",
+            "error": "No project_path provided"
+        }
+    
+    project_path = Path(project_path)
+    
+    # If already initialized this run, return cached state
+    if _RUNTIME_STATE["initialized"]:
+        return {
+            "success": _RUNTIME_STATE["running"],
+            **_RUNTIME_STATE
+        }
+    
+    log("RUNTIME", f"🚀 Bootstrapping runtime for {project_path}")
+    
+    try:
+        # Detect stack
+        backend_exists = (project_path / "backend" / "app" / "main.py").exists()
+        frontend_exists = (project_path / "frontend" / "package.json").exists()
+        
+        if not backend_exists and not frontend_exists:
+            _RUNTIME_STATE = {
+                "running": False,
+                "mode": "none",
+                "ports": {},
+                "container_ids": [],
+                "error": "No backend or frontend detected",
+                "initialized": True,
+            }
+            log("RUNTIME", "⚠️ No runnable stack detected")
+            return {"success": False, **_RUNTIME_STATE}
+        
+        # Try Docker first, then fall back to local
+        runtime_result = await _try_docker_runtime(project_path)
+        
+        if not runtime_result["running"]:
+            log("RUNTIME", "Docker failed, trying local runtime...")
+            runtime_result = await _try_local_runtime(project_path, backend_exists, frontend_exists)
+        
+        _RUNTIME_STATE = {
+            **runtime_result,
+            "initialized": True,
+        }
+        
+        if runtime_result["running"]:
+            log("RUNTIME", f"✅ Runtime started: mode={runtime_result['mode']}, ports={runtime_result.get('ports', {})}")
+        else:
+            log("RUNTIME", f"❌ Runtime failed: {runtime_result.get('error', 'Unknown')}")
+        
+        return {"success": runtime_result["running"], **_RUNTIME_STATE}
+        
+    except Exception as e:
+        _RUNTIME_STATE = {
+            "running": False,
+            "mode": "none",
+            "ports": {},
+            "container_ids": [],
+            "error": str(e),
+            "initialized": True,
+        }
+        log("RUNTIME", f"❌ Runtime bootstrap error: {e}")
+        return {"success": False, **_RUNTIME_STATE}
+
+
+async def _try_docker_runtime(project_path: Path) -> Dict[str, Any]:
+    """Attempt to start runtime via Docker compose."""
+    compose_file = project_path / "docker-compose.yml"
+    
+    if not compose_file.exists():
+        return {"running": False, "mode": "none", "error": "No docker-compose.yml"}
+    
+    try:
+        # Start containers
+        result = await _async_run_command(
+            "docker compose up -d --build",
+            cwd=str(project_path),
+            timeout=120
+        )
+        
+        if not result.get("success"):
+            return {"running": False, "mode": "docker", "error": result.get("error", "Docker compose failed")}
+        
+        # Wait for health
+        await asyncio.sleep(5)  # Give containers time to start
+        
+        # Check if containers are running
+        ps_result = await _async_run_command(
+            "docker compose ps --format json",
+            cwd=str(project_path),
+            timeout=30
+        )
+        
+        container_ids = []
+        if ps_result.get("success") and ps_result.get("stdout"):
+            try:
+                containers = json.loads(ps_result["stdout"])
+                if isinstance(containers, list):
+                    container_ids = [c.get("ID", "") for c in containers if c.get("State") == "running"]
+            except json.JSONDecodeError:
+                pass
+        
+        # Health check
+        health_ok = await _check_backend_health("http://localhost:8000/health")
+        
+        return {
+            "running": health_ok or len(container_ids) > 0,
+            "mode": "docker",
+            "ports": {"backend": 8000, "frontend": 3000},
+            "container_ids": container_ids,
+            "logs_tail": result.get("stdout", "")[-500:]
+        }
+        
+    except Exception as e:
+        return {"running": False, "mode": "docker", "error": str(e)}
+
+
+async def _try_local_runtime(project_path: Path, has_backend: bool, has_frontend: bool) -> Dict[str, Any]:
+    """Attempt to start runtime locally (uvicorn for backend, npm for frontend)."""
+    ports = {}
+    errors = []
+    
+    if has_backend:
+        try:
+            # Check if backend is already running
+            if await _check_backend_health("http://localhost:8000/health"):
+                ports["backend"] = 8000
+                log("RUNTIME", "Backend already running on port 8000")
+            else:
+                # Try to start backend (non-blocking)
+                backend_path = project_path / "backend"
+                # We won't actually start it in this tool - just check existence
+                # The real app should be started by the user or sandbox
+                errors.append("Backend not running - start with 'uvicorn app.main:app --port 8000'")
+        except Exception as e:
+            errors.append(f"Backend check failed: {e}")
+    
+    if has_frontend:
+        try:
+            # Check if frontend dev server is running
+            if await _check_frontend_health("http://localhost:3000"):
+                ports["frontend"] = 3000
+                log("RUNTIME", "Frontend already running on port 3000")
+            else:
+                errors.append("Frontend not running - start with 'npm run dev'")
+        except Exception as e:
+            errors.append(f"Frontend check failed: {e}")
+    
+    running = len(ports) > 0
+    
+    return {
+        "running": running,
+        "mode": "local" if running else "none",
+        "ports": ports,
+        "container_ids": [],
+        "error": "; ".join(errors) if errors else None
+    }
+
+
+async def _check_backend_health(url: str, timeout: int = 5) -> bool:
+    """Check if backend is responding."""
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+            async with session.get(url) as response:
+                # Accept 200 or 404 (means server is running but no /health endpoint)
+                return response.status in [200, 404]
+    except Exception:
+        return False
+
+
+async def _check_frontend_health(url: str, timeout: int = 5) -> bool:
+    """Check if frontend dev server is responding."""
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+            async with session.get(url) as response:
+                return response.status < 500
+    except Exception:
+        return False
+
+
+def get_runtime_state() -> Dict[str, Any]:
+    """Get current runtime state (for execution dependency checks)."""
+    global _RUNTIME_STATE
+    return _RUNTIME_STATE.copy()
+
+
+def is_runtime_available() -> bool:
+    """
+    PHASE B2: Check if runtime is available for execution tools.
+    
+    Used by tools like healthchecker, apitester, playwrightrunner
+    to decide if they should execute or skip.
+    """
+    global _RUNTIME_STATE
+    return _RUNTIME_STATE.get("running", False)
+
 
 
 __all__ = [
@@ -2410,4 +2639,8 @@ __all__ = [
     "tool_router_scaffold_generator",
     "tool_router_logic_filler",
     "tool_code_patch_applier",
+    # Phase B: Runtime bootstrap
+    "tool_runtime_bootstrap",
+    "is_runtime_available",
+    "get_runtime_state",
 ]

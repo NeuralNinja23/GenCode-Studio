@@ -38,6 +38,7 @@ __all__ = [
     "step_preview_final",
     "step_refine",
     "HANDLERS",
+    "STEP_AGENTS",
 ]
 
 # Raw handlers (without observation)
@@ -57,5 +58,33 @@ _RAW_HANDLERS = {
 # Handler registry for FASTOrchestratorV2
 # All handlers are now wrapped with observation for tool planning
 HANDLERS = wrap_handlers_with_observation(_RAW_HANDLERS)
+
+# Agent mapping for logging and attribution (Single Source of Truth)
+STEP_AGENTS = {
+    # Phase 1: Planning
+    "architecture": "Victoria",
+    
+    # Phase 2: Mock & Backend
+    "frontend_mock": "Derek",
+    "backend_models": "Derek",
+    "backend_routers": "Derek",
+    "backend_implementation": "Derek",
+    
+    # Phase 3: Integration
+    "system_integration": "Derek",
+    "impl_refinement_iteration": "Derek",
+    
+    # Phase 4: Testing
+    "testing_frontend": "Luna",
+    "frontend_testing": "Luna",
+    
+    # Backend testing done by Derek
+    "testing_backend": "Derek",
+    "backend_testing": "Derek",
+    
+    # Post-workflow
+    "preview_final": "Marcus",
+    "refine": "Derek",
+}
 
 

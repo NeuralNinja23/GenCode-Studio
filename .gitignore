@@ -54,7 +54,7 @@ containers.json
 .agent
 .gemini
 .cache
-Arbormind
+ArborMind/
 
 # Allow specific files even in ignored directories
 !**/conftest.py

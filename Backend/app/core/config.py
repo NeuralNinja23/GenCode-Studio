@@ -96,22 +96,7 @@ class AMSettings:
     entropy_low: float = 0.5    # Below this = confident single option
 
 
-@dataclass
-class HealingSettings:
-    """
-    Self-healing system configuration.
-    
-    Controls healing behavior, validation, and LLM usage.
-    """
-    # Feature Flags
-    allow_llm: bool = field(default_factory=lambda: os.getenv("HEAL_ALLOW_LLM", "true").lower() == "true")  # Allow LLM-generated healing
-    validate_llm_output: bool = field(default_factory=lambda: os.getenv("HEAL_VALIDATE_LLM", "true").lower() == "true")  # Validate LLM output
-    force_fallback: bool = field(default_factory=lambda: os.getenv("HEAL_FORCE_FALLBACK", "false").lower() == "true")  # Always use fallback templates
-    
-    # Validation Settings
-    require_query_annotations: bool = True  # Require Query() on pagination params
-    require_pagination_params: bool = True  # Require page/limit params
-    require_router_imports: bool = True     # Require proper FastAPI imports
+
 
 
 @dataclass
@@ -121,7 +106,7 @@ class Settings:
     workflow: WorkflowSettings = field(default_factory=WorkflowSettings)
     sandbox: SandboxSettings = field(default_factory=SandboxSettings)
     paths: PathSettings = field(default_factory=PathSettings)
-    healing: HealingSettings = field(default_factory=HealingSettings)
+    # HealingSettings removed (deprecated)
     am: AMSettings = field(default_factory=AMSettings)
     port: int = field(default_factory=lambda: int(os.getenv("PORT", 8000)))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")

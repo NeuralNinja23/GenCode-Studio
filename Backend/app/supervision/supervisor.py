@@ -11,41 +11,12 @@ from typing import Any, Dict, List, Optional
 
 
 from app.core.logging import log, log_section, log_files, log_result
-from app.llm import call_llm
+from app.core.logging import log, log_section, log_files, log_result
+from app.llm import call_llm, call_llm_with_usage
 from app.llm.prompts import MARCUS_SUPERVISION_PROMPT
 from app.tracking.quality import track_quality_score
 from app.orchestration.checkpoint import CheckpointManagerV2
-from app.arbormind.observation.sqlite_store import record_supervisor_verdict
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# ARBORMIND LEARNING: Canonical Failure Ingestion (The 7 Requirements)
-# ═══════════════════════════════════════════════════════════════════════════════
-from app.arbormind.learning import (
-    FailureClass,
-    FailureScope,
-    ingest_parse_failure,
-    ingest_truncation,
-    ingest_quality_rejection,
-    ingest_invariant_violation,
-    ingest_external_failure,
-)
-from app.arbormind.observation.sqlite_store import get_current_run_id
-
-def _record_verdict(step_name, agent_name, approved, quality, issues, reasons=None):
-    """Helper to record verdict to SQLite (best effort)."""
-    try:
-        verdict = "approved" if approved else "rejected"
-        final_reasons = reasons or issues or []
-        record_supervisor_verdict(
-            step=step_name,
-            agent=agent_name,
-            supervisor="Marcus",
-            verdict=verdict,
-            quality_score=float(quality),
-            rejection_reasons=final_reasons,
-        )
-    except Exception:
-        pass
+from app.arbormind.observation.execution_ledger import record_supervisor_event, get_current_run_id
 
 
 async def marcus_supervise(
@@ -65,11 +36,8 @@ async def marcus_supervise(
     """
     from app.orchestration.utils import broadcast_to_project
     
-    log_section("MARCUS", f"🔍 REVIEWING {agent_name}'s {step_name} OUTPUT", project_id)
-    
     # Build file summary for Marcus
     files = agent_output.get("files", [])
-    log_files("MARCUS", files, project_id)
     
     # ═══════════════════════════════════════════════════════
     # LAYER 1: PRE-FLIGHT VALIDATION (0.5s, catches 90% of issues)
@@ -90,10 +58,7 @@ async def marcus_supervise(
         # FAILURE LEARNING: Record Pre-Flight Failure (Syntax/Structure)
         # ════════════════════════════════════════════════════════
         # ════════════════════════════════════════════════════════
-        # FAILURE LEARNING: Record Pre-Flight Failure (Syntax/Structure)
-        # ════════════════════════════════════════════════════════
-        # Legacy failure store removed
-        pass
+
 
         # Fix formatting for pre-flight errors
         fixed_reasons = [f"- {r}" for r in rejection_reasons]
@@ -101,15 +66,15 @@ async def marcus_supervise(
         # 🧠 SQLITE: Record pre-flight rejection
         _record_verdict(step_name, agent_name, False, 1, rejection_reasons)
         
-        # 🧠 ARBORMIND LEARNING: Ingest F2 (Parse Failure)
-        run_id = get_current_run_id()
-        if run_id:
-            ingest_parse_failure(
-                run_id=run_id,
-                step=step_name,
-                error_message=f"Pre-flight validation failed: {'; '.join(rejection_reasons)}",
-                agent=agent_name,
-            )
+        # 🧠 ARBORMIND LEARNING: Ingest F2 (Parse Failure) - DISABLED FOR PHASE 3
+        # run_id = get_current_run_id()
+        # if run_id:
+        #     ingest_parse_failure(
+        #         run_id=run_id,
+        #         step=step_name,
+        #         error_message=f"Pre-flight validation failed: {'; '.join(rejection_reasons)}",
+        #         agent=agent_name,
+        #     )
         
         return {
             "approved": False,
@@ -139,15 +104,15 @@ async def marcus_supervise(
         issues = [f"Output was truncated. Incomplete files: {', '.join(incomplete_files)}"]
         _record_verdict(step_name, agent_name, False, 1, issues)
         
-        # 🧠 ARBORMIND LEARNING: Ingest F3 (Truncation)
-        run_id = get_current_run_id()
-        if run_id:
-            ingest_truncation(
-                run_id=run_id,
-                step=step_name,
-                error_message=f"Output truncated. Incomplete files: {', '.join(incomplete_files)}",
-                agent=agent_name,
-            )
+        # 🧠 ARBORMIND LEARNING: Ingest F3 (Truncation) - DISABLED FOR PHASE 3
+        # run_id = get_current_run_id()
+        # if run_id:
+        #     ingest_truncation(
+        #         run_id=run_id,
+        #         step=step_name,
+        #         error_message=f"Output truncated. Incomplete files: {', '.join(incomplete_files)}",
+        #         agent=agent_name,
+        #     )
         
         return {
             "approved": False,
@@ -185,16 +150,16 @@ async def marcus_supervise(
             issues = ["No files were generated. This step must produce at least one file."]
             _record_verdict(step_name, agent_name, False, 0, issues)
             
-            # 🧠 ARBORMIND LEARNING: Ingest F1 (Invariant Violation - zero files)
-            run_id = get_current_run_id()
-            if run_id:
-                ingest_invariant_violation(
-                    run_id=run_id,
-                    step=step_name,
-                    error_message="Zero files generated in critical step",
-                    scope=FailureScope.STEP_LOCAL,
-                    agent=agent_name,
-                )
+            # 🧠 ARBORMIND LEARNING: Ingest F1 (Invariant Violation - zero files) - DISABLED FOR PHASE 3
+            # run_id = get_current_run_id()
+            # if run_id:
+            #     ingest_invariant_violation(
+            #         run_id=run_id,
+            #         step=step_name,
+            #         error_message="Zero files generated in critical step",
+            #         scope=FailureScope.STEP_LOCAL,
+            #         agent=agent_name,
+            #     )
             
             return {
                 "approved": False,
@@ -378,11 +343,26 @@ RESPOND WITH JSON:
         # Cap at reasonable limit for reviews (don't need full generation tokens)
         review_tokens = min(review_tokens, 12000)
         
-        response = await call_llm(
+        llm_result = await call_llm_with_usage(
             prompt=review_prompt,
             system_prompt=MARCUS_SUPERVISION_PROMPT,
             max_tokens=review_tokens,
         )
+        response = llm_result.get("text", "")
+        usage = llm_result.get("usage", {})
+
+        # Track cost
+        if usage:
+             try:
+                 budget = get_budget_manager(project_id)
+                 budget.register_usage(
+                     step=f"{step_name}:Review",
+                     input_tokens=usage.get("input", 0),
+                     output_tokens=usage.get("output", 0),
+                     model="gemini-2.0-flash-exp"
+                 )
+             except Exception:
+                 pass # Don't fail on budget tracking
         
         # Use sanitize + parse_json (designed for generic JSON, not just files)
         from app.utils.parser import sanitize_marcus_output, parse_json
@@ -417,7 +397,6 @@ RESPOND WITH JSON:
             
             if not critical_issues:
                 # All issues are just warnings - upgrade to approved with warnings
-                log("MARCUS", f"⚠️ All {len(warnings)} issues are warnings (not critical) - approving with notes", project_id=project_id)
                 approved = True
                 quality = max(quality, 7)  # Bump quality if it was low just for warnings
                 result["approved"] = True
@@ -426,7 +405,6 @@ RESPOND WITH JSON:
                 result["issues"] = []  # Clear issues since they're just warnings
             else:
                 # There are critical issues - keep rejection
-                log("MARCUS", f"❌ Found {len(critical_issues)} critical issues (+ {len(warnings)} warnings)", project_id=project_id)
                 result["critical_issues"] = critical_issues
                 result["warnings"] = warnings
 
@@ -434,11 +412,9 @@ RESPOND WITH JSON:
         # NOTE: Marcus's thinking is broadcast to UI (below) but not logged to server console
         # This reduces log noise while keeping the user-facing feature
         
-        # Log the result
-        log_result("MARCUS", approved, quality, issues if not approved else None, project_id)
-        
-        if not approved and feedback:
-            log("MARCUS", f"Feedback: {feedback[:300]}", project_id=project_id)
+        # ONE LINE LOG: Verdict only
+        verdict = "✅ Approved" if approved else "❌ Rejected"
+        log("SUPERVISION", f"{verdict} ({quality}/10)")
         
         # Broadcast review result
         if approved:
@@ -466,19 +442,28 @@ RESPOND WITH JSON:
                 }
             )
         
-        # 🧠 SQLITE: Record LLM verdict
-        _record_verdict(step_name, agent_name, approved, quality, issues if not approved else [])
+        # 🧠 OBSERVATION: Record Supervisor Event
+        run_id = get_current_run_id()
+        if run_id:
+            record_supervisor_event(
+                run_id=run_id,
+                step=step_name,
+                agent=agent_name,
+                verdict="APPROVED" if approved else "REJECTED",
+                quality=quality,
+                issues=issues if not approved else []
+            )
         
-        # 🧠 ARBORMIND LEARNING: Ingest F4 (Quality Rejection) if rejected
-        if not approved:
-            run_id = get_current_run_id()
-            if run_id:
-                ingest_quality_rejection(
-                    run_id=run_id,
-                    step=step_name,
-                    rejection_reasons=f"Quality: {quality}/10. Issues: {'; '.join(issues[:5])}",
-                    agent=agent_name,
-                )
+        # 🧠 ARBORMIND LEARNING: Ingest F4 (Quality Rejection) if rejected - DISABLED FOR PHASE 3
+        # if not approved:
+        #     run_id = get_current_run_id()
+        #     if run_id:
+        #         ingest_quality_rejection(
+        #             run_id=run_id,
+        #             step=step_name,
+        #             rejection_reasons=f"Quality: {quality}/10. Issues: {'; '.join(issues[:5])}",
+        #             agent=agent_name,
+        #         )
         
         return result
         
@@ -503,15 +488,15 @@ RESPOND WITH JSON:
             # 🧠 SQLITE: Record infrastructure failure (as verdict=rejected)
             _record_verdict(step_name, agent_name, False, 3, [str(e)])
             
-            # 🧠 ARBORMIND LEARNING: Ingest F9 (External Failure)
-            run_id = get_current_run_id()
-            if run_id:
-                ingest_external_failure(
-                    run_id=run_id,
-                    step=step_name,
-                    external_error=f"TRANSIENT_INFRA_FAILURE: {str(e)}",
-                    agent=agent_name,
-                )
+            # 🧠 ARBORMIND LEARNING: Ingest F9 (External Failure) - DISABLED FOR PHASE 3
+            # run_id = get_current_run_id()
+            # if run_id:
+            #     ingest_external_failure(
+            #         run_id=run_id,
+            #         step=step_name,
+            #         external_error=f"TRANSIENT_INFRA_FAILURE: {str(e)}",
+            #         agent=agent_name,
+            #     )
             
             return {
                 "approved": False,

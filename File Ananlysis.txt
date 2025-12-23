@@ -1,160 +1,2295 @@
-# Project GenCode Backend - File Analysis
+# Project GenCode Backend - Complete File Analysis
+# Generated: December 24, 2025 (Programmatic Extraction)
 
-Total Files: 154
+Total Python Files: 148 (excluding __init__.py)
 
-| File Path | Primary Function (1-2 Words) | Description |
-|-----------|------------------------------|-------------|
-| `agents\__init__.py` | **  Init  ** | Agent calling module - handles calls to sub-agents (Derek, Luna, Victoria). |
-| `agents\sub_agents.py` | **Sub Agents** | Sub-agent wrappers: Derek (backend QA), Luna (frontend QA), Victoria (architecture). |
-| `api\__init__.py` | **  Init  ** | API module - All route handlers. |
-| `api\agents.py` | **Agents** | Agent status routes. |
-| `api\deployment.py` | **Deployment** | Deployment routes. |
-| `api\health.py` | **Health** | Health check endpoints. |
-| `api\projects.py` | **Projects** | Project management routes. |
-| `api\providers.py` | **Providers** | LLM provider management routes. |
-| `api\sandbox.py` | **Sandbox** | Docker sandbox control routes. |
-| `api\tracking.py` | **Tracking** | Tracking API endpoints - BudgetManager integration for cost dashboard. |
-| `api\workspace.py` | **Workspace** | Workspace file operations. |
-| `arbormind\__init__.py` | **  Init  ** | ArborMind Framework - Core Package |
-| `arbormind\evolution.py` | **Evolution** | ArborMind Evolution Layer |
-| `arbormind\explorer.py` | **Explorer** | E-AM: Exploratory ArborMind - Foreign Pattern Injection. |
-| `arbormind\metrics_collector.py` | **Metrics Collector** | ArborMind Metrics Collector |
-| `arbormind\router.py` | **Router** | ArborMind Router - Attention-based routing for intelligent decision making. |
-| `arbormind\t_am_operators.py` | **T Am Operators** | No description available |
-| `arbormind\v_value_schema.py` | **V Value Schema** | No description available |
-| `core\__init__.py` | **  Init  ** | Core module - Application constants, configuration, and shared types. |
-| `core\arbormind_paths.py` | **Arbormind Paths** | Centralized ArborMind Storage Paths |
-| `core\config.py` | **Config** | Application configuration - single source of truth for all settings. |
-| `core\constants.py` | **Constants** | Application constants - all magic numbers and strings in one place. |
-| `core\exceptions.py` | **Exceptions** | Custom exceptions for the application. |
-| `core\failure_boundary.py` | **Failure Boundary** | Failure boundary enforcer. |
-| `core\integration.py` | **Integration** | Integration Manager logic ported from legacy agents/integration.py. |
-| `core\logging.py` | **Logging** | No description available |
-| `core\step_outcome.py` | **Step Outcome** | Canonical step-level outcome types. |
-| `core\types.py` | **Types** | Shared type definitions used across the application. |
-| `db\__init__.py` | **  Init  ** | Database module. |
-| `handlers\__init__.py` | **  Init  ** | Workflow step handlers - one function per workflow step. |
-| `handlers\_add_confidence_metric.py` | ** Add Confidence Metric** | No description available |
-| `handlers\_implement_learning.py` | ** Implement Learning** | No description available |
-| `handlers\_patch_backend_models.py` | ** Patch Backend Models** | No description available |
-| `handlers\_patch_contracts.py` | ** Patch Contracts** | No description available |
-| `handlers\_patch_marcus_prompt.py` | ** Patch Marcus Prompt** | No description available |
-| `handlers\analysis.py` | **Analysis** | Step 1: Marcus analyzes user intent. |
-| `handlers\archetype_guidance.py` | **Archetype Guidance** | Archetype-Specific UI Guidance for Frontend Mock Generation. |
-| `handlers\architecture.py` | **Architecture** | Step 2: Victoria creates architecture plan with Marcus supervision. |
-| `handlers\backend.py` | **Backend** | Backend steps: models, routers, and main configuration. |
-| `handlers\backend_models.py` | **Backend Models** | Backend Models Handler (Phase 3) |
-| `handlers\base.py` | **Base** | Shared utilities for workflow handlers. |
-| `handlers\contracts.py` | **Contracts** | Step 5: Marcus creates API contracts AFTER seeing the frontend mock. |
-| `handlers\frontend_integration.py` | **Frontend Integration** | Step 10: Derek replaces mock data with real API calls. |
-| `handlers\frontend_mock.py` | **Frontend Mock** | Step 3: Derek creates frontend with MOCK DATA first. |
-| `handlers\preview.py` | **Preview** | Step 11: Launch preview with dynamic port allocation. |
-| `handlers\refine.py` | **Refine** | Refine Mode - Conversational Iteration (post-workflow). |
-| `handlers\screenshot_verify.py` | **Screenshot Verify** | Step 4: Visual QA - Screenshot verification after frontend mock. |
-| `handlers\testing_backend.py` | **Testing Backend** | Step 9: Derek tests backend using sandbox with Self-Healing. |
-| `handlers\testing_frontend.py` | **Testing Frontend** | Step 10: Luna runs E2E tests on the integrated frontend. |
-| `learning\__init__.py` | **  Init  ** | Learning module - Pattern memory, failure tracking, and quality improvement over time. |
-| `learning\failure_store.py` | **Failure Store** | Failure Memory & Learning System |
-| `learning\pattern_store.py` | **Pattern Store** | Pattern Memory & Learning System |
-| `learning\v_vector_store.py` | **V Vector Store** | V-Vector Learning Store |
-| `lib\__init__.py` | **  Init  ** | Library module - Shared utilities. |
-| `lib\monitoring.py` | **Monitoring** | No description available |
-| `lib\secrets.py` | **Secrets** | No description available |
-| `lib\websocket.py` | **Websocket** | No description available |
-| `llm\__init__.py` | **  Init  ** | LLM module - Unified interface for all LLM providers. |
-| `llm\adapter.py` | **Adapter** | Unified LLM adapter - single interface for all providers. |
-| `llm\prompt_management.py` | **Prompt Management** | PHASE 1: Prompt Management System |
-| `llm\prompts\__init__.py` | **  Init  ** | Agent prompts - organized by agent. |
-| `llm\prompts\derek.py` | **Derek** | Derek prompts - Full-Stack Developer. |
-| `llm\prompts\luna.py` | **Luna** | Luna prompts - QA Engineer. |
-| `llm\prompts\marcus.py` | **Marcus** | Marcus prompts - Lead AI Architect and Team Supervisor. |
-| `llm\prompts\victoria.py` | **Victoria** | Victoria prompts - Software Architect. |
-| `llm\providers\__init__.py` | **  Init  ** | LLM Providers - Individual provider implementations. |
-| `llm\providers\anthropic.py` | **Anthropic** | Anthropic Claude provider implementation. |
-| `llm\providers\gemini.py` | **Gemini** | Google Gemini provider implementation. |
-| `llm\providers\ollama.py` | **Ollama** | Ollama provider implementation. |
-| `llm\providers\openai.py` | **Openai** | OpenAI provider implementation. |
-| `main.py` | **Main** | GenCode Studio Backend - Clean Architecture |
-| `models\__init__.py` | **  Init  ** | No description available |
-| `models\deployment.py` | **Deployment** | No description available |
-| `models\project.py` | **Project** | No description available |
-| `models\snapshot.py` | **Snapshot** | No description available |
-| `models\workflow.py` | **Workflow** | No description available |
-| `orchestration\__init__.py` | **  Init  ** | FAST V2 Engine - Complete Workflow Overhaul |
-| `orchestration\artifact_contracts.py` | **Artifact Contracts** | Defines Required Artifacts + Validation Rules for FAST v2 |
-| `orchestration\artifact_types.py` | **Artifact Types** | Centralized Artifact Type Definitions |
-| `orchestration\backend_probe.py` | **Backend Probe** | BackendProbe: Environment-agnostic HTTP testing for backend services. |
-| `orchestration\budget_manager.py` | **Budget Manager** | BudgetManager for Gemini 2.5 Flash - Cost Controller for FAST Runs |
-| `orchestration\checkpoint.py` | **Checkpoint** | FAST v2 Checkpoint Manager |
-| `orchestration\context.py` | **Context** | Context selection for agents - only provide relevant files per step. |
-| `orchestration\contract_expansion.py` | **Contract Expansion** | Contract Expansion Manager |
-| `orchestration\contract_parser.py` | **Contract Parser** | ContractParser: Extract expected routes from contracts.md and test_api.py |
-| `orchestration\critical_step_barriers.py` | **Critical Step Barriers** | Hard Barriers: Prevent FAST from Continuing if Critical Steps Fail |
-| `orchestration\error_router.py` | **Error Router** | FAST v2 Error Router (Self-Evolving + AM) |
-| `orchestration\failure_classifier.py` | **Failure Classifier** | Strict failure classifier with explicit rules. |
-| `orchestration\fallback_api_agent.py` | **Fallback Api Agent** | Minimal JS API Client Generator (Used When Derek Fails) |
-| `orchestration\fallback_model_agent.py` | **Fallback Model Agent** | Fallback Model Generator - Single source of truth for model fallback generation. |
-| `orchestration\fallback_router_agent.py` | **Fallback Router Agent** | Minimal Router Generator (Used When Derek Fails) |
-| `orchestration\fast_orchestrator.py` | **Fast Orchestrator** | FAST v2 Orchestrator - Main Entry Point (OPTION A: Integrated with Existing Handlers) |
-| `orchestration\file_persistence.py` | **File Persistence** | FAST v2 File Persistence |
-| `orchestration\heal_helpers.py` | **Heal Helpers** | Healing Validation Utilities |
-| `orchestration\healing_budget.py` | **Healing Budget** | Global Healing Budget Controller |
-| `orchestration\healing_pipeline.py` | **Healing Pipeline** | HealingPipeline - High-level healing orchestrator |
-| `orchestration\healing_policy.py` | **Healing Policy** | HealingPolicy: Stateful policy engine for determining healing actions. |
-| `orchestration\isolation.py` | **Isolation** | Isolation manager with runtime enforcement. |
-| `orchestration\llm_output_integrity.py` | **Llm Output Integrity** | LLM Output Structural Integrity Validator — Python 3.12 |
-| `orchestration\prompt_adapter.py` | **Prompt Adapter** | FAST v2 Prompt Adapter |
-| `orchestration\retry_policy.py` | **Retry Policy** | CHANGE C: Brief retry for environment failures. |
-| `orchestration\router_utils.py` | **Router Utils** | Router Wiring Utilities - Single source of truth for router detection. |
-| `orchestration\self_healing_manager.py` | **Self Healing Manager** | Self-Healing Workflow Manager (HYBRID VERSION - Phase 1 & 2) |
-| `orchestration\state.py` | **State** | Workflow state management. |
-| `orchestration\step_contracts.py` | **Step Contracts** | FAST v2 Step Contracts |
-| `orchestration\structural_compiler.py` | **Structural Compiler** | Compiler-Layer Structural Validator (Python + JS) — Python 3.12 |
-| `orchestration\task_graph.py` | **Task Graph** | FAST v2 Task Graph - Fixed Pipeline with Dependencies |
-| `orchestration\token_policy.py` | **Token Policy** | Step-specific token allocation policies. |
-| `orchestration\utils.py` | **Utils** | Workflow utilities - shared helper functions. |
-| `orchestration\wiring_utils.py` | **Wiring Utils** | Wiring Utilities - Handles injection of content into main.py. |
-| `persistence\__init__.py` | **  Init  ** | Persistence module - file writing with validation. |
-| `persistence\filesystem.py` | **Filesystem** | No description available |
-| `persistence\validator.py` | **Validator** | Output validation before persistence. |
-| `persistence\writer.py` | **Writer** | File persistence with safety checks. |
-| `sandbox\__init__.py` | **  Init  ** | GenCode Studio - Docker Sandbox Manager |
-| `sandbox\health_monitor.py` | **Health Monitor** | Health Monitor |
-| `sandbox\log_streamer.py` | **Log Streamer** | Log Streamer |
-| `sandbox\pool.py` | **Pool** | Docker Sandbox Pool - Pre-warmed Container Management |
-| `sandbox\preview_manager.py` | **Preview Manager** | Preview Manager |
-| `sandbox\sandbox_config.py` | **Sandbox Config** | Sandbox Configuration |
-| `sandbox\sandbox_manager.py` | **Sandbox Manager** | Docker Sandbox Manager - Main Orchestrator |
-| `supervision\__init__.py` | **  Init  ** | Marcus supervision system. |
-| `supervision\quality_gate.py` | **Quality Gate** | Quality gate - blocks workflow if quality is too low. |
-| `supervision\supervisor.py` | **Supervisor** | Marcus supervision of agent output. |
-| `supervision\tiered_review.py` | **Tiered Review** | Tiered Review System - Smart quality gates based on file criticality. |
-| `tools\__init__.py` | **  Init  ** | Tools module - actions agents can take. |
-| `tools\catalog.py` | **Catalog** | No description available |
-| `tools\implementations.py` | **Implementations** | GenCode Studio – Complete Tool System (Full Production Version) |
-| `tools\patching.py` | **Patching** | Centralized Patching Utilities. |
-| `tools\registry.py` | **Registry** | Tool registry - routes tool calls to implementations. |
-| `tools\specs.py` | **Specs** | No description available |
-| `tools\tool_policy.py` | **Tool Policy** | Tool policy - Filtering and selection logic for tools. |
-| `tracking\__init__.py` | **  Init  ** | Tracking module - placeholder for BudgetManager. |
-| `tracking\memory.py` | **Memory** | No description available |
-| `tracking\metrics.py` | **Metrics** | Code quality metrics tracking. |
-| `tracking\quality.py` | **Quality** | Quality score tracking. |
-| `utils\__init__.py` | **  Init  ** | Utility modules for GenCode Studio. |
-| `utils\component_copier.py` | **Component Copier** | Just-in-Time Shadcn Component Copier |
-| `utils\dependency_fixer.py` | **Dependency Fixer** | Dependency Auto-Fixer for Backend Testing |
-| `utils\entity_classification.py` | **Entity Classification** | Dynamic Entity Classification System |
-| `utils\entity_discovery.py` | **Entity Discovery** | Centralized Entity Discovery Utility |
-| `utils\integration_playbooks.py` | **Integration Playbooks** | No description available |
-| `utils\parser.py` | **Parser** | No description available |
-| `utils\path_utils.py` | **Path Utils** | Centralized Path Utilities - Single source of truth for project path resolution. |
-| `utils\regex_healer.py` | **Regex Healer** | Patcher for common test failures using Regex. |
-| `utils\test_scaffolding.py` | **Test Scaffolding** | Utilities for generating robust frontend tests. |
-| `utils\ui_beautifier.py` | **Ui Beautifier** | UI Beautifier - Post-processes frontend files to ensure consistency. |
-| `validation\__init__.py` | **  Init  ** | Validation Module - Single Entry Point for All Validation. |
-| `validation\static_validator.py` | **Static Validator** | Static validator - Evidence-based verification without execution. |
-| `validation\syntax_validator.py` | **Syntax Validator** | PRE-FLIGHT VALIDATION - Layer 1 Quality Gate |
-| `workflow\__init__.py` | **  Init  ** | Workflow module - Orchestrates the GenCode Studio workflow engine. |
-| `workflow\engine.py` | **Engine** | Workflow Engine - The main orchestration loop. |
-| `workflow\integration_example.py` | **Integration Example** | Example of how to integrate Phase 1 outcome aggregation. |
-| `workflow\outcome_aggregator.py` | **Outcome Aggregator** | Aggregates step outcomes into workflow status. |
+================================================================================
+
+
+================================================================================
+## app/agents/
+================================================================================
+
+### sub_agents.py (32,523 bytes)
+
+**Docstring:** Sub-agent wrappers: Derek (backend QA), Luna (frontend QA), Victoria (architecture).  SELF-EVOLVING: File and tool selection decisions are tracked and outcomes reported to enable learning over time.  Each sub-agent:  - Uses the integration adapter LLM to generate tests (pytest / Playwright).  - Writ...
+
+**Classes:** 0 | **Functions:** 10
+
+**Top-level Functions:**
+- `async _broadcast_agent_thinking()` (line 31): Broadcast agent thinking to the frontend Terminal.
+- `async _llm_generate_tests()` (line 56): Ask LLM to generate tests given the current project files. Returns parsed JSON {
+- `_write_tests_to_workspace()` (line 160): Persist generated tests into workspace and return list of written paths.
+- `async _run_pytest()` (line 176): Run pytest programmatically via async subprocess. Returns structured dict: passe
+- `async _run_playwright()` (line 219): Try to run playwright tests via CLI 'playwright test' (async). Returns structure
+- `async run_sub_agent()` (line 259): Generic runner for a sub-agent: - Ask LLM to produce tests - Persist them - Atte
+- `async marcus_call_sub_agent()` (line 324): Marcus uses this to call Derek/Luna/Victoria for code generation.  Uses full age
+
+---
+
+
+================================================================================
+## app/api/
+================================================================================
+
+### agents.py (1,347 bytes)
+
+**Docstring:** Agent status routes.
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `async get_agents_status()` (line 13): Get status of all agents.
+- `async get_active_workflows()` (line 42): Get list of active workflows.
+
+---
+
+### deployment.py (7,959 bytes)
+
+**Docstring:** Deployment routes.
+
+**Classes:** 4 | **Functions:** 13
+
+**Classes:**
+- `DeploymentInitRequest` (line 17)
+- `DeploymentRequest` (line 24)
+- `EnvVarsRequest` (line 30)
+- `DomainRequest` (line 34)
+
+**Top-level Functions:**
+- `async initialize_deployment()` (line 39): Initialize a new deployment.
+- `async start_deployment()` (line 67): Start one-click deployment.
+- `async get_deployment_status()` (line 95): Get deployment status.
+- `async get_deployment_history()` (line 118): Get deployment history.
+- `async rollback_deployment()` (line 137): Rollback to previous version.
+- `async update_env_vars()` (line 152): Update environment variables.
+- `async get_env_vars()` (line 169): Get environment variables.
+- `async setup_custom_domain()` (line 179): Setup custom domain.
+- `async get_deployment_logs()` (line 197): Get deployment logs.
+- `async download_logs()` (line 209): Download deployment logs as file.
+- `async restart_deployment()` (line 221): Restart deployment.
+- `async get_deployment_metrics()` (line 232): Get deployment metrics.
+- `async get_container_health()` (line 243): Get container health status.
+
+---
+
+### health.py (501 bytes)
+
+**Docstring:** Health check endpoints.
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `async healthz()` (line 12): Simple health check.
+- `async api_health()` (line 18): API health check.
+
+---
+
+### projects.py (7,935 bytes)
+
+**Docstring:** Project management routes.  NOTE: The workflow is NOT started here. It is started via the  /api/workspace/{id}/generate/backend endpoint to prevent duplicates.
+
+**Classes:** 2 | **Functions:** 5
+
+**Classes:**
+- `CreateProjectRequest` (line 21)
+- `ProjectResponse` (line 27)
+
+**Top-level Functions:**
+- `async create_project()` (line 40): Create a new project.   NOTE: This endpoint only creates the project directory. 
+- `async list_projects()` (line 129): List all projects.
+- `async get_project()` (line 179): Get project details.
+- `async delete_project()` (line 226): Delete a project.
+
+---
+
+### providers.py (4,095 bytes)
+
+**Docstring:** LLM provider management routes.
+
+**Classes:** 2 | **Functions:** 4
+
+**Classes:**
+- `ProviderInfo` (line 14)
+- `SetProviderRequest` (line 106)
+
+**Top-level Functions:**
+- `async list_providers()` (line 21): List available LLM providers.
+- `async get_available_providers()` (line 54): Get list of available providers (those with API keys configured).
+- `async get_current_provider()` (line 98): Get current default provider and model.
+- `async set_provider()` (line 116): Set the current provider and model.
+
+---
+
+### sandbox.py (4,313 bytes)
+
+**Docstring:** Docker sandbox control routes.
+
+**Classes:** 1 | **Functions:** 6
+
+**Classes:**
+- `ExecRequest` (line 12)
+
+**Top-level Functions:**
+- `async sandbox_exec()` (line 20): Execute command in sandbox.
+- `async get_sandbox_status()` (line 39): Get sandbox status for a project.
+- `async create_sandbox()` (line 53): Create/initialize sandbox for a project (idempotent).
+- `async start_sandbox()` (line 77): Start sandbox for a project.
+- `async stop_sandbox()` (line 91): Stop sandbox for a project.
+- `async get_preview_url()` (line 105): Get preview URL for a project sandbox.
+
+---
+
+### tracking.py (1,679 bytes)
+
+**Docstring:** Tracking API endpoints - BudgetManager integration for cost dashboard.
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `async health()` (line 16): Health check for tracking service.
+- `async get_project_costs()` (line 22): Get cost/token usage data for a project.  Returns data in the format expected by
+- `async get_project_budget()` (line 38): Get budget status for a project.  Returns current budget status including: - use
+- `async list_tracked_projects()` (line 52): List all projects with budget tracking.
+
+---
+
+### workspace.py (17,633 bytes)
+
+**Docstring:** Workspace file operations.
+
+**Classes:** 4 | **Functions:** 16
+
+**Classes:**
+- `FileContent` (line 61)
+- `GenerateRequest` (line 66)
+- `ResumeRequest` (line 73)
+- `ApplyInstructionRequest` (line 355)
+
+**Top-level Functions:**
+- `validate_project_id()` (line 29): Validate project_id format to prevent path traversal attacks. Only allows alphan
+- `get_safe_project_path()` (line 39): Get project path with security validation. Raises HTTPException if project_id is
+- `async list_workspaces()` (line 78): List all workspaces (for connection test).
+- `async get_workspace_files()` (line 92): Get workspace file tree.
+- `async get_file_content()` (line 128): Get file content.
+- `async save_file_content()` (line 158): Save file content.
+- `async generate_backend()` (line 182): Start backend generation workflow.  Resume Modes: - "auto": Check for saved prog
+- `async resume_workflow_endpoint()` (line 297): Resume a paused workflow OR start a refine workflow for completed projects.  Del
+- `async apply_instruction()` (line 360): Apply an instruction to modify project files.
+- `async force_reset_workflow()` (line 373): Force reset workflow state for a project. Use this if a workflow crashed and lef
+- `async get_project_progress()` (line 391): Get workflow progress for a project.  Returns: - completed_steps: List of steps 
+- `async clear_project_progress()` (line 429): Clear all saved progress for a project. Use this to force a fresh start on next 
+- `async force_stop_workflow()` (line 450): Force stop a stuck workflow.  Use this when a workflow is marked as running but 
+
+---
+
+
+================================================================================
+## app/arbormind/cognition/
+================================================================================
+
+### branch.py (2,896 bytes)
+
+**Classes:** 3 | **Functions:** 4
+
+**Classes:**
+- `BranchStatus` (line 8)
+- `ExecutionState` (line 14)
+- `Branch` (line 21)
+
+---
+
+### convergence.py (4,737 bytes)
+
+**Docstring:** Convergence State System  PHASE 6: Define when the system is DONE. ArborMind finishes when it should, not when it's perfect.  Completion ≠ "everything passed" Completion = "sufficient artifacts + not diverging"  Tests increase CONFIDENCE, not COMPLETION.
+
+**Classes:** 1 | **Functions:** 4
+
+**Classes:**
+- `ConvergenceState` (line 18): The cognitive state of a branch's progress.  This is ORTHOGONAL to success/failure. A branch can fai
+
+**Top-level Functions:**
+- `is_converged()` (line 33): Check if a branch has converged (ready for completion).  PHASE 6: Convergence cr
+- `get_completion_confidence()` (line 66): Calculate completion confidence (0.0 - 1.0).  Higher confidence = more optional 
+- `should_preview()` (line 107): Check if a branch is ready for preview.  PHASE 6: Preview is allowed earlier. Pr
+- `get_missing_for_convergence()` (line 130): Get list of steps missing for convergence.  Useful for guiding next action selec
+
+---
+
+### divergence.py (840 bytes)
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `generate_child_branches()` (line 5): PURE helper. Turns variant descriptors into child Branch objects.
+
+---
+
+### entropy.py (3,856 bytes)
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `estimate_entropy()` (line 10)
+- `update_entropy()` (line 44): Update branch entropy and convergence state based on direction.  This is KEY: we
+
+---
+
+### execution_report.py (393 bytes)
+
+**Classes:** 1 | **Functions:** 1
+
+**Classes:**
+- `ExecutionReport` (line 4)
+
+---
+
+### failures.py (3,840 bytes)
+
+**Docstring:** Failure Classification System  Failures are SIGNALS, not execution grenades. The orchestrator decides what to do with them.  INVARIANTS: - Non-fatal failures allow branch continuation - Fatal failures terminate the branch - Severity is CENTRALIZED here (no scatter)
+
+**Classes:** 2 | **Functions:** 5
+
+**Classes:**
+- `FailureSeverity` (line 19): How severely a failure affects branch execution.  NON_FATAL: Branch can continue with recovery/mutat
+- `InvariantViolation` (line 77): Structured failure result from invariant checks.  IMPORTANT: This is NOT an exception. Invariants RE
+
+**Top-level Functions:**
+- `get_failure_severity()` (line 61): Get the severity of a failure code.  Unknown failures are treated as NON_FATAL b
+- `is_fatal()` (line 71): Check if a failure code is fatal.
+
+---
+
+### lineage.py (12,286 bytes)
+
+**Docstring:** Artifact Lineage Binding  THE MISSING LINK: Immutable binding between Artifact → Branch → Action → Agent  Without this, you cannot: - Attribute convergence correctly - Prune branches safely - Compare two competing partial solutions - Learn which artifact patterns converge  INVARIANTS: - Lineage is I...
+
+**Classes:** 3 | **Functions:** 21
+
+**Classes:**
+- `LineageType` (line 26): What kind of artifact lineage this is.
+- `ArtifactLineage` (line 38): IMMUTABLE binding between Artifact → Branch → Action → Agent.  This is the provenance chain that ena
+- `LineageRegistry` (line 181): In-memory registry for artifact lineages.  Provides fast lookup for: - Artifacts by branch - Artifac
+
+**Top-level Functions:**
+- `generate_artifact_id()` (line 118): Generate a unique artifact ID from path, branch, and content.  Format: art_{path
+- `compute_content_hash()` (line 129): Compute SHA-256 hash of content.
+- `create_lineage()` (line 134): Create an immutable artifact lineage binding.  This is the FACTORY function for 
+- `get_lineage_registry()` (line 282): Get the global lineage registry.
+- `register_artifact_lineage()` (line 290): Register an artifact lineage in the global registry.
+- `get_artifacts_for_branch()` (line 295): Get all artifacts for a branch.
+- `get_artifacts_for_agent()` (line 300): Get all artifacts for an agent.
+- `get_branch_artifact_count()` (line 305): Get artifact count for a branch.
+
+---
+
+### partial_output.py (4,239 bytes)
+
+**Docstring:** Partial Output Handling  PHASE 4 CHANGE: Derek cannot fail for being useful. Partial artifacts that reduce entropy are SUCCESS, not FAILURE.  INVARIANTS: - Any output > 0 artifacts is progress - Quality is directional, not binary - Partial completion is allowed for most steps
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `allows_partial_output()` (line 49): Check if a step allows partial output.
+- `evaluate_progress()` (line 54): Evaluate if output represents progress.  Returns (is_progress, reason)  PHASE 4 
+- `should_mark_success()` (line 78): Determine if a step should be marked as successful.  PHASE 4 CHANGE: - artifacts
+- `calculate_entropy_delta()` (line 110): Calculate entropy change based on artifacts and failures.  Negative = entropy de
+
+---
+
+### tree.py (766 bytes)
+
+**Classes:** 1 | **Functions:** 5
+
+**Classes:**
+- `ArborMindTree` (line 5)
+
+---
+
+
+================================================================================
+## app/arbormind/core/
+================================================================================
+
+### archetypes.py (4,056 bytes)
+
+**Docstring:** ArborMind Archetypes ====================  Archetypes are STRUCTURED PRIORS, not decisions.  Rules: - Archetypes are DATA ONLY - Archetypes never route execution - Archetypes live ONLY inside Branch.assumptions - Archetypes may be diverged, inhibited, mutated, or abandoned
+
+**Classes:** 1 | **Functions:** 3
+
+**Classes:**
+- `Archetype` (line 17): Immutable archetype template. Safe to copy into Branch.assumptions.
+
+**Top-level Functions:**
+- `get_archetype()` (line 144): Lookup helper. No defaults, no fallback decisions.
+
+---
+
+### epistemic_guard.py (5,395 bytes)
+
+**Docstring:** ArborMind Epistemic Guard - Core Truth Protection (Formerly boundary.py)  REQUIREMENT 1: Hard Epistemic Boundary (Non-Negotiable)  This module enforces the separation between: - OBSERVATION (what happened) → CAN be read by anyone (Fact) - COGNITION DATA (decisions, verdicts, confidence) → PRIVATE to...
+
+**Classes:** 1 | **Functions:** 3
+
+**Classes:**
+- `EpistemicBoundaryViolation` (line 52): Raised when code attempts to cross the epistemic boundary. This is a HARD failure - not recoverable.
+
+**Top-level Functions:**
+- `assert_not_cognition_data()` (line 60): Assert that a table is not cognition data. Call this before any 'truth extractio
+- `assert_no_forbidden_columns()` (line 72): Assert that no forbidden columns are being accessed.
+- `print_boundary_info()` (line 114): Print boundary documentation to stdout.
+
+---
+
+### execution_mode.py (10,927 bytes)
+
+**Docstring:** ExecutionMode: Cognitive Primitive for Step Execution  ArborMind declares the mode. FAST-V2 enforces it.  Phase-1 Stabilization: This is the foundation.
+
+**Classes:** 2 | **Functions:** 9
+
+**Classes:**
+- `ExecutionMode` (line 14): Execution modes define HOW a step should execute.  - ARTIFACT: Must produce HDAP-formatted files, st
+- `ExecutionPolicy` (line 29): Execution policy defines WHAT to do when a step fails.  Separate from ExecutionMode (which defines H
+
+**Top-level Functions:**
+- `is_telemetry_only_tool()` (line 175): Check if a tool is telemetry-only (observation, not enforcement).
+- `get_execution_policy()` (line 180): Get the execution policy for a step.  SOURCE OF TRUTH for step execution behavio
+- `should_enforce_hdap()` (line 206): Quick check: Does this step require HDAP enforcement?
+- `is_step_fatal()` (line 214): Quick check: Should failure in this step halt the workflow?
+- `is_generation_step()` (line 251): Check if this step generates files (uses LLM).
+- `is_execution_step()` (line 257): Check if this step is execution-only (no LLM generation).
+- `requires_runtime()` (line 263): Check if this step requires runtime to be running.
+- `should_skip_if_runtime_down()` (line 269): PHASE B2: Steps that should skip execution if runtime is not running. Returns Tr
+
+---
+
+### explorer.py (491 bytes)
+
+**Docstring:** E-AM: Exploratory ArborMind Module --------------------------------- Phase 4: Divergence Adapter.
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `generate_variants()` (line 11): Phase 4 adapter. Returns shallow variants WITHOUT decisions.
+
+---
+
+### lockfile.py (8,796 bytes)
+
+**Docstring:** ═══════════════════════════════════════════════════════════════════════════════ PHASE E1: GENERATION LOCKFILE SYSTEM  Purpose: Eliminate redundant LLM calls for unchanged inputs.  How it works: 1. Before calling subagentcaller, hash the inputs 2. Check if arbormind.lock.json has a matching hash 3. I...
+
+**Classes:** 0 | **Functions:** 10
+
+**Top-level Functions:**
+- `_get_lockfile_path()` (line 35): Get the lockfile path for a project.
+- `_compute_input_hash()` (line 40): Compute a deterministic hash of inputs for a step.  This hash changes when: - Us
+- `load_lockfile()` (line 71): Load the lockfile for a project.
+- `save_lockfile()` (line 92): Save the lockfile for a project.
+- `check_cache_hit()` (line 106): Check if we have a valid cache hit for this step.  Returns:     - Cached result 
+- `record_step_completion()` (line 147): Record a step completion in the lockfile.  Called after LLM successfully generat
+- `invalidate_step()` (line 175): Invalidate cache for a specific step.
+- `invalidate_all()` (line 185): Invalidate all cached steps (full rebuild).
+- `get_lockfile_summary()` (line 194): Get a summary of cached steps for debugging.
+- `should_skip_generation()` (line 212): Check if this generation step should be skipped (cache hit).  Returns:     (shou
+
+---
+
+### retry_policy.py (4,470 bytes)
+
+**Docstring:** Phase-1 Retry Policy  Hardened retry prompts for ARTIFACT steps that fail to produce output. These are NOT negotiable, NOT modified at runtime, and step-specific.
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `get_retry_prompt()` (line 114): Get hardened retry prompt for a step.  Args:     step_name: Step that failed (e.
+- `has_retry_prompt()` (line 142): Check if a step has a defined retry prompt.
+
+---
+
+### synthesis.py (603 bytes)
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `synthesize()` (line 5)
+
+---
+
+### t_am_operators.py (3,209 bytes)
+
+**Docstring:** Transformational-ArborMind Operators ------------------------------------ PASSIVE OPERATOR DEFINITIONS ONLY.  These operators MUST NOT: - mutate live state - apply themselves - trigger retries or healing  They are descriptors ONLY.  # IMPORTANT: # T-AM operators operate ONLY on assumptions. # They m...
+
+**Classes:** 0 | **Functions:** 7
+
+**Top-level Functions:**
+- `relax_constraints()` (line 34)
+- `expand_edit_scope()` (line 43)
+- `downgrade_expectations()` (line 52)
+- `relax_architecture_constraints()` (line 63)
+- `narrow_problem_scope()` (line 69)
+- `switch_testing_strategy()` (line 75)
+- `mutate_archetype()` (line 81)
+
+---
+
+### tool_selector.py (1,988 bytes)
+
+**Docstring:** Tool Attention Mechanism (TAM)  Uses the consolidated tools.py as the single source of truth.
+
+**Classes:** 1 | **Functions:** 1
+
+**Classes:**
+- `SelectedTool` (line 18)
+
+**Top-level Functions:**
+- `select_tool()` (line 23): Tool Attention Mechanism (TAM)  RULES: - Agents NEVER choose tools - Selection i
+
+---
+
+
+================================================================================
+## app/arbormind/invariants/
+================================================================================
+
+### invariant.py (3,765 bytes)
+
+**Docstring:** Invariant System - Structural Guardrails  PHASE 2 CHANGE: Invariants now RETURN violations instead of RAISING exceptions. The orchestrator decides how to handle violations based on severity.  Old behavior (compiler-like): raise InvariantViolation → crash New behavior (cognitive): return Violation →...
+
+**Classes:** 2 | **Functions:** 5
+
+**Classes:**
+- `InvariantViolation` (line 21): DEPRECATED: Use StructuredViolation instead.  This exception is kept for backward compatibility but 
+- `Invariant` (line 32): A structural guardrail that returns violations instead of crashing.  INVARIANTS: - check() returns O
+
+**Top-level Functions:**
+- `check_all_invariants()` (line 93): Check all invariants and return list of violations.  This is the cognitive way: 
+- `has_fatal_violation()` (line 110): Check if any violation is fatal.
+
+---
+
+
+================================================================================
+## app/arbormind/memory/
+================================================================================
+
+### consolidator.py (999 bytes)
+
+**Docstring:** Memory Consolidator ===================  Extracts learning from a completed ArborMindTree.
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `consolidate_tree()` (line 12): Compress branch histories into global patterns.
+
+---
+
+### pattern_store.py (971 bytes)
+
+**Docstring:** Pattern Store =============  Global, passive memory. Stores compressed learnings across runs.  RULES: - Never decides - Never branches - Never executes
+
+**Classes:** 1 | **Functions:** 5
+
+**Classes:**
+- `PatternStore` (line 18)
+
+---
+
+
+================================================================================
+## app/arbormind/observation/
+================================================================================
+
+### execution_ledger.py (14,552 bytes)
+
+**Docstring:** ArborMind "Execution Ledger" PHASE 3: Pure Event Stream (Append-Only)  ONE RESPONSIBILITY:     Persist execution events exactly as they happened.  INVARIANTS: 1. NO Interpretation (no "decisions", only "events") 2. NO Updates (append-only history) 3. NO Reads (reconstruction only via external builde...
+
+**Classes:** 2 | **Functions:** 29
+
+**Classes:**
+- `EpistemicViolation` (line 133)
+- `ExecutionLedger` (line 136): Append-only event recorder. Ignorant of semantics.
+
+**Top-level Functions:**
+- `set_current_run_id()` (line 271)
+- `get_current_run_id()` (line 275)
+- `get_store()` (line 278)
+- `record_run_start()` (line 282)
+- `record_step_entry()` (line 285)
+- `record_step_exit()` (line 288)
+- `record_decision_event()` (line 291)
+- `record_failure_event()` (line 297)
+- `record_supervisor_event()` (line 300)
+- `record_snapshot()` (line 304)
+- `record_artifact_event()` (line 307): Record artifact birth/modification at materialization boundary.
+- `record_tool_trace()` (line 311): Record tool invocation trace for cost/duration attribution.
+- `update_decision_outcome()` (line 317)
+- `record_failure()` (line 321)
+
+---
+
+### failure_canon.py (12,084 bytes)
+
+**Docstring:** ArborMind Failure Class Canon (F1–F9)  REQUIREMENT 3: Failure Class Canon as Law  Properties: - Finite alphabet (exactly 9 classes) - One and only one primary class per failure - Immutable definitions - Code-defined, versioned, referenced by ID  INVARIANT: This file defines the ONLY legal failure cl...
+
+**Classes:** 3 | **Functions:** 3
+
+**Classes:**
+- `FailureClass` (line 29): The 9 canonical failure classes.  Referenced by ID (e.g., F1, F2), not by text. Each has exactly one
+- `FailureScope` (line 93): REQUIREMENT 5: Explicit Scope Assignment  Every failure MUST declare where truth lives. No inference
+- `FailureClassDefinition` (line 115): Immutable definition of a failure class.  These are the canonical definitions. They cannot be change
+
+**Top-level Functions:**
+- `get_failure_class()` (line 198): Get FailureClass by ID string (e.g., "F1").  Returns None if not found (illegal 
+- `get_definition()` (line 210): Get the canonical definition for a failure class.
+- `validate_class_id()` (line 215): Check if a class ID is legal.
+
+---
+
+### failure_ontology.py (17,226 bytes)
+
+**Docstring:** ArborMind 7-Axis Canonical Failure Ontology  Phase 3.5: Semantic Stratification  This module defines the 7 orthogonal axes for classifying failures. Each axis is independent — no axis may be inferred from another.  CORE PRINCIPLE:     "Name reality exactly as it is."      INVARIANTS:     - All enums...
+
+**Classes:** 8 | **Functions:** 3
+
+**Classes:**
+- `ExecutionLayer` (line 51): Where in the execution stack did the failure occur?  This axis replaces the overloaded meaning curre
+- `AuthorityBoundary` (line 86): Who had authority over the action that failed?  Authority is NEVER inferred from failure content. It
+- `GatingSemantics` (line 117): Does this failure affect run success semantics?  THIS IS THE CRITICAL AXIS that resolves the paradox
+- `TruthDomain` (line 154): What kind of truth was violated?  This prevents validators from masquerading as execution failures. 
+- `TemporalPosition` (line 191): When did the failure occur relative to artifact materialization?  This is critical for distinguishin
+- `ArtifactImpact` (line 220): What did the failure affect in terms of artifacts?  Artifact validity is NOT inferred from this axis
+- `RepeatabilitySignature` (line 251): Is this failure stable/repeatable?  This is observational only — it does NOT enable retries. It exis
+- `FailureOntologyClassification` (line 281): Complete 7-axis classification of a failure.  Immutable once created. All axes are mandatory for new
+
+---
+
+### failure_record.py (4,325 bytes)
+
+**Docstring:** ArborMind Failure Record - Pure Semantic Structure (Phase 3.5)  This module defines the canonical shape of a failure failure. It is a PURE DATA STRUCTURE module. It does not access databases.  REQUIREMENTS IMPLEMENTED: 1. Explicit Scope Assignment (Requirement 5) 2. 7-Axis Failure Ontology (Phase 3....
+
+**Classes:** 1 | **Functions:** 2
+
+**Classes:**
+- `FailureRecord` (line 31): A single failure record.  This is the canonical shape of a failure. All fields are required at const
+
+---
+
+### failure_semantics.py (14,264 bytes)
+
+**Docstring:** Failure Semantics Decomposition v1  ONTOLOGICALLY SOUND SEMANTIC CLASSES: - F7_RUNTIME_EXCEPTION: Tool executed but crashed internally (Execution plane) - F8_TOOL_CONTRACT_VIOLATION: Tool invoked with missing/invalid inputs (Topology plane) - F9_TOOL_ENVIRONMENT_MISSING: Tool unavailable in runtime...
+
+**Classes:** 2 | **Functions:** 7
+
+**Classes:**
+- `SemanticClass` (line 44): Ontologically sound semantic failure classes.  Each class lives in a different causal plane: - EXECU
+- `SemanticClassification` (line 120): Result of classifying a failure.
+
+**Top-level Functions:**
+- `classify_failure()` (line 128): Classify a failure into a semantic class.  PURE FUNCTION: No side effects, deter
+- `_get_db_path()` (line 173): Get path to failure memory database.
+- `_ensure_schema()` (line 179): Ensure failure_semantics table exists.
+- `record_semantic_classification()` (line 185): Record a semantic classification (append-only).  NEVER raises - observability sh
+- `reclassify_all_failures()` (line 221): Re-run classification on all existing failures.  This is safe because: - Append-
+- `get_semantic_stats()` (line 278): Get count of failures by semantic class.
+- `get_failures_by_class()` (line 303): Get recent failures of a specific semantic class.
+
+---
+
+### interpretation_context.py (12,092 bytes)
+
+**Docstring:** ArborMind Interpretation Context - Temporal Truth Invariance  THE PROBLEM: Storing "what failed" is not enough if the meaning of that failure can change when the system evolves.  WHAT MUST BE FROZEN at the time of each failure: 1. Signal extractor version + rules hash 2. Active invariants (which rul...
+
+**Classes:** 4 | **Functions:** 16
+
+**Classes:**
+- `SignalExtractorContext` (line 53): Frozen snapshot of signal extractor rules.  If the regex patterns or extraction logic changes, the h
+- `CanonContext` (line 99): Frozen snapshot of failure class definitions.  If the meaning of F1-F9 changes, the hash changes.
+- `ScopeContext` (line 135): Frozen snapshot of scope semantics.  If the meaning of ENTITY_LOCAL, STEP_LOCAL, etc. changes, the h
+- `InterpretationContext` (line 174): Complete frozen interpretation context.  This is what gets stored with each failure to guarantee tem
+
+**Top-level Functions:**
+- `get_current_context()` (line 267): Get current interpretation context (cached per session).  Recomputed if underlyi
+- `get_context_hash()` (line 285): Get just the context hash (lightweight check).
+- `get_context_json()` (line 290): Get context as JSON string for storage.
+- `verify_context_compatibility()` (line 299): Check if a stored context hash matches current context.  If False, the stored fa
+- `context_drift_warning()` (line 309): Generate a warning message if context has drifted.  Returns None if contexts mat
+
+---
+
+### observer.py (7,900 bytes)
+
+**Docstring:** ArborMind Observer - Passive event recorder with SQLite persistence.  INVARIANT: Observer MUST NOT affect execution decisions. INVARIANT: Observer MUST NOT block on I/O. INVARIANT: All writes are best-effort (failures swallowed).
+
+**Classes:** 1 | **Functions:** 10
+
+**Classes:**
+- `ArborMindObserver` (line 23): Passive observer that records execution events.  This class has ZERO cognitive authority. It only wa
+
+**Top-level Functions:**
+- `get_observer()` (line 173): Get singleton observer instance.
+- `record_event()` (line 185): Phase 9: Observation-only logging.  HARD GUARANTEES: - Never blocks execution - 
+- `observe_step_start()` (line 214): Record start of a step execution.
+- `observe_step_success()` (line 225): Record successful step completion.
+- `observe_step_failure()` (line 236): Record step failure with categorization.
+
+---
+
+### ontology_classifier.py (25,711 bytes)
+
+**Docstring:** ArborMind Ontology Classifier  Deterministically classifies failures across all 7 axes.  INVARIANTS:     - PURE FUNCTION: No side effects     - DETERMINISTIC: Same input → same output (always)     - NO LLM: Pattern matching only     - NO HEURISTICS WITH INTENT: Rules are explicit     - ORDER-STABLE:...
+
+**Classes:** 0 | **Functions:** 6
+
+**Top-level Functions:**
+- `extract_tool_from_error()` (line 224): Extract tool name from error message.  Looks for patterns like: - Tool 'syntaxva
+- `detect_temporal_position()` (line 256): Determine when failure occurred relative to artifact materialization.  PURE FUNC
+- `detect_repeatability()` (line 277): Determine repeatability signature from error message.  PURE FUNCTION: Pattern ma
+- `detect_artifact_impact()` (line 305): Determine artifact impact from other axes and artifact count.  PURE FUNCTION: No
+- `recommend_fclass()` (line 341): Recommend F-class based on ontology classification.  This may reclassify F7 → F1
+- `classify_failure_ontology()` (line 366): Deterministically classify a failure across all 7 axes.  PURE FUNCTION: - No sid
+
+---
+
+### ontology_migration.py (18,302 bytes)
+
+**Docstring:** ArborMind Ontology Migration  Re-classifies historical failures with the 7-axis ontology.  SAFETY GUARANTEES:     - Updates existing records (doesn't delete)     - Tracks ontology_version for audit trail     - Deterministic (can re-run safely)     - Backward compatible (old code ignores new columns)...
+
+**Classes:** 0 | **Functions:** 8
+
+**Top-level Functions:**
+- `_get_failure_memory_db()` (line 47): Get path to failure_memory.db.
+- `check_schema_v3_exists()` (line 94): Check if schema v3 columns already exist.
+- `apply_schema_v3()` (line 101): Apply schema v3 migration (adds 7-axis columns).  Returns True if migration was 
+- `backfill_ontology_classification()` (line 143): Re-classify all existing failures with ontology axes.  SAFE because: - Updates e
+- `get_ontology_stats()` (line 281): Get distribution statistics for ontology axes.  Returns counts for each axis val
+- `get_non_gating_failures()` (line 374): Get failures that are NON_GATING (telemetry only).  These are the failures that 
+- `get_true_f7_failures()` (line 403): Get TRUE F7 failures (after ontology reclassification).  Excludes observation la
+- `main()` (line 438): CLI entry point for ontology migration.
+
+---
+
+### run_event.py (2,082 bytes)
+
+**Docstring:** Immutable event record for ArborMind execution.  INVARIANT: Events are append-only and never mutated.
+
+**Classes:** 1 | **Functions:** 1
+
+**Classes:**
+- `RunEvent` (line 14): Immutable record of a single execution event.  Attributes:     run_id: Unique identifier for the ent
+
+---
+
+### schemas.py (13,987 bytes)
+
+**Docstring:** ArborMind SQLite Schemas - Ground Truth Execution Memory  INVARIANT: This is APPEND-ONLY telemetry, not intelligence. INVARIANT: No reads during execution (except Phase 5 executive reads). INVARIANT: No prompts or embeddings stored.
+
+**Classes:** 0 | **Functions:** 0
+
+---
+
+### signal_extractor.py (12,418 bytes)
+
+**Docstring:** ArborMind Signal Extractor - Dumb Tokenization Only  REQUIREMENT 4: Signal Extraction Without Interpretation  This module extracts ATOMIC SIGNALS from raw failure data.  Rules: - No LLM - No heuristics with intent - No collapsing - No summarization - If a human would argue about it → it's illegal  S...
+
+**Classes:** 4 | **Functions:** 13
+
+**Classes:**
+- `SignalType` (line 34): Types of atomic signals that can be extracted.  Each type has exactly one extraction rule.
+- `AtomicSignal` (line 72): A single, atomic, immutable signal.  Properties: - Hashable (can be counted) - Immutable (frozen dat
+- `SignalExtractionResult` (line 107): Result of signal extraction.  Contains: - List of atomic signals (ordered by extraction) - Deduped s
+- `SignalExtractor` (line 139): Dumb signal extractor.  No heuristics. No interpretation. Just pattern matching.  Same input → same 
+
+**Top-level Functions:**
+- `extract_signals()` (line 348): Convenience function for error signal extraction.
+- `extract_diff_signals()` (line 353): Convenience function for diff signal extraction.
+- `tokenize_error()` (line 358): Convenience function for error tokenization.
+
+---
+
+### step_state_snapshot.py (11,441 bytes)
+
+**Docstring:** Step State Snapshot (SSS) - Phase 3 Primitive  PURPOSE: Capture workspace state at step entry and exit.          Pure observation, no semantics.  ═══════════════════════════════════════════════════════════════════════════════ NON-NEGOTIABLE CONSTRAINTS ═══════════════════════════════════════════════...
+
+**Classes:** 1 | **Functions:** 9
+
+**Classes:**
+- `StepStateSnapshot` (line 42): Immutable workspace state at a moment in time.  No semantics. Just facts.
+
+**Top-level Functions:**
+- `compute_paths_hash()` (line 66): Hash of sorted artifact paths.
+- `compute_workspace_hash()` (line 73): Hash of workspace state (paths + sizes).
+- `capture_workspace_state()` (line 81): Capture current workspace artifact inventory.  Returns:     (manifest, artifact_
+- `create_snapshot()` (line 124): Create a step state snapshot.  Pure function - no side effects, no database writ
+- `record_step_state_snapshot()` (line 154): Record a step state snapshot to database.  MUST NEVER CRASH EXECUTION. Fire-and-
+- `record_step_entry()` (line 195): Record workspace state at step entry.  Call this BEFORE step execution begins.
+- `record_step_exit()` (line 213): Record workspace state at step exit.  Call this AFTER step execution completes (
+- `get_step_snapshots()` (line 235): Get snapshots for a run (optionally filtered by step).  For offline analysis onl
+- `get_step_state_diff()` (line 268): Get entry and exit state for a step.  Returns {entry: ..., exit: ..., changed: b
+
+---
+
+### tool_trace.py (13,547 bytes)
+
+**Docstring:** Tool Invocation Trace (TIT)  PURPOSE: Expose execution topology without influencing it. TIT answers "what actually happened?"  NOT "why?", NOT "what should we do?"  ═══════════════════════════════════════════════════════════════════════════════ NON-NEGOTIABLE CONSTRAINTS ════════════════════════════...
+
+**Classes:** 1 | **Functions:** 7
+
+**Classes:**
+- `ToolInvocationEvent` (line 105): Single tool invocation record.  Immutable. No defaults. If data is missing → pass None.
+
+**Top-level Functions:**
+- `truncate_payload()` (line 158): Truncate payload for forensic storage.  Rules: 1. JSON only 2. UTF-8 only   3. M
+- `truncate_error()` (line 211): Truncate error message to reasonable length.
+- `_get_db_path()` (line 226): Get path to TIT database (same as arbormind.db).
+- `_ensure_schema()` (line 232): Ensure TIT table exists.
+- `_get_connection()` (line 251): Get database connection.
+- `record_tool_invocation()` (line 263): Fire-and-forget tool invocation recording.  MUST NEVER RAISE.  This is the ONLY 
+- `build_tool_event()` (line 326): Build a ToolInvocationEvent with proper truncation.  Convenience function for ho
+
+---
+
+
+================================================================================
+## app/arbormind/priors/
+================================================================================
+
+### tool_priors.py (2,444 bytes)
+
+**Docstring:** Tool priors - provides bias weights for tool selection.  INVARIANT: Priors MUST nudge, never override. INVARIANT: Priors range is bounded [0.2, 2.0] to prevent total blocking.
+
+**Classes:** 1 | **Functions:** 5
+
+**Classes:**
+- `ToolPriors` (line 12): Static configuration of tool selection biases.  This is NOT a live query system. Priors are loaded o
+
+**Top-level Functions:**
+- `get_tool_prior()` (line 60): Convenience helper for the ExecutionRouter.  Currently returns neutral prior (1.
+
+---
+
+
+================================================================================
+## app/arbormind/reconstruction/
+================================================================================
+
+### run_slice_builder.py (3,036 bytes)
+
+**Docstring:** ArborMind RunSlice Builder PHASE 3: State Reconstruction Layer  This module is the ONLY authorized reader of the Execution Ledger. Its job is to: 1. Read raw events from the ledger 2. Re-assemble them into a coherent State object (RunSlice) 3. Apply Phase 3.5 semantics (Ontology, Authority) onto the...
+
+**Classes:** 2 | **Functions:** 4
+
+**Classes:**
+- `RunSlice` (line 20): Reconstructed state of a run at a point in time. Immutable representation of 'What Happened'.
+- `RunSliceBuilder` (line 31)
+
+**Top-level Functions:**
+- `get_run_slice()` (line 84)
+
+---
+
+
+================================================================================
+## app/arbormind/runtime/
+================================================================================
+
+### actions.py (5,554 bytes)
+
+**Docstring:** Action-Based Execution System  PHASE 3 CHANGE: Steps are mapped to actions. The system CHOOSES actions based on state, not a fixed pipeline.  ActionTypes represent WHAT the system is trying to accomplish. Steps are specific implementations of actions.
+
+**Classes:** 1 | **Functions:** 4
+
+**Classes:**
+- `ActionType` (line 16): What the system is trying to accomplish.  This is orthogonal to specific step names.
+
+**Top-level Functions:**
+- `get_action_for_step()` (line 80): Get the action type for a step.
+- `get_steps_for_action()` (line 85): Get all steps that can fulfill an action.
+- `select_next_action()` (line 90): Select the next action based on branch state.  This is the COGNITIVE PIVOT: we c
+- `map_action_to_step()` (line 134): Map an action to a specific step based on what's been done.  Returns the next st
+
+---
+
+### decision.py (470 bytes)
+
+**Classes:** 2 | **Functions:** 0
+
+**Classes:**
+- `ExecutionDecision` (line 6)
+- `ExecutionAction` (line 16)
+
+---
+
+### execution_router.py (5,155 bytes)
+
+**Classes:** 1 | **Functions:** 1
+
+**Classes:**
+- `ExecutionRouter` (line 15): Central decision authority for execution.  INVARIANTS: - Exactly ONE decision per invocation - No re
+
+---
+
+### observer.py (651 bytes)
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `observe()` (line 5)
+
+---
+
+### runtime.py (5,349 bytes)
+
+**Classes:** 1 | **Functions:** 3
+
+**Classes:**
+- `ArborMindRuntime` (line 9): Phase 8 Runtime (Updated with Phase 5 Memory)  Responsibilities: - Expand hypothesis space (Divergen
+
+---
+
+
+================================================================================
+## app/arbormind/storage/
+================================================================================
+
+### run_ledger.py (2,726 bytes)
+
+**Docstring:** Append-only JSONL ledger for ArborMind execution events.  INVARIANT: Ledger is append-only (no updates or deletes). INVARIANT: Deleting the ledger MUST NOT change system behavior.  Design rationale: - JSONL format: Line-based, crash-safe, easy to stream - Append-only: No locks, no race conditions, s...
+
+**Classes:** 1 | **Functions:** 3
+
+**Classes:**
+- `RunLedger` (line 63): Append-only JSONL storage for execution events.  Each line is a complete JSON object representing on
+
+**Top-level Functions:**
+- `append_event()` (line 24): Append a single event to the ledger.  Each event is written as a complete JSON l
+
+---
+
+
+================================================================================
+## app/arbormind/
+================================================================================
+
+### watch_ledger.py (5,374 bytes)
+
+**Classes:** 0 | **Functions:** 7
+
+**Top-level Functions:**
+- `clear_screen()` (line 12)
+- `get_connection()` (line 15)
+- `fetch_latest_run()` (line 24)
+- `fetch_run_steps()` (line 32): Reconstruct steps from events for display.
+- `fetch_recent_failures()` (line 60)
+- `fetch_recent_decisions()` (line 68)
+- `main()` (line 76)
+
+---
+
+
+================================================================================
+## app/core/
+================================================================================
+
+### auth_boundary.py (6,340 bytes)
+
+**Docstring:** Auth Boundary Lock - Phase-1 Stabilization  RULES: 1. User is a SYSTEM entity, not a domain entity 2. No /api/users CRUD router allowed 3. Only authentication endpoints: /auth/register, /auth/login, /auth/me 4. Password hashing ONLY in auth module 5. Domain entities reference user_id, never manage u...
+
+**Classes:** 0 | **Functions:** 5
+
+**Top-level Functions:**
+- `is_system_entity()` (line 46): Check if an entity is a system entity (User, Auth, etc).  System entities should
+- `validate_entity_list()` (line 56): Validate that entity list doesn't violate auth boundary.  Returns:     {        
+- `check_router_code_for_violations()` (line 83): Check router code for auth boundary violations.  Returns:     None if valid, vio
+- `get_auth_guidance()` (line 110): Get guidance text for proper auth implementation.  This should be injected into 
+- `should_skip_entity_for_router()` (line 168): Determine if an entity should be skipped for router generation.  Returns True fo
+
+---
+
+### config.py (4,805 bytes)
+
+**Docstring:** Application configuration - single source of truth for all settings.
+
+**Classes:** 6 | **Functions:** 1
+
+**Classes:**
+- `LLMSettings` (line 15): LLM provider configuration.
+- `WorkflowSettings` (line 28): Workflow execution configuration.
+- `SandboxSettings` (line 41): Docker sandbox configuration.
+- `PathSettings` (line 49): Path configuration.
+- `AMSettings` (line 67): ArborMind (AM) configuration.  Controls the creative reasoning operators: - C-AM: Combinational (ble
+- `Settings` (line 103): Main application settings.
+
+---
+
+### constants.py (7,967 bytes)
+
+**Docstring:** Application constants - all magic numbers and strings in one place.
+
+**Classes:** 3 | **Functions:** 0
+
+**Classes:**
+- `WorkflowStep` (line 7): GenCode Studio workflow steps (Frontend-First pattern).  Order (9 steps total - Atomic Backend): 1. 
+- `AgentName` (line 53): Agent identifiers.
+- `WSMessageType` (line 97): WebSocket message types.
+
+---
+
+### domain_grounding.py (6,802 bytes)
+
+**Docstring:** Domain Entity Grounding - Phase-1 Stabilization  Ensure projects have meaningful domain entities beyond just User.  RULES: 1. Infer minimum viable entities from archetype 2. User-only projects are invalid for most archetypes 3. Signal if domain entities are missing (non-fatal)  This prevents: - Empt...
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `infer_entities_from_archetype()` (line 82): Infer minimum viable entities from archetype.  Returns:     Set of entity names 
+- `infer_entities_from_user_request()` (line 104): Extract potential entities from user request using keywords.  This is a simple h
+- `validate_domain_entities()` (line 144): Validate that project has meaningful domain entities.  Returns:     {         "v
+- `apply_entity_grounding()` (line 194): Apply domain entity grounding to ensure meaningful entities.  If User is the onl
+
+---
+
+### exceptions.py (2,676 bytes)
+
+**Docstring:** Custom exceptions for the application.
+
+**Classes:** 10 | **Functions:** 7
+
+**Classes:**
+- `GenCodeError` (line 8): Base exception for all GenCode errors.
+- `WorkflowError` (line 16): Workflow execution error.
+- `QualityGateError` (line 21): Quality gate blocked the workflow.
+- `AgentError` (line 33): Agent execution error.
+- `LLMError` (line 44): LLM provider error.
+- `RateLimitError` (line 54): Rate limit exhausted - workflow should STOP immediately.
+- `SandboxError` (line 65): Docker sandbox error.
+- `PersistenceError` (line 75): File persistence error.
+- `ValidationError` (line 85): Output validation error.
+- `ParseError` (line 90): JSON/output parsing error.
+
+---
+
+### execution_record.py (1,467 bytes)
+
+**Docstring:** Phase-0 Execution Record  Tracks files created by each step for deterministic rollback. Orchestrator owns truth - handlers never write these records.
+
+**Classes:** 1 | **Functions:** 2
+
+**Classes:**
+- `StepExecutionRecord` (line 14): Record of what a step produced during execution.  Used for: - Rollback (delete files created by fail
+
+---
+
+### failure_boundary.py (7,698 bytes)
+
+**Docstring:** Failure boundary enforcer.  CRITICAL: NO step can return raw failures. All exceptions/errors pass through classification.  This is Phase 0 - the choke point that ensures ALL errors are classified.
+
+**Classes:** 2 | **Functions:** 3
+
+**Classes:**
+- `FailureBoundary` (line 21): Enforces classification boundary.  This decorator ensures that: 1. No handler can return raw "failed
+- `LegacyStepResultConverter` (line 149): Helper to convert legacy StepResult objects to new StepExecutionResult.  Use this during migration p
+
+---
+
+### failure_reporting.py (8,899 bytes)
+
+**Docstring:** STEP 11: Accept Failure as a Feature  ════════════════════════════════════════════════════════════════════════════════ ARCHITECTURAL INVARIANT: Honest Failure Reporting ════════════════════════════════════════════════════════════════════════════════  Old mindset: "Fix it until it works." New mindset...
+
+**Classes:** 1 | **Functions:** 5
+
+**Classes:**
+- `FailureType` (line 32): Canonical failure types for honest reporting.
+
+**Top-level Functions:**
+- `report_failure()` (line 56): Report a failure honestly and clearly.  This is the SINGLE SOURCE OF TRUTH for f
+- `report_truncation()` (line 109): Report a truncation failure (output cut off).  This is a CHEAP check that saves 
+- `report_malformed_output()` (line 132): Report a malformed output failure (JSON parse failed, etc.)
+- `report_validation_failure()` (line 151): Report a validation failure (syntax error, empty file, etc.)
+- `generate_failure_summary()` (line 174): Generate a human-readable failure summary.  This is the message shown to the use
+
+---
+
+### file_writer.py (4,095 bytes)
+
+**Docstring:** Centralized file writing utility for LLM outputs.
+
+**Classes:** 0 | **Functions:** 5
+
+**Top-level Functions:**
+- `convert_files_list_to_dict()` (line 11): Convert list of {"path": ..., "content": ...} to dict {path: content}.
+- `async write_validated_files()` (line 18): Validate and write LLM-generated files to disk.  Args:     project_path: Base pr
+- `async persist_agent_output()` (line 82): Legacy wrapper for write_validated_files. Extracts files from parsed dict and wr
+- `validate_file_output()` (line 97): Legacy wrapper - validates and returns the same parsed dict.
+- `async safe_write_llm_files()` (line 117): Legacy compatibility wrapper for write_validated_files.
+
+---
+
+### guard.py (545 bytes)
+
+**Docstring:** Orchestration Guard - The Permanent Safety Lock.  Prevents re-introduction of "cognitive decision" logic in the execution layer.
+
+**Classes:** 1 | **Functions:** 1
+
+**Classes:**
+- `OrchestrationGuard` (line 8): Safety lock to prevent accidental re-introduction of cognitive decisions (retries, escalation, heali
+
+---
+
+### integration.py (7,179 bytes)
+
+**Docstring:** Integration Manager logic ported from legacy agents/integration.py. Handles feature flags, configuration, and environment validation.
+
+**Classes:** 2 | **Functions:** 10
+
+**Classes:**
+- `IntegrationConfig` (line 37): Configuration for integration features
+- `IntegrationManager` (line 49): Manages feature flags and configuration for GenCode Studio. Ported from legacy.
+
+**Top-level Functions:**
+- `create_integration_manager()` (line 139)
+- `validate_environment()` (line 143): Validate that the environment is properly configured.
+
+---
+
+### llm_output_integrity.py (2,336 bytes)
+
+**Classes:** 1 | **Functions:** 4
+
+**Classes:**
+- `LLMOutputIntegrityError` (line 9)
+
+**Top-level Functions:**
+- `_is_truncated()` (line 13)
+- `_validate_python()` (line 24)
+- `_validate_js_like()` (line 33)
+- `validate_llm_files()` (line 43): Hygiene-only validation. Ensures files are readable, complete, and syntactically
+
+---
+
+### logging.py (4,039 bytes)
+
+**Classes:** 0 | **Functions:** 5
+
+**Top-level Functions:**
+- `log()` (line 40): Unified logging function for GenCode Studio.  PHASE E4: Only INFO_SCOPES are sho
+- `log_section()` (line 66): Log a section header with visual separator.
+- `log_thinking()` (line 80): Log agent thinking/reasoning with proper formatting.
+- `log_files()` (line 98): Log file list summary.
+- `log_result()` (line 106): Log review result with quality score.
+
+---
+
+### step_invariants.py (10,351 bytes)
+
+**Docstring:** Unified Step Invariants - Hard Requirements for Step Success  These are NON-NEGOTIABLE conditions for a step to be considered successful. If any invariant fails, the step MUST fail - no exceptions.  ArborMind correctly exposed these failures by removing masking. This module enforces the invariants t...
+
+**Classes:** 2 | **Functions:** 8
+
+**Classes:**
+- `StepInvariantError` (line 16): Raised when a step invariant is violated.
+- `StepInvariants` (line 21): Unified invariant checker for all workflow steps.  Usage:     StepInvariants.require_files(parsed, s
+
+**Top-level Functions:**
+- `validate_step_output()` (line 273): One-call validation for most step handlers.  Checks: 1. HDAP completeness (no tr
+
+---
+
+### step_outcome.py (1,638 bytes)
+
+**Docstring:** Canonical step-level outcome types.  CRITICAL: These are STEP outcomes, not WORKFLOW outcomes.  Part of Phase 1 - Core Taxonomy & Types
+
+**Classes:** 2 | **Functions:** 4
+
+**Classes:**
+- `StepOutcome` (line 15): Step-level outcomes (4 types only).
+- `StepExecutionResult` (line 24): Result of a single step execution.
+
+---
+
+### types.py (4,407 bytes)
+
+**Docstring:** Shared type definitions used across the application.
+
+**Classes:** 13 | **Functions:** 4
+
+**Classes:**
+- `ChatMessage` (line 11)
+- `GeneratedFile` (line 21): A file generated by an agent.
+- `AgentOutput` (line 33): Output from an agent call.
+- `StepResult` (line 51): Result of executing a workflow step.
+- `QualityMetrics` (line 64): Quality metrics for a project.
+- `TokenUsage` (line 75): Track token usage for cost estimation.
+- `WorkflowStatus` (line 93): Workflow-level outcomes (aggregate property).  Phase 1: Updated to support degradation reporting.
+- `DegradationReport` (line 110): Report for workflows that complete with degradation.  Phase 1: This is an AGGREGATE property, not st
+- `QAIssue` (line 133): Quality assurance issue from Derek/Luna.
+- `FilePlan` (line 145): File plan for workflow.
+- `TestReport` (line 151): Test report from QA agents.
+- `ToolCall` (line 161): A tool call from Marcus.
+- `MarcusPlan` (line 167): Marcus's planning output.
+
+---
+
+
+================================================================================
+## app/handlers/
+================================================================================
+
+### architecture.py (8,874 bytes)
+
+**Docstring:** Step 1: Victoria creates architecture plan with Marcus supervision.   This matches the legacy workflows.py step_architecture logic exactly.
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `async step_architecture()` (line 27): Step 1: Victoria creates architecture plan with Marcus supervision.  Produces: -
+
+---
+
+### backend_models.py (22,258 bytes)
+
+**Docstring:** Backend Models Handler (Phase 3)  Two-phase model generation: 1. Derek generates model specifications as JSON (not Python code) 2. System merges JSON specs into single models.py  This prevents overwrites and ensures all models are in one file.
+
+**Classes:** 0 | **Functions:** 3
+
+**Top-level Functions:**
+- `async step_backend_models()` (line 25): Step: Backend Models - Generate all models at once.  Two-phase approach: 1. Dere
+- `async derek_generate_model_spec()` (line 211): Derek generates model specifications using supervised agent call.  Now uses ARTI
+- `_synthesize_entity_plan()` (line 450): Synthesize entity_plan.json from detected entities when it doesn't exist.  This 
+
+---
+
+### backend_routers.py (22,146 bytes)
+
+**Docstring:** Step 4: Derek generates FastAPI routers for all aggregate entities.  This step depends on Step 3 (Backend Models) being successful. Derek reads architecture.md for contracts and models.py for schema details.
+
+**Classes:** 0 | **Functions:** 3
+
+**Top-level Functions:**
+- `async step_backend_routers()` (line 25): Step 4: Backend Router Implementation.  Flow: 1. Load entity plan and models.py 
+- `_build_single_router_prompt()` (line 242): Build prompt for generating a single entity's router.
+- `_extract_entity_contract()` (line 460): Extract the entity-specific section from architecture.md.  Finds headings like "
+
+---
+
+### base.py (1,905 bytes)
+
+**Docstring:** Shared utilities for workflow handlers.
+
+**Classes:** 0 | **Functions:** 3
+
+**Top-level Functions:**
+- `_get_broadcast_to_project()` (line 12): Lazy import to avoid circular dependency with app.workflow package.
+- `async broadcast_status()` (line 21)
+- `async broadcast_agent_log()` (line 47): Broadcast an agent log/thinking message.
+
+---
+
+### frontend_mock.py (16,963 bytes)
+
+**Docstring:** Step 2: Derek creates frontend with MOCK DATA first.   This follows the GenCode Studio pattern: - Create frontend-first with mock data for immediate "aha moment" - All mock data goes in src/data/mock.js - Components are functional but use local state - Later, the backend will be built based on the a...
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `async step_frontend_mock()` (line 45): Step 2: Derek generates frontend with MOCK DATA first.  This creates the immedia
+
+---
+
+### preview.py (8,351 bytes)
+
+**Docstring:** Step 9: Launch preview with dynamic port allocation.  Workflow order: ... → Testing Frontend (8) → Preview Final (9) → COMPLETE
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `async step_preview_final()` (line 26): Step 11: Refresh preview on RANDOM free ports for both frontend and backend.
+
+---
+
+### refine.py (10,891 bytes)
+
+**Docstring:** Refine Mode - Conversational Iteration (post-workflow).  Triggered when user sends follow-up messages to a completed project. This matches the legacy workflows.py step_refine logic exactly.
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `async step_refine()` (line 33): Refine Mode - Conversational Iteration (post-workflow).  Allows the user to modi
+
+---
+
+### system_integration.py (9,313 bytes)
+
+**Docstring:** Step 5: System Integration (Script).  Deterministic wiring of agent-generated modules (models and routers) into the Golden Seed. This ensures that the FastAPI application correctly includes all routers and initializes Beanie with all models.
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `async step_system_integration()` (line 16): Step 5: System Integration (Pure Python).  Deterministic wiring of ALL generated
+- `_generate_api_helpers()` (line 120): Generate frontend/src/lib/api.js with API helper functions.
+- `_replace_mock_with_api()` (line 179): Replace mock data imports with API calls in a JSX page.
+- `_singularize()` (line 214): Simple pluralization remover for common cases.
+
+---
+
+### testing_backend.py (23,381 bytes)
+
+**Docstring:** Step 6: Derek runs backend tests with pytest.  Workflow order: ... → System Integration (5) → Testing Backend (6) → Frontend Integration (7)  Execution-Only Pattern: - Tests are generated and executed in a single-shot. - No internal healing or iterative loops. - Failures result in immediate workflow...
+
+**Classes:** 0 | **Functions:** 3
+
+**Top-level Functions:**
+- `render_contract_tests()` (line 44): Render the template deterministically. Source of truth: architecture.md (used to
+- `async _generate_tests_from_template()` (line 78): Generate backend tests from template at the START of testing step.  Flow: 1. Rea
+- `async step_testing_backend()` (line 299): Derek tests backend using sandbox.  ONE SHOT POLICY: - Executes ONCE per attempt
+
+---
+
+### testing_frontend.py (29,178 bytes)
+
+**Docstring:** Step 8: Luna runs E2E tests on the integrated frontend.  Workflow order: ... → Frontend Integration (7) → Testing Frontend (8) → Preview (9)
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `ensure_str()` (line 45): Ensure value is a string (sandboxexec may return bytes).
+- `async _generate_frontend_tests_from_template()` (line 54): Generate frontend E2E tests from template at the START of testing step.  Flow: 1
+- `async step_testing_frontend()` (line 239): Step 11: Luna tests frontend with Playwright.  Execution-Only Pattern: - Tests a
+
+---
+
+
+================================================================================
+## app/lib/
+================================================================================
+
+### monitoring.py (1,304 bytes)
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `set_active_preview_servers()` (line 18): Sets the value of the active preview servers gauge.
+- `register_monitoring()` (line 22): Registers Prometheus monitoring on the FastAPI app. This replaces the Express mi
+
+---
+
+### secrets.py (5,016 bytes)
+
+**Classes:** 1 | **Functions:** 4
+
+**Classes:**
+- `EncryptedSecret` (line 17)
+
+**Top-level Functions:**
+- `encrypt_secret()` (line 22): Encrypts a plaintext secret using AES-256-GCM.  Args:     plaintext: The secret 
+- `decrypt_secret()` (line 59): Decrypts an AES-256-GCM encrypted secret.
+- `async fetch_vault_secret()` (line 92): Fetches a single secret from Vault using its v1 kv API.
+- `async load_secrets_from_vault()` (line 116): Load a mapping of env names to Vault secret paths and set os.environ values when
+
+---
+
+### websocket.py (2,914 bytes)
+
+**Classes:** 1 | **Functions:** 7
+
+**Classes:**
+- `ConnectionManager` (line 7): Simple per-project WebSocket connection manager.  - Each project_id has its own list of WebSocket co
+
+---
+
+
+================================================================================
+## app/llm/
+================================================================================
+
+### adapter.py (9,177 bytes)
+
+**Docstring:** Unified LLM adapter - single interface for all providers.  NOTE: No fallback logic - if rate limited after 3 attempts, raises RateLimitError to stop workflow.  V2 Enhancement: Stop sequences to prevent truncation. V3 Enhancement: Token usage tracking for accurate cost reporting.
+
+**Classes:** 1 | **Functions:** 7
+
+**Classes:**
+- `LLMAdapter` (line 72): Unified adapter for LLM providers.  Handles: - Provider selection - SINGLE EXECUTION (ArborMind hand
+
+**Top-level Functions:**
+- `get_stop_sequences()` (line 36): Get appropriate stop sequences for a file type.
+- `get_stop_sequences_for_step()` (line 41): Get appropriate stop sequences based on workflow step.  Prevents Derek from gene
+- `async call_llm()` (line 204): Convenience function for calling LLM with V2 stop sequences support.
+- `async call_llm_with_usage()` (line 228): V3: Call LLM and return BOTH text and usage metadata.  Returns:     Dict with {"
+
+---
+
+### artifact_enforcement.py (8,550 bytes)
+
+**Docstring:** ARTIFACT Execution Mode Enforcement  When ExecutionMode == ARTIFACT: 1. HDAP instructions MUST be in system prompt (immutable rules) 2. Dynamic context contains data only, never protocol 3. Auto-recovery if HDAP markers are missing  Phase-1 Critical: This eliminates prompt-order sensitivity.
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `enforce_artifact_mode()` (line 63): Enforce ARTIFACT mode by building prompts correctly.  Returns:     {         "sy
+- `async auto_recover_hdap()` (line 129): Deterministic HDAP recovery: Single automatic attempt to re-wrap output.  Rules:
+
+---
+
+### prompt_management.py (9,783 bytes)
+
+**Docstring:** FAST‑V2 / FAST‑V3 HDAP‑SAFE Prompt Context Builder =================================================  This version is **artifact‑first** and **protocol‑locked**. It removes all schema leakage (path/content, FILE labels, thinking blocks) and guarantees that the LLM believes it is **writing files dire...
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `filter_files_for_step()` (line 26)
+- `build_context()` (line 155): Build the final prompt sent to the LLM.  ⚠️ CRITICAL GUARANTEE: - The LLM NEVER 
+
+---
+
+
+================================================================================
+## app/llm/prompts/
+================================================================================
+
+### derek.py (6,393 bytes)
+
+**Docstring:** Derek prompts - Full-Stack Developer.
+
+**Classes:** 0 | **Functions:** 0
+
+---
+
+### derek_testing.py (7,239 bytes)
+
+**Classes:** 0 | **Functions:** 0
+
+---
+
+### luna.py (8,310 bytes)
+
+**Docstring:** Luna prompts - QA Engineer.
+
+**Classes:** 0 | **Functions:** 0
+
+---
+
+### luna_testing.py (8,723 bytes)
+
+**Classes:** 0 | **Functions:** 0
+
+---
+
+### marcus.py (10,353 bytes)
+
+**Docstring:** Marcus prompts — Lead AI Architect, Technical Product Manager, and PROTOCOL AUTHORITY at GenCode Studio.  This is a FULL, STRUCTURAL REWRITE of BOTH: - MARCUS_PROMPT - MARCUS_SUPERVISION_PROMPT  All domain intelligence, workflow depth, quality gates, and checklists are PRESERVED.  ALL HDAP / JSON /...
+
+**Classes:** 0 | **Functions:** 0
+
+---
+
+### victoria.py (7,642 bytes)
+
+**Docstring:** Victoria prompts — Senior Solutions Architect and ARCHITECTURE ARTIFACT AUTHOR.  This is a FULL, STRUCTURAL REWRITE of the original Victoria prompt.  All architectural depth, UI design rigor, backend patterns, workflow context, and quality gates are PRESERVED.  ALL HDAP LEAKAGE, JSON PRIMING, AND TH...
+
+**Classes:** 0 | **Functions:** 0
+
+---
+
+
+================================================================================
+## app/llm/providers/
+================================================================================
+
+### anthropic.py (2,366 bytes)
+
+**Docstring:** Anthropic Claude provider implementation.
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `async call()` (line 14): Call Anthropic Claude API.  Args:     stop_sequences: V2 - sequences that signal
+
+---
+
+### gemini.py (4,893 bytes)
+
+**Docstring:** Google Gemini provider implementation.
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `async call()` (line 14): Call Google Gemini API.  Args:     stop_sequences: V2 - sequences that signal co
+
+---
+
+### ollama.py (2,032 bytes)
+
+**Docstring:** Ollama provider implementation.
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `async call()` (line 13): Call Ollama API (local).  Args:     stop_sequences: V2 - sequences that signal c
+
+---
+
+### openai.py (2,292 bytes)
+
+**Docstring:** OpenAI provider implementation.
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `async call()` (line 14): Call OpenAI API.  Args:     stop_sequences: V2 - sequences that signal completio
+
+---
+
+
+================================================================================
+## app/
+================================================================================
+
+### main.py (7,825 bytes)
+
+**Docstring:** GenCode Studio Backend - Clean Architecture
+
+**Classes:** 0 | **Functions:** 3
+
+**Top-level Functions:**
+- `async lifespan()` (line 64): Application startup and shutdown.
+- `async websocket_endpoint()` (line 155)
+
+---
+
+
+================================================================================
+## app/models/
+================================================================================
+
+### deployment.py (1,031 bytes)
+
+**Classes:** 2 | **Functions:** 0
+
+**Classes:**
+- `Deployment` (line 8): Deployment configuration and status.
+- `Settings` (line 29)
+
+---
+
+### project.py (677 bytes)
+
+**Classes:** 2 | **Functions:** 0
+
+**Classes:**
+- `Project` (line 11)
+- `Settings` (line 20)
+
+---
+
+### snapshot.py (455 bytes)
+
+**Classes:** 2 | **Functions:** 0
+
+**Classes:**
+- `Snapshot` (line 6)
+- `Settings` (line 15)
+
+---
+
+### workflow.py (1,570 bytes)
+
+**Classes:** 4 | **Functions:** 0
+
+**Classes:**
+- `WorkflowStepRecord` (line 6)
+- `WorkflowSession` (line 18): Persisted state of a workflow session. Replaces in-memory _running_workflows, _paused_workflows, etc
+- `Settings` (line 14)
+- `Settings` (line 46)
+
+---
+
+
+================================================================================
+## app/orchestration/
+================================================================================
+
+### backend_probe.py (9,202 bytes)
+
+**Docstring:** BackendProbe: Environment-agnostic HTTP testing for backend services.  Supports both: - ASGI mode: Import app and use ASGITransport (local dev, tests) - Sandbox mode: HTTP requests to running Docker service  This abstracts away "how do we test the backend" so healing/validation code doesn't need to...
+
+**Classes:** 4 | **Functions:** 12
+
+**Classes:**
+- `ProbeMode` (line 18): Backend probe execution mode.
+- `BackendProbe` (line 25): Abstract backend probe interface.
+- `HTTPBackendProbe` (line 66): HTTP-based backend probe for Docker/Sandbox environments.
+- `ASGIBackendProbe` (line 187): ASGI-based backend probe using ASGITransport (like conftest.py).
+
+---
+
+### budget_manager.py (18,363 bytes)
+
+**Docstring:** BudgetManager for Gemini 2.5 Flash - Cost Controller for FAST Runs  This module provides per-run budget tracking and enforcement to keep workflow costs under the target of ~30 INR per run.  Key Features: - Per-step token estimates and policies - Dynamic attempt limiting based on remaining budget - S...
+
+**Classes:** 3 | **Functions:** 19
+
+**Classes:**
+- `StepPolicy` (line 38): Per-step budget policy.  - skippable: if True, step may be skipped when budget is tight - max_attemp
+- `BudgetConfig` (line 54): Global budget config for a single FAST run, using: - one model: Gemini 2.5 Flash - currency: INR
+- `BudgetManager` (line 125): Cost controller for a single FAST run (Gemini 2.5 Flash only).  - Tracks real usage in USD/INR based
+
+**Top-level Functions:**
+- `get_budget_manager()` (line 336): Get or create a BudgetManager instance.  If project_id is provided, returns a pe
+- `reset_budget_manager()` (line 357): Reset a BudgetManager instance.
+- `get_all_project_budgets()` (line 370): Get all tracked project budgets.
+- `get_budget_for_api()` (line 376): Get budget data formatted for the frontend CostDashboard API.  Returns data in t
+
+---
+
+### checkpoint.py (5,017 bytes)
+
+**Docstring:** FAST v2 Checkpoint Manager  Stores SAFE checkpoints of each FAST step. Persists project state to disk for rollback and debugging.
+
+**Classes:** 1 | **Functions:** 6
+
+**Classes:**
+- `CheckpointManagerV2` (line 17): Stores SAFE checkpoints of each FAST step. Does NOT store broken artifacts.
+
+---
+
+### context.py (12,104 bytes)
+
+**Docstring:** Context selection for agents - only provide relevant files per step. Reduces token usage and improves LLM output quality.
+
+**Classes:** 1 | **Functions:** 12
+
+**Classes:**
+- `CrossStepContext` (line 227): V2 Feature: Maintains context summaries across workflow steps.  This helps later steps understand wh
+
+**Top-level Functions:**
+- `get_relevant_files()` (line 66): Get only the files relevant to the current step. Returns a formatted string of f
+- `get_entity_context()` (line 131): Get entity-specific context for agents. Tells them what the primary entity is an
+- `get_previous_files_summary()` (line 195): Get a brief summary of what files exist in the project. Useful for agents to und
+
+---
+
+### fast_orchestrator.py (57,492 bytes)
+
+**Docstring:** FAST v2 Orchestrator - Main Entry Point (Gutted for ArborMind)  The Orchestrator is now a "muscle" (execution body). All cognitive decisions (what to do next, retry, heal) belong to ArborMind.
+
+**Classes:** 1 | **Functions:** 16
+
+**Classes:**
+- `FASTOrchestratorV2` (line 91): FAST v2 Orchestrator - Minimal execution muscle.
+
+**Top-level Functions:**
+- `async run_fast_v2_workflow()` (line 1065)
+
+---
+
+### file_persistence.py (4,708 bytes)
+
+**Docstring:** FAST v2 File Persistence  Handles all writes to disk for FAST v2. Ensures consistency using atomic writes (tmp file + rename). Prevents partial file writes that could corrupt the project.
+
+**Classes:** 1 | **Functions:** 7
+
+**Classes:**
+- `FilePersistence` (line 15): Handles all writes to disk for FAST v2. Ensures consistency, avoids partial writes using atomic rena
+
+---
+
+### llm_output_integrity.py (2,336 bytes)
+
+**Classes:** 1 | **Functions:** 4
+
+**Classes:**
+- `LLMOutputIntegrityError` (line 9)
+
+**Top-level Functions:**
+- `_is_truncated()` (line 13)
+- `_validate_python()` (line 24)
+- `_validate_js_like()` (line 33)
+- `validate_llm_files()` (line 43): Hygiene-only validation. Ensures files are readable, complete, and syntactically
+
+---
+
+### router_utils.py (3,023 bytes)
+
+**Docstring:** Router Wiring Utilities - Single source of truth for router detection.  This module provides shared functions for detecting whether routers are already imported or registered in main.py. Used by: - handlers/backend.py (step_system_integration)  Having a single implementation prevents inconsistent id...
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `is_router_imported()` (line 15): Check if a router is already imported in main.py.  Handles all import variants: 
+- `is_router_registered()` (line 39): Check if a router is already registered in main.py.  Handles all registration va
+- `get_missing_routers()` (line 61): Get routers that are missing import or registration.  Args:     content: The mai
+- `get_routers_from_directory()` (line 77): Discover router names from a routers directory.  Args:     routers_dir: Path to 
+
+---
+
+### state.py (11,584 bytes)
+
+**Docstring:** Workflow state management.
+
+**Classes:** 1 | **Functions:** 26
+
+**Classes:**
+- `WorkflowStateManager` (line 19): Manages workflow state using persistent storage (MongoDB).
+
+---
+
+### structural_compiler.py (2,170 bytes)
+
+**Classes:** 2 | **Functions:** 5
+
+**Classes:**
+- `StructuralViolation` (line 7)
+- `StructuralCompiler` (line 11): Authoritative structural validator. If this fails, the branch MUST fail.
+
+---
+
+### task_graph.py (3,174 bytes)
+
+**Docstring:** FAST v2 Task Graph - Fixed Pipeline with Dependencies  Defines the fixed FAST v2 pipeline, but allows adaptive behavior INSIDE each step (hybrid adaptive mode). Steps cannot be removed, added, or reordered globally. Only intra-step adaptation is allowed.
+
+**Classes:** 1 | **Functions:** 7
+
+**Classes:**
+- `TaskGraph` (line 13): Defines the fixed FAST v2 pipeline, but allows adaptive behavior INSIDE each step (hybrid adaptive m
+
+---
+
+### token_policy.py (14,690 bytes)
+
+**Docstring:** Step-specific token allocation policies.  ════════════════════════════════════════════════════════════════════════════════ ARCHITECTURAL INVARIANT: Hard Token Caps ════════════════════════════════════════════════════════════════════════════════  CAUSAL STEPS: - max_tokens is a HARD CAP, not a sugges...
+
+**Classes:** 0 | **Functions:** 5
+
+**Top-level Functions:**
+- `get_tokens_for_step()` (line 140): Get appropriate token allocation for a workflow step.  Args:     step_name: Work
+- `get_step_description()` (line 208): Get human-readable description of a workflow step.
+- `get_all_policies()` (line 215): Get all token policies (for debugging/monitoring).
+- `get_temperature()` (line 252): Get appropriate temperature for a workflow step.  Args:     step_name: Workflow 
+- `get_retry_parameters()` (line 296): Get adjusted parameters for retry attempts.  Increases tokens and reduces temper
+
+---
+
+### utils.py (1,873 bytes)
+
+**Docstring:** Workflow utilities - shared helper functions.
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `async broadcast_to_project()` (line 11): Broadcast a message to all clients connected to a project.
+- `pluralize()` (line 31): Simple English pluralization helper.  Rules: - Ends with 'y' (not preceded by vo
+
+---
+
+### wiring_utils.py (7,780 bytes)
+
+**Docstring:** Wiring Utilities - Handles injection of content into main.py.  This is the SINGLE SOURCE OF TRUTH for: - Registering Routers (imports + include_router) - Registering Models (imports + document_models)  HARD GUARANTEE: - NO file is written without passing Unicode normalization + AST validation - NO d...
+
+**Classes:** 0 | **Functions:** 3
+
+**Top-level Functions:**
+- `_safe_write_validated_python()` (line 25): Apply the SAME validation gate as LLM output: - Unicode normalization - AST vali
+- `wire_router()` (line 49): Ensure router is wired in main.py (idempotent).
+- `wire_model()` (line 133): Ensure model is imported AND registered in document_models list in main.py.  CRI
+
+---
+
+
+================================================================================
+## app/sandbox/
+================================================================================
+
+### health_monitor.py (8,281 bytes)
+
+**Docstring:** Health Monitor Checks and monitors container health status using docker CLI (no docker SDK).
+
+**Classes:** 1 | **Functions:** 6
+
+**Classes:**
+- `HealthMonitor` (line 13): Monitors health of sandbox containers via `docker inspect`.
+
+---
+
+### log_streamer.py (4,219 bytes)
+
+**Docstring:** Log Streamer Real-time streaming of Docker container logs via WebSocket  This implementation uses the `docker` CLI instead of the Python docker SDK.
+
+**Classes:** 1 | **Functions:** 6
+
+**Classes:**
+- `LogStreamer` (line 12): Streams container logs in real-time using `docker logs -f`.
+
+---
+
+### pool.py (11,386 bytes)
+
+**Docstring:** Docker Sandbox Pool - Pre-warmed Container Management  Reduces sandbox startup from 49s to <5s by maintaining a pool of pre-warmed containers ready for immediate use.  Usage:     pool = SandboxPool(size=3)     await pool.initialize()          # Get a pre-warmed container (instant!)     container = a...
+
+**Classes:** 2 | **Functions:** 15
+
+**Classes:**
+- `PooledSandbox` (line 28): A pre-warmed sandbox ready for use.
+- `SandboxPool` (line 37): Manages a pool of pre-warmed Docker containers.  Benefits: - 49s → 5s startup time - No cold start d
+
+**Top-level Functions:**
+- `get_sandbox_pool()` (line 302): Get the global sandbox pool instance.
+- `async initialize_pool()` (line 310): Initialize the sandbox pool on app startup.
+
+---
+
+### preview_manager.py (2,056 bytes)
+
+**Docstring:** Preview Manager ✅ UPDATED: Traefik proxy integration (no Cloudflare tunnels needed)
+
+**Classes:** 1 | **Functions:** 4
+
+**Classes:**
+- `PreviewManager` (line 9): Manages public preview URLs for sandboxes via Traefik
+
+---
+
+### sandbox_config.py (2,058 bytes)
+
+**Docstring:** Sandbox Configuration Manages settings for Docker sandbox environments
+
+**Classes:** 1 | **Functions:** 2
+
+**Classes:**
+- `SandboxConfig` (line 11): Configuration for a Docker sandbox environment
+
+---
+
+### sandbox_manager.py (25,977 bytes)
+
+**Docstring:** Docker Sandbox Manager - Main Orchestrator ✓ Protected Dockerfiles ✓ Automatically regenerates correct templates ✓ Ensures LLM cannot break sandbox
+
+**Classes:** 1 | **Functions:** 21
+
+**Classes:**
+- `SandboxManager` (line 22)
+
+---
+
+
+================================================================================
+## app/supervision/
+================================================================================
+
+### quality_gate.py (2,766 bytes)
+
+**Docstring:** Quality gate - blocks workflow if quality is too low.
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `async check_quality_gate()` (line 22): Check if workflow should be blocked due to quality issues.  PHASE 4 CHANGE: Only
+- `async override_quality_gate()` (line 73): Allow user to override quality gate.
+- `is_blocked()` (line 79): Check if project is blocked by quality gate.
+- `get_block_reason()` (line 84): Get the reason for quality gate block.
+
+---
+
+### supervisor.py (31,313 bytes)
+
+**Docstring:** Marcus supervision of agent output.
+
+**Classes:** 0 | **Functions:** 6
+
+**Top-level Functions:**
+- `async marcus_supervise()` (line 22): Marcus reviews an agent's output for quality and correctness.  Returns:     Dict
+- `async categorize_issue_severity()` (line 530): Categorize Marcus's issues into 'critical' or 'warning' using simple heuristics.
+- `async postprocess_marcus_issues()` (line 550): Split issues into critical (must fix) and warnings (nice-to-have).  Returns: (cr
+- `_extract_archetype()` (line 570): Extract an archetype identifier from the user request.  Examples: - "Create a bu
+- `async supervised_agent_call()` (line 609): Call an agent with Marcus supervision (ArborMind Muscle).
+
+---
+
+### tiered_review.py (12,377 bytes)
+
+**Docstring:** Tiered Review System - Smart quality gates based on file criticality.  Not all code needs the same level of scrutiny: - Critical code (routers, models) → Full Marcus LLM review - Test files → Pre-flight only (tests validate themselves) - Config files → Pre-flight only (syntax check sufficient) - Sta...
+
+**Classes:** 1 | **Functions:** 6
+
+**Classes:**
+- `ReviewLevel` (line 20): Review levels in order of intensity.
+
+**Top-level Functions:**
+- `get_review_level()` (line 73): Determine the review level needed for a file.  Args:     file_path: Relative pat
+- `classify_files()` (line 105): Classify files by their review level.  Args:     files: List of file dicts with 
+- `get_review_summary()` (line 125): Get a summary of review levels for logging.
+- `async tiered_review()` (line 138): Apply tiered review to a list of files.  Returns:     Tuple of (approved_files, 
+- `async parallel_tiered_review()` (line 255): Run tiered reviews in parallel for multiple agent outputs.  This is the key spee
+
+---
+
+
+================================================================================
+## app/tools/
+================================================================================
+
+### executor.py (22,456 bytes)
+
+**Docstring:** Tool Plan Executor  LINEAR EXECUTION ONLY: - No loops - No retries - No self-healing - No reflection  Just execution of an explicit plan.  OBSERVATION: Every tool invocation is recorded: - Before: record_tool_invocation_start - After: record_tool_invocation_end
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `async _parse_and_write_hdap_files()` (line 44): Extract files from subagentcaller output and write to disk.  CRITICAL: This func
+- `record_tool_invocation_start()` (line 182): Record the start of a tool invocation.  This is where observation happens.
+- `record_tool_invocation_end()` (line 212): Record the end of a tool invocation.  PHASE 3: Records tool trace + step exit + 
+- `async execute_tool_plan()` (line 266): Execute a tool plan LINEARLY.  Rules: - No loops - No retries - No self-healing 
+
+---
+
+### handler_example.py (5,168 bytes)
+
+**Docstring:** Example: How Handlers Work Under the New Architecture  === THE OLD WAY (What you had) ===  async def handle_backend_models(branch):     return await run_tool("subagentcaller", {         "sub_agent": "Derek",         "instructions": "Generate models...",         ...     })  PROBLEMS: - Handler knows...
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `async handle_backend_models_v2()` (line 51): NEW-STYLE HANDLER: Describes intent, doesn't select tools.  The handler's job is
+- `async handle_architecture_v2()` (line 88): Architecture step - Victoria generates the architecture.md
+- `async handle_testing_backend_v2()` (line 102): Testing step - Derek generates tests, then pytest runs them.
+- `migrate_handler_to_v2()` (line 120): Shows how to migrate an old handler to the new style.  OLD:     async def handle
+
+---
+
+### implementations.py (99,233 bytes)
+
+**Docstring:** GenCode Studio – Complete Tool System (Full Production Version)  Includes:  - Core sub-agent dispatcher  - File operations (read/write/delete/list/view)  - Execution tools (bash, python, npm)  - Testing tools (pytest, playwright, test generator)  - Docker sandbox integration via Python (SandboxManag...
+
+**Classes:** 1 | **Functions:** 52
+
+**Classes:**
+- `GenCodeTool` (line 170)
+
+**Top-level Functions:**
+- `_get_tit_enabled()` (line 44): Check if TIT is enabled (lazy import to avoid circular deps).
+- `_record_tit_event()` (line 52): Record TIT event (fire-and-forget).
+- `get_sandbox()` (line 64): Get the sandbox singleton (lazy initialization).
+- `async _async_run_command()` (line 83): Run a command asynchronously using asyncio.to_thread + subprocess.run. This is W
+- `async tool_sub_agent_caller()` (line 239): Call Marcus → Derek/Victoria/Luna sub-agents and normalize their output into a {
+- `async tool_file_writer_batch()` (line 471): Write multiple files at once to a base path.
+- `async tool_file_reader()` (line 496): Read a single file.
+- `async tool_file_deleter()` (line 520): Delete a file or directory tree.
+- `async tool_file_lister()` (line 543): List files recursively or non-recursively.
+- `async tool_code_viewer()` (line 569): Return file contents with some metadata, used for in-UI preview.
+- `async tool_bash_runner()` (line 597): Run a shell command with timeout (async, non-blocking).
+- `async tool_python_executor()` (line 612): Execute a snippet of Python code in a temp file (async, non-blocking).
+- `async tool_npm_runner()` (line 635): Run an npm command, e.g. 'install', 'run build', etc. (async, non-blocking).
+- `async tool_pytest_runner()` (line 653): Run pytest in a given directory (async, non-blocking).
+- `async tool_playwright_runner()` (line 673): Run Playwright E2E tests (async, non-blocking).
+- `async tool_test_generator()` (line 687): Generate simple pytest or Playwright test template.
+- `async tool_sandbox_exec()` (line 723): Execute a command inside a sandbox container using real Python calls.  - NO HTTP
+- `async validate_deployment()` (line 922): Validate both frontend and backend deployments.
+- `async tool_deployment_validator()` (line 962): Tool wrapper for validate_deployment.
+- `async tool_key_validator()` (line 979): Validate API keys and secrets from environment and .env files.  Features: - Chec
+- `async tool_cross_llm_validator()` (line 1074): Cross-validate code or output using a secondary LLM provider.  Uses a different 
+- `async tool_syntax_validator()` (line 1183): Validate Python / basic JS/TS syntax.
+- `async tool_ux_visualizer()` (line 1215): Take a Playwright screenshot of the frontend.
+- `async tool_screenshot_comparer()` (line 1241): Compare two screenshots pixel-by-pixel.
+- `async tool_api_tester()` (line 1267): Perform a simple HTTP API call (GET or POST).
+- `async tool_web_researcher()` (line 1302): Real web research using DuckDuckGo Instant Answer API.  Features: - No API key r
+- `async tool_health_checker()` (line 1378): Hit a health endpoint and return status.
+- `async tool_user_confirmer()` (line 1398): Ask user for confirmation via WebSocket.  In interactive mode: Sends confirmatio
+- `async tool_user_prompter()` (line 1490): Prompt user for text input via WebSocket.  In interactive mode: Sends input requ
+- `async tool_db_schema_reader()` (line 1580): Read database schema from the project's models.py file.  Analyzes Beanie Documen
+  ... and 19 more functions
+
+---
+
+### migration.py (8,919 bytes)
+
+**Docstring:** Tool Planning Migration Adapter  This module provides a gradual migration path from the old handler architecture to the new tool planning architecture.  OLD ARCHITECTURE: - Each handler calls supervised_agent_call directly - Handler knows about Derek/Victoria/Luna - No tool observation  NEW ARCHITEC...
+
+**Classes:** 1 | **Functions:** 8
+
+**Classes:**
+- `ObservedHandler` (line 173): Wraps an existing handler to add tool observation.  Usage:     HANDLERS = {         "backend_models"
+
+**Top-level Functions:**
+- `observe_handler()` (line 39): Decorator that adds tool observation to an existing handler.  Usage:     @observ
+- `_record_handler_start()` (line 101): Record handler execution start to ArborMind.
+- `_record_handler_end()` (line 123): Record handler execution end to ArborMind.
+- `wrap_handlers_with_observation()` (line 228): Wrap all handlers with observation.  Usage:     from app.handlers import HANDLER
+
+---
+
+### patching.py (7,185 bytes)
+
+**Docstring:** Centralized Patching Utilities. Supports both Unified Diffs (Git-style) and JSON Patches (Search/Replace). Merged from app.lib.patch_engine and app.lib.patch_writer.
+
+**Classes:** 1 | **Functions:** 5
+
+**Classes:**
+- `PatchEngine` (line 160)
+
+**Top-level Functions:**
+- `apply_unified_patch()` (line 16): Apply a unified diff patch to the workspace. Accepts real git-style unified diff
+- `_split_into_file_patches()` (line 41): Split a full multi-file unified diff into file-level diffs.
+- `_apply_single_file_patch()` (line 60): Apply unified diff to a single file.
+- `_apply_hunks()` (line 112): Apply each @@ hunk to file content.
+
+---
+
+### planner.py (12,794 bytes)
+
+**Docstring:** Tool Plan Builder  THE SHIFT: - Router output is BINDING, not advisory - Router builds EXPLICIT plans from the consolidated tools.py - Plans include reason for each tool  The Flow:   Step → Tools for Phase → Ordered ToolPlan  NO LLM INVOLVED. DETERMINISTIC. OBSERVABLE.
+
+**Classes:** 1 | **Functions:** 10
+
+**Classes:**
+- `ToolPlanBuilder` (line 50): Builds binding tool plans for steps.  The Flow: 1. Step name → Get tools for phase 2. Order by: pre-
+
+**Top-level Functions:**
+- `get_plan_builder()` (line 320): Get the singleton plan builder.
+- `async build_tool_plan()` (line 328): Convenience function to build a tool plan.
+
+---
+
+### planning.py (4,766 bytes)
+
+**Docstring:** Tool Planning Primitives  THE SHIFT: - Handlers describe INTENT, not tools - Router builds BINDING plans, not suggestions - Agents ORCHESTRATE tools, they don't BE tools - Execution is LINEAR and OBSERVABLE  INVARIANT: ToolPlan is immutable INVARIANT: ToolPlan is observable (before, during, after) I...
+
+**Classes:** 5 | **Functions:** 10
+
+**Classes:**
+- `ToolInvocationPlan` (line 23): A single tool invocation in a plan.  Immutable. Observable. Non-executing.
+- `ToolPlan` (line 48): A complete execution plan for a step.  This is the ONLY new concept you need.  Properties: - Immutab
+- `ToolInvocationResult` (line 96): Result of executing a single tool invocation.
+- `ToolPlanExecutionResult` (line 123): Result of executing a complete tool plan.
+- `StepFailure` (line 156): Raised when a required tool in a plan fails.
+
+---
+
+### registry.py (2,002 bytes)
+
+**Docstring:** Tool registry and dispatcher.  Uses the consolidated tools.py as the single source of truth.
+
+**Classes:** 0 | **Functions:** 5
+
+**Top-level Functions:**
+- `async run_tool()` (line 11): Run a tool by name.  Uses the consolidated tools.py registry.  Supports both: - 
+- `get_available_tools()` (line 29): Get list of all available tool names.
+- `get_tools_for_step()` (line 35): Get tools available for a specific step.
+- `async get_relevant_tools_for_query()` (line 41): Find the most relevant tools for a given query and context.  Legacy compatibilit
+- `log()` (line 65): Simple internal logger.
+
+---
+
+### tool_policy.py (1,257 bytes)
+
+**Docstring:** Tool policy - Filtering and selection logic for tools.  Uses the consolidated tools.py as the single source of truth.
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `filter_by_environment()` (line 13): Pre-filter tools by environment constraints.  Prevents tools from being selected
+- `allowed_tools_for_step()` (line 26): Get allowed tools for a step, optionally filtered by environment.  Args:     ste
+
+---
+
+### tools.py (31,631 bytes)
+
+**Docstring:** ═══════════════════════════════════════════════════════════════════════════════ GENCODE TOOL REGISTRY - SINGLE SOURCE OF TRUTH  All 33 tools defined in ONE place: - ID - Implementation function - Capabilities - Phases (allowed steps) - Metadata (description, pre/post flags)  NO OTHER FILE should def...
+
+**Classes:** 2 | **Functions:** 48
+
+**Classes:**
+- `Capability` (line 29): What a tool CAN DO.
+- `ToolDefinition` (line 93): Complete definition of a tool.
+
+**Top-level Functions:**
+- `tool()` (line 118): Decorator to register a tool.  Usage:     @tool(         id="subagentcaller",   
+- `async tool_subagentcaller()` (line 180): Core LLM caller - delegates to Marcus/sub-agents.
+- `async tool_filewriterbatch()` (line 198)
+- `async tool_filereader()` (line 210)
+- `async tool_filedeleter()` (line 221)
+- `async tool_filelister()` (line 233)
+- `async tool_codeviewer()` (line 245)
+- `async tool_bashrunner()` (line 261)
+- `async tool_pythonexecutor()` (line 273)
+- `async tool_npmrunner()` (line 285)
+- `async tool_sandboxexec()` (line 297)
+- `async tool_pytestrunner()` (line 313)
+- `async tool_playwrightrunner()` (line 325)
+- `async tool_testgenerator()` (line 336)
+- `async tool_syntaxvalidator()` (line 353)
+- `async tool_static_code_validator()` (line 366)
+- `async tool_deploymentvalidator()` (line 378)
+- `async tool_keyvalidator()` (line 390)
+- `async tool_crossllmvalidator()` (line 401)
+- `async tool_environment_guard()` (line 417)
+- `async tool_dbschemareader()` (line 433)
+- `async tool_dbqueryrunner()` (line 444)
+- `async tool_dockerbuilder()` (line 459)
+- `async tool_verceldeployer()` (line 470)
+- `async tool_healthchecker()` (line 482)
+- `async tool_webresearcher()` (line 498)
+- `async tool_apitester()` (line 510)
+- `async tool_uxvisualizer()` (line 526)
+- `async tool_screenshotcomparer()` (line 538)
+- `async tool_userconfirmer()` (line 553)
+  ... and 16 more functions
+
+---
+
+
+================================================================================
+## app/tracking/
+================================================================================
+
+### metrics.py (1,395 bytes)
+
+**Docstring:** Code quality metrics tracking.
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `update_code_metrics()` (line 11): Update code metrics for generated files.
+- `get_code_metrics()` (line 43): Get code metrics for a project.
+
+---
+
+### quality.py (900 bytes)
+
+**Docstring:** Quality score tracking.
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `track_quality_score()` (line 11): Track quality score for an agent.
+- `get_quality_summary()` (line 27): Get average quality scores per agent.
+
+---
+
+
+================================================================================
+## app/utils/
+================================================================================
+
+### component_copier.py (7,053 bytes)
+
+**Docstring:** Just-in-Time Shadcn Component Copier  Instead of copying all 55+ Shadcn components upfront, this utility: 1. Scans generated frontend code for @/components/ui/* imports 2. Copies ONLY the components that are actually used 3. Handles component dependencies (e.g., dialog.jsx needs @radix-ui/react-dial...
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `get_used_components()` (line 33): Scan frontend source files for @/components/ui/* imports.  Returns:     Set of c
+- `get_all_required_components()` (line 75): Expand component set to include dependencies.  For example, if "alert-dialog" is
+- `copy_used_components()` (line 90): Copy only the used Shadcn components to the project.  Returns:     Number of com
+- `copy_component_by_name()` (line 171): Copy a single component by name (for on-demand copying).  Args:     project_path
+
+---
+
+### dependency_fixer.py (6,464 bytes)
+
+**Docstring:** Dependency Auto-Fixer for Backend Testing Detects and fixes missing Python dependencies before running tests
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `detect_missing_dependencies()` (line 11): Parse pytest/pip error output to detect missing dependencies.  Returns a set of 
+- `_module_to_package()` (line 56): Convert Python module name to pip package name.  Common mappings for packages wh
+- `add_dependencies_to_requirements()` (line 91): Add missing dependencies to requirements.txt.  Args:     requirements_path: Path
+- `auto_fix_backend_dependencies()` (line 170): Automatically detect and fix missing backend dependencies.  Args:     project_pa
+
+---
+
+### entity_classification.py (6,476 bytes)
+
+**Docstring:** Dynamic Entity Classification System  Determines if entities should be AGGREGATE (Document with collection)  or EMBEDDED (BaseModel nested in other models).  WORKS WITH ANY PROMPT - No hardcoded entity names!
+
+**Classes:** 0 | **Functions:** 3
+
+**Top-level Functions:**
+- `classify_entities_from_mock()` (line 17): Dynamically classify entities from mock.js structure.  Rules (deterministic, wor
+- `merge_classifications()` (line 102): Merge classifications from multiple sources.  Priority (most reliable to least):
+- `classify_project_entities()` (line 135): Main entry point: Classify all entities in a project.  This works with ANY user 
+
+---
+
+### entity_discovery.py (32,507 bytes)
+
+**Docstring:** Centralized Entity Discovery Utility  DYNAMIC: Reads entity names from project artifacts in priority order. NEVER falls back to hardcoded values like "Item" or "Note".
+
+**Classes:** 4 | **Functions:** 26
+
+**Classes:**
+- `Field` (line 26): Field specification for an entity.
+- `Relationship` (line 47): Relationship between entities.
+- `EntitySpec` (line 68): Complete specification for an entity.
+- `EntityPlan` (line 105): Complete entity generation plan.
+
+**Top-level Functions:**
+- `clear_discovery_cache()` (line 146): Clear the entity discovery cache for a project.  Call this after generating new 
+- `discover_primary_entity()` (line 168): Discover the primary entity from project artifacts.  PRIORITY ORDER (authoritati
+- `discover_entities_from_architecture()` (line 237): Parse architecture/backend.md or entire architecture directory and extract entit
+- `_extract_from_architecture_legacy()` (line 289)
+- `_extract_from_models()` (line 297): Extract entity from models.py Document class definitions.  IMPORTANT: Only match
+- `extract_all_models_from_models_py()` (line 332): Extract ALL Beanie Document model class names that ACTUALLY EXIST in models.py. 
+- `extract_document_models_only()` (line 384): Extract ONLY aggregate Document models (excludes embedded BaseModel classes).  C
+- `_extract_from_mock()` (line 450)
+- `_extract_from_routers()` (line 465)
+- `_extract_from_user_request()` (line 478)
+- `singularize()` (line 498): Convert a plural word to singular form.  This is the SINGLE SOURCE OF TRUTH for 
+- `extract_entity_from_request()` (line 544): Dynamically extract a potential entity name from the user request.  This is the 
+- `discover_db_function()` (line 611): Discover the database initialization function name from database.py.  Scans the 
+- `discover_routers()` (line 653)
+- `get_entity_plural()` (line 663): Get the plural form of an entity name.  This is a wrapper around the centralized
+- `discover_all_entities()` (line 677): Discover ALL entities from project artifacts or user request.  Returns at least 
+- `_extract_all_entities_from_architecture()` (line 773): Parse architecture.md for ALL entities in 'Data Models' section.
+- `detect_relationships()` (line 830): Detect relationships from architecture.md.  Args:     project_path: Project dire
+
+---
+
+### integration_playbooks.py (1,752 bytes)
+
+**Classes:** 0 | **Functions:** 1
+
+**Top-level Functions:**
+- `apply_playbook()` (line 46): Apply integration playbook to project
+
+---
+
+### parser.py (14,735 bytes)
+
+**Docstring:** HDAP Parser - Human-Definition Artifact Protocol  Parses LLM output using deterministic artifact markers.  FORMAT (attribute-based): <<<FILE path="path/to/file.ext">>> file content here <<<END_FILE>>>  OPTIONAL ATTRIBUTES: - path (required): File path - lang: Language hint (py, jsx, md, etc.) - mode...
+
+**Classes:** 0 | **Functions:** 10
+
+**Top-level Functions:**
+- `parse_hdap()` (line 53): Parse HDAP-formatted LLM output into files dictionary.  STRICT MODE: - If HDAP m
+- `_is_valid_file_path()` (line 127): Check if a path looks like a valid file path.
+- `normalize_llm_output()` (line 148): Parse LLM output into standardized format.  HDAP-only parsing - STRICT protocol 
+- `is_output_complete()` (line 189): Check if parsed output is complete (no truncation).  Returns True if: - All file
+- `get_incomplete_files()` (line 203): Get list of files that were truncated (missing END_FILE).
+- `has_hdap_markers()` (line 208): Check if the output contained HDAP markers at all.
+- `parse_json_metadata()` (line 217): Parse JSON metadata from LLM output.  Use this for steps that return STRUCTURED 
+- `parse_json()` (line 270): Legacy JSON parser - delegates to parse_json_metadata.  Kept for backwards compa
+- `sanitize_marcus_output()` (line 279): Legacy function - now just returns cleaned input.
+- `normalize_unicode_aggressively()` (line 290): Aggressively normalize Unicode to ASCII in code content.  LLMs sometimes output 
+
+---
+
+### path_utils.py (3,773 bytes)
+
+**Docstring:** Centralized Path Utilities - Single source of truth for project path resolution.  This module provides utilities for: - Resolving project paths from project_id - Validating paths are within workspace boundaries - Constructing common paths (backend, frontend, etc.)  All modules should import these ut...
+
+**Classes:** 0 | **Functions:** 11
+
+**Top-level Functions:**
+- `get_project_path()` (line 19): Get the absolute path to a project workspace.  This is the SINGLE SOURCE OF TRUT
+- `get_backend_path()` (line 39): Get the backend directory path for a project.
+- `get_frontend_path()` (line 44): Get the frontend directory path for a project.
+- `get_backend_app_path()` (line 49): Get the backend app directory path for a project.
+- `get_routers_path()` (line 54): Get the routers directory path for a project.
+- `get_models_path()` (line 59): Get the models.py file path for a project.
+- `get_main_py_path()` (line 64): Get the main.py file path for a project.
+- `get_architecture_path()` (line 69): Get the architecture.md file path for a project.
+- `get_tests_path()` (line 74): Get the backend tests directory path for a project.
+- `is_valid_project_path()` (line 79): Check if a path is within the workspaces directory.  Security check to prevent p
+- `ensure_project_directories()` (line 93): Ensure all required project directories exist.  Creates: - backend/app/routers -
+
+---
+
+### test_scaffolding.py (8,880 bytes)
+
+**Docstring:** Utilities for generating robust frontend tests. Scaffolds tests based on actual project content (selectors, testids).
+
+**Classes:** 0 | **Functions:** 4
+
+**Top-level Functions:**
+- `create_robust_smoke_test()` (line 10): Create a robust smoke test using the standard testing contract testids (ESM frie
+- `extract_testids_from_project()` (line 58): Extract all data-testid values from JSX/TSX files in the project. Returns a list
+- `create_matching_smoke_test()` (line 90): Create a smoke test that checks for elements that ACTUALLY exist in the UI. This
+- `get_available_selectors()` (line 183): Analyze the project to find all available selectors for testing. Returns a dict 
+
+---
+
+### ui_beautifier.py (5,373 bytes)
+
+**Docstring:** UI Beautifier - Post-processes frontend files to ensure consistency.  This is a provider-agnostic utility that applies consistent styling patterns to agent-generated frontend code.
+
+**Classes:** 0 | **Functions:** 5
+
+**Top-level Functions:**
+- `beautify_frontend_files()` (line 12): Post-process frontend files to ensure UI consistency.  Applies: - Standard page 
+- `_beautify_jsx()` (line 68): Apply beautification rules to JSX content.
+- `_normalize_spacing()` (line 81): Normalize inconsistent spacing classes for consistency.
+- `_ensure_page_testids()` (line 102): Ensure required testids are present in page components.
+- `ensure_page_shell()` (line 145): Ensure page has standard shell wrapper classes.  Expected pattern: <main data-te
+
+---
+
+
+================================================================================
+## app/validation/
+================================================================================
+
+### static_validator.py (9,720 bytes)
+
+**Docstring:** Static validator - Evidence-based verification without execution.  CRITICAL: This is READ-ONLY. It provides EVIDENCE, not VERDICTS. The workflow aggregator makes the final decision.  Phase 4: Implements Adjustment 2 - Evidence emission only.
+
+**Classes:** 2 | **Functions:** 7
+
+**Classes:**
+- `StaticValidationEvidence` (line 19): Evidence collected from static analysis.  Philosophy (ADJUSTMENT 2): - We OBSERVE facts - We EMIT ev
+- `StaticValidator` (line 56): Provides static evidence about code without executing it.  Use cases: 1. When step is isolated due t
+
+---
+
+### syntax_validator.py (27,986 bytes)
+
+**Docstring:** PRE-FLIGHT VALIDATION - Layer 1 Quality Gate  Catches 90% of syntax errors BEFORE sending to expensive LLM review. Executes in <0.5s, saves $0.10+ per rejected file.  Validates: - Python syntax (AST parsing) - JavaScript/JSX basic structure - Import statement formatting - data-testid presence in Rea...
+
+**Classes:** 2 | **Functions:** 13
+
+**Classes:**
+- `ValidationResult` (line 22): Result of syntax validation.
+- `IncompleteCodeError` (line 48)
+
+**Top-level Functions:**
+- `assert_no_empty_defs()` (line 52): Check for empty function/class definitions (only pass/docstring).
+- `check_undefined_names()` (line 78): Check for undefined names in Python code (missing imports).  Uses AST to: 1. Col
+- `validate_python_syntax()` (line 212): Validate Python code using AST parsing.  Catches and AUTO-FIXES: - Malformed imp
+- `validate_javascript_syntax()` (line 353): Basic JavaScript/JSX validation without a full parser.  AUTO-FIXES: - Errant bac
+- `check_duplicate_attributes()` (line 459): Check for duplicate HTML/JSX attributes on the same element.  Common LLM mistake
+- `validate_syntax()` (line 503): Validate file syntax based on its extension.  GATE 1: Unicode Normalization (str
+- `validate_files_batch()` (line 557): Validate a batch of files from LLM output.  Args:     files: List of {"path": st
+- `preflight_check()` (line 603): Pre-flight validation gate for agent output.  This is the main entry point, call
+
+---
+
+
+================================================================================
+## app/workflow/
+================================================================================
+
+### engine.py (11,279 bytes)
+
+**Docstring:** Workflow Entry Points - Facade for FASTOrchestratorV2.  Phase 2 Refactor: - WorkflowEngine (Class) REMOVED. - FASTOrchestratorV2 is the sole execution engine. - This file provides entry points: run_workflow, resume_workflow.
+
+**Classes:** 0 | **Functions:** 5
+
+**Top-level Functions:**
+- `async run_workflow()` (line 19): Start a new workflow for a project using FASTOrchestratorV2.
+- `async autonomous_agent_workflow()` (line 179): Backwards-compatible wrapper.
+- `async resume_workflow()` (line 191): Resume a paused workflow OR start a refine workflow. Uses FASTOrchestratorV2 for
+- `async resume_from_checkpoint_workflow()` (line 251): Resume a workflow explicitly from saved checkpoint (UI triggered).
+
+---
+
+### integration_example.py (3,780 bytes)
+
+**Docstring:** Example of how to integrate Phase 1 outcome aggregation.  This shows how workflow engine and orchestrators should use the new types.
+
+**Classes:** 0 | **Functions:** 2
+
+**Top-level Functions:**
+- `example_workflow_completion()` (line 17): Example: How to use outcome aggregation at end of workflow.
+- `example_hard_failure_precedence()` (line 85): Example: HARD_FAILURE in isolated step still fails workflow.  This demonstrates 
+
+---

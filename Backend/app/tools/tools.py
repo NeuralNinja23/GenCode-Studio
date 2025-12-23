@@ -80,6 +80,9 @@ class Capability(Enum):
     # User Interaction
     PROMPT_USER = "prompt_user"
     CONFIRM_USER = "confirm_user"
+    
+    # Runtime (Phase B - Execution Reality)
+    BOOTSTRAP_RUNTIME = "bootstrap_runtime"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -99,6 +102,10 @@ class ToolDefinition:
     required_for_phase: bool = False
     writes_files: List[str] = field(default_factory=list)
     allows_execution: Optional[str] = None  # None, "static", "runtime"
+    
+    # PHASE C1: Argument enforcement
+    required_args: List[str] = field(default_factory=list)
+    optional_args: List[str] = field(default_factory=list)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -118,6 +125,8 @@ def tool(
     required: bool = False,
     writes_files: List[str] = None,
     allows_execution: str = None,
+    required_args: List[str] = None,  # PHASE C1
+    optional_args: List[str] = None,  # PHASE C1
 ):
     """
     Decorator to register a tool.
@@ -128,6 +137,7 @@ def tool(
             capabilities=[Capability.GENERATE_CODE],
             phases=["*"],
             description="Call sub-agents for code generation",
+            required_args=["step_name"],
         )
         async def tool_sub_agent_caller(args):
             ...
@@ -144,6 +154,8 @@ def tool(
             required_for_phase=required,
             writes_files=writes_files or [],
             allows_execution=allows_execution,
+            required_args=required_args or [],
+            optional_args=optional_args or [],
         )
         
         @wraps(func)
@@ -626,6 +638,42 @@ async def tool_router_scaffold_generator(args: Dict[str, Any]) -> Dict[str, Any]
 )
 async def tool_router_logic_filler(args: Dict[str, Any]) -> Dict[str, Any]:
     from app.tools.implementations import tool_router_logic_filler as impl
+    return await impl(args)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE B: RUNTIME BOOTSTRAP (EXECUTION REALITY)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@tool(
+    id="runtime_bootstrap",
+    capabilities=[Capability.BOOTSTRAP_RUNTIME, Capability.CHECK_HEALTH],
+    phases=["system_integration", "testing_backend", "testing_frontend", "preview_final"],
+    description="Start runtime (Docker/local) and block until ready",
+    is_pre=True,
+    required=True,  # MANDATORY for execution steps
+)
+async def tool_runtime_bootstrap(args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    PHASE B1: Runtime Bootstrap Tool
+    
+    Runs ONCE after backend_routers, BEFORE any execution step.
+    
+    Responsibilities:
+    - Detect stack (FastAPI + frontend)
+    - Start runtime (Docker or local)
+    - Block until process started OR failed definitively
+    
+    Returns:
+        {
+            "running": bool,
+            "mode": "docker" | "local" | "none",
+            "ports": {"backend": 8000, "frontend": 3000},
+            "container_ids": [...],
+            "logs_tail": "..."
+        }
+    """
+    from app.tools.implementations import tool_runtime_bootstrap as impl
     return await impl(args)
 
 

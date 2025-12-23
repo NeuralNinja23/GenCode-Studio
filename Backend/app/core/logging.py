@@ -1,28 +1,65 @@
 import sys
+import os
 from datetime import datetime
 from typing import Any, Optional, List
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE E4: LOG FILTERING
+# ═══════════════════════════════════════════════════════════════════════════════
+# Only these 5 log classes are shown at INFO level
+# Everything else is gated behind DEBUG
+
+INFO_SCOPES = {
+    "FAST-V2",      # Step lifecycle
+    "PLANNER",      # Execution intent  
+    "TOOL-EXEC",    # Actual execution
+    "MARCUS",       # LLM boundary
+    "SUPERVISION",  # Review verdict
+    "TOKENS",       # Token usage
+    "HDAP",         # File protocol
+    "LOCKFILE",     # Cache hits
+}
+
+# DEBUG-only scopes (hidden by default)
+DEBUG_SCOPES = {
+    "PREFLIGHT",
+    "COMPONENT_COPIER",
+    "FILTER",
+    "DISCOVERY",
+    "OPTIMIZATION",
+    "ATTENTION",
+    "BOUNDARY",
+    "RUNTIME",
+}
+
+# Check if DEBUG mode is enabled
+DEBUG_MODE = os.getenv("GENCODE_DEBUG", "false").lower() == "true"
+
 
 def log(scope: str, message: str, data: Any = None, project_id: Optional[str] = None) -> None:
     """
     Unified logging function for GenCode Studio.
-    Prints to stdout with timestamp and scope.
+    
+    PHASE E4: Only INFO_SCOPES are shown by default.
+    Set GENCODE_DEBUG=true to see all scopes.
     """
+    # Filter non-essential logs unless DEBUG mode
+    if not DEBUG_MODE and scope not in INFO_SCOPES:
+        return  # Silently skip
+    
     timestamp = datetime.now().strftime("%H:%M:%S")
     prefix = f"[{timestamp}] [{scope}]"
     
     if project_id:
-        # Keep just the first 8 chars of project_id for cleaner logs
         short_id = project_id[:8]
         prefix += f" [{short_id}]"
         
     print(f"{prefix} {message}")
     
     if data:
-        # Avoid dumping huge data blobs unless necessary
-        # For now, we print it as requested
         print(f"  Data: {data}")
     
-    # Ensure flush to see logs immediately in some environments
     sys.stdout.flush()
 
 

@@ -51,6 +51,27 @@ async def write_validated_files(
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_text(content, encoding="utf-8")
             written += 1
+            
+            # ═══════════════════════════════════════════════════════════════
+            # PHASE 3: Record artifact birth event at materialization boundary
+            # ═══════════════════════════════════════════════════════════════
+            try:
+                from app.arbormind.observation.execution_ledger import (
+                    record_artifact_event, 
+                    get_current_run_id
+                )
+                run_id = get_current_run_id()
+                if run_id:
+                    record_artifact_event(
+                        run_id=run_id,
+                        step=step,
+                        file_path=path,
+                        event_type="CREATED",
+                        size_bytes=len(content.encode("utf-8")),
+                    )
+            except Exception:
+                pass  # Observation is best-effort, never crash execution
+                
         except Exception as e:
             log(step, f"❌ Failed to write {path}: {e}")
     

@@ -1,265 +1,20 @@
 # app/workflow/engine.py
 """
-Workflow Engine - The main orchestration loop.
+Workflow Entry Points - Facade for FASTOrchestratorV2.
 
-This implements the GenCode Studio FRONTEND-FIRST workflow:
-1. Architecture (Victoria) - Design system
-2. Frontend Mock (Derek) - Create frontend with mock data (aha moment!)
-3. Backend Models (Derek) - Create database schemas
-4. Backend Routers (Derek) - Create FastAPI routers
-5. System Integration (Derek) - Script Integrator
-6. Testing Backend (Derek) - Run pytest
-7. Frontend Integration (Derek) - Replace mock with real API
-8. Testing Frontend (Luna) - Run Playwright
-9. Preview (Marcus) - Show running app
-
+Phase 2 Refactor:
+- WorkflowEngine (Class) REMOVED.
+- FASTOrchestratorV2 is the sole execution engine.
+- This file provides entry points: run_workflow, resume_workflow.
 """
 import asyncio
-import traceback
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Optional
 
-from app.core.constants import WorkflowStep, WSMessageType
-from app.core.types import ChatMessage, StepResult
 from app.core.config import settings
 from app.orchestration.state import WorkflowStateManager, CURRENT_MANAGERS
 from app.core.logging import log
-from app.orchestration.utils import broadcast_to_project
-from app.handlers import (
-    step_architecture,
-    step_frontend_mock,
-    step_backend_models,
-    step_backend_routers,
-    step_system_integration,
-    step_testing_backend,
-
-    step_testing_frontend,
-    step_preview_final,
-    step_refine,
-)
-# NOTE: Cost tracking now handled by BudgetManager in engine_v2/budget_manager.py
-
-
-# Step handler registry - GENCODE STUDIO FRONTEND-FIRST ORDER
-STEP_HANDLERS = {
-    WorkflowStep.ARCHITECTURE: step_architecture,
-    WorkflowStep.FRONTEND_MOCK: step_frontend_mock,
-    WorkflowStep.BACKEND_MODELS: step_backend_models,
-    WorkflowStep.BACKEND_ROUTERS: step_backend_routers,
-    WorkflowStep.SYSTEM_INTEGRATION: step_system_integration,
-    WorkflowStep.TESTING_BACKEND: step_testing_backend,
-
-    WorkflowStep.TESTING_FRONTEND: step_testing_frontend,
-    WorkflowStep.PREVIEW_FINAL: step_preview_final,
-    WorkflowStep.REFINE: step_refine,
-}
-
-
-
-
-class WorkflowEngine:
-    """
-    The main workflow engine.
-    
-    Executes the GenCode Studio FRONTEND-FIRST workflow:
-    
-    1. Architecture (Victoria) - Design system architecture  
-    2. Frontend Mock (Derek) - Create frontend with mock data (aha moment!)
-    3. Backend Models (Derek) - Create database schemas (Beanie/Pydantic)
-    4. Backend Routers (Derek) - Create FastAPI routers
-    5. System Integration (Derek) - Orchestrate services and dependencies
-    6. Testing Backend (Derek) - Run backend tests with pytest
-    7. Frontend Integration (Derek) - Replace mock with real API
-    8. Testing Frontend (Luna) - E2E tests with Playwright
-    9. Preview (Marcus) - Show running application
-
-
-
-    """
-    
-    def __init__(
-        self,
-        project_id: str,
-        manager: Any,
-        project_path: Path,
-        user_request: str,
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
-    ):
-        self.project_id = project_id
-        self.manager = manager
-        self.project_path = project_path
-        self.user_request = user_request
-        self.provider = provider or settings.llm.default_provider
-        self.model = model or settings.llm.default_model
-        self.chat_history: List[ChatMessage] = []
-        self.current_step = WorkflowStep.ARCHITECTURE
-
-        self.current_turn = 1
-        self.max_turns = settings.workflow.max_turns
-    
-    async def run(self) -> None:
-        """Execute the workflow loop."""
-        log("WORKFLOW", f"Starting workflow for {self.project_id}", project_id=self.project_id)
-        
-        # Register manager
-        CURRENT_MANAGERS[self.project_id] = self.manager
-        # Note: set_running() is called in run_workflow() before engine creation
-        
-        try:
-            while self.current_turn <= self.max_turns:
-                handler = STEP_HANDLERS.get(self.current_step)
-                
-                if not handler:
-                    log("WORKFLOW", f"No handler for step {self.current_step}, ending")
-                    break
-                
-                log("WORKFLOW", f"Executing step: {self.current_step} (turn {self.current_turn})")
-                
-                result = await handler(
-                    project_id=self.project_id,
-                    user_request=self.user_request,
-                    manager=self.manager,
-                    project_path=self.project_path,
-                    chat_history=self.chat_history,
-                    provider=self.provider,
-                    model=self.model,
-                    current_turn=self.current_turn,
-                    max_turns=self.max_turns,
-                )
-                
-                # ═══════════════════════════════════════════════════════
-                # outcome = result.outcome if isinstance(result, StepExecutionResult) else ...
-                # ═══════════════════════════════════════════════════════
-                from app.core.step_outcome import StepExecutionResult, StepOutcome
-                is_new_result = isinstance(result, StepExecutionResult)
-                
-                # Check for success
-                if is_new_result:
-                    is_success = result.outcome == StepOutcome.SUCCESS
-                    step_data = result.data or {}
-                else:
-                    is_success = getattr(result, 'status', 'ok') == "ok"
-                    step_data = getattr(result, 'data', {})
-
-                try:
-                    from app.orchestration.checkpoint import save_checkpoint
-                    await save_checkpoint(
-                        project_id=self.project_id,
-                        step_name=self.current_step,
-                        turn=self.current_turn,
-                        output=step_data,
-                        context={
-                            "user_request": self.user_request,
-                            "provider": self.provider,
-                            "model": self.model,
-                            "current_turn": self.current_turn,
-                            "max_turns": self.max_turns,
-                        },
-                        status="completed" if is_success else "failed",
-                    )
-                except Exception as cp_error:
-                    log("WORKFLOW", f"⚠️ Checkpoint save failed (non-fatal): {cp_error}")
-                
-                # FIX #15: Use configuration instead of magic number
-                max_chat_history = settings.workflow.max_chat_history
-                if len(self.chat_history) > max_chat_history:
-                    # Keep system message (if any) and trim oldest
-                    self.chat_history = self.chat_history[-max_chat_history:]
-                
-                # Handling next steps
-                if is_new_result:
-                    # StepExecutionResult doesn't have pause/nextstep directly in it usually
-                    # but if it does, we use it. Otherwise, we assume progression.
-                    # Handlers currently still return StepResult mostly, wrapped by boundary
-                    pass
-                
-                if hasattr(result, 'pause') and result.pause:
-                    await self._pause_workflow(result)
-                    return
-                
-                if hasattr(result, 'nextstep'):
-                    self.current_step = result.nextstep
-                
-                if hasattr(result, 'turn'):
-                    self.current_turn = result.turn
-                
-                if self.current_step == WorkflowStep.COMPLETE:
-                    break
-                
-                await asyncio.sleep(0.5)
-            
-            await self._complete_workflow()
-            
-        except Exception as e:
-            await self._fail_workflow(e)
-        finally:
-            await self._cleanup()
-    
-    async def _pause_workflow(self, result: StepResult) -> None:
-        """Pause the workflow for user input."""
-        log("WORKFLOW", f"Pausing at {self.current_step}")
-        
-        await WorkflowStateManager.pause_workflow(
-            self.project_id,
-            self.current_step,
-            self.current_turn,
-            self.chat_history,
-            self.user_request,
-            self.project_path,
-            self.provider,
-            self.model,
-        )
-        
-        await broadcast_to_project(
-            self.manager,
-            self.project_id,
-            {
-                "type": WSMessageType.WORKFLOW_PAUSED,
-                "projectId": self.project_id,
-                "step": self.current_step,
-                "message": result.data.get("message", "Waiting for input"),
-            },
-        )
-    
-    async def _complete_workflow(self) -> None:
-        """Complete the workflow successfully."""
-        log("WORKFLOW", "Workflow completed successfully!")
-        
-        await broadcast_to_project(
-            self.manager,
-            self.project_id,
-            {
-                "type": WSMessageType.WORKFLOW_COMPLETE,
-                "projectId": self.project_id,
-                "totalTurns": self.current_turn,
-                "message": "Application generated successfully!",
-                # NOTE: Cost tracking now handled by BudgetManager
-            },
-        )
-    
-    async def _fail_workflow(self, error: Exception) -> None:
-        """Handle workflow failure."""
-        log("WORKFLOW", f"Workflow failed: {error}")
-        
-        await broadcast_to_project(
-            self.manager,
-            self.project_id,
-            {
-                "type": WSMessageType.WORKFLOW_FAILED,
-                "projectId": self.project_id,
-                "step": self.current_step,
-                "error": str(error),
-            },
-        )
-    
-    async def _cleanup(self) -> None:
-        """Clean up workflow state atomically."""
-        CURRENT_MANAGERS.pop(self.project_id, None)
-        # FIX #3: Use atomic stop_workflow to prevent race conditions
-        await WorkflowStateManager.stop_workflow(self.project_id)
-        log("WORKFLOW", "Workflow cleanup complete")
-
+from app.orchestration.fast_orchestrator import FASTOrchestratorV2
 
 async def run_workflow(
     project_id: str,
@@ -270,13 +25,9 @@ async def run_workflow(
     model: Optional[str] = None,
 ) -> None:
     """
-    Start a new workflow for a project.
-    
-    This is the main entry point for starting workflows.
-    Uses GenCode Studio FRONTEND-FIRST pattern.
+    Start a new workflow for a project using FASTOrchestratorV2.
     """
-    # ===== GUARD: Atomically check and mark as running (FIX #1) =====
-    # This prevents race conditions where two requests both pass is_running check
+    # ===== GUARD: Atomically check and mark as running =====
     can_start = await WorkflowStateManager.try_start_workflow(project_id)
     if not can_start:
         log("WORKFLOW", f"⚠️ Workflow already running for {project_id}, ignoring duplicate request", project_id=project_id)
@@ -285,23 +36,13 @@ async def run_workflow(
     # Create project directory (Atomic scaffolding)
     final_project_path = workspaces_path / project_id
     
-    # FIX ATOMIC-001: Use temporary directory until scaffolding is complete
-    # This prevents broken project state if scaffolding fails halfway
+    # Use temporary directory until scaffolding is complete
     temp_dir_name = f".tmp_scaffold_{project_id}"
     project_path = workspaces_path / temp_dir_name
     if project_path.exists():
         import shutil
         shutil.rmtree(project_path)
     project_path.mkdir(parents=True, exist_ok=True)
-    
-    # ============================================================
-    # NEW SCAFFOLDING POLICY (3-Tier Template System)
-    # ============================================================
-    # 🔒 A. COPY DIRECTLY (Infrastructure) - Docker, build configs
-    # 📋 B. REFERENCE ONLY (Configuration) - package.json, playwright.config, requirements.txt
-    #       These are in templates/.../reference/ and read by agents as examples
-    # ✨ C. AGENT GENERATED (Source Code) - All app code, frontend/src/**, backend/app/**
-    # ============================================================
     
     try:
         import shutil
@@ -331,21 +72,18 @@ async def run_workflow(
         else:
              log("WORKFLOW", "⚠️ Missing Backend Seed Template!")
 
-        # Create routers/__init__.py manually if it was filtered out (it shouldn't be, but safe bet)
-        (backend_dest / "app" / "routers").mkdir(exist_ok=True, parents=True) # Ensure parents exist too
+        # Create routers/__init__.py manually if it was filtered out
+        (backend_dest / "app" / "routers").mkdir(exist_ok=True, parents=True) 
         if not (backend_dest / "app" / "routers" / "__init__.py").exists():
             (backend_dest / "app" / "routers" / "__init__.py").write_text("# Routers package\n", encoding="utf-8")
         
-        # --- Seed Test Template (Option C) ---
-        # Copy test_contract_api.template for deterministic rendering
+        # --- Seed Test Template ---
         tests_dest = backend_dest / "tests"
         tests_dest.mkdir(parents=True, exist_ok=True)
         
-        # Ensure tests/__init__.py exists
         if not (tests_dest / "__init__.py").exists():
             (tests_dest / "__init__.py").write_text("# Tests package\n", encoding="utf-8")
         
-        # Copy the template file for reference/rendering
         test_template_src = backend_seed / "tests" / "test_contract_api.template"
         if test_template_src.exists():
             test_template_dest = tests_dest / "test_contract_api.template"
@@ -359,96 +97,73 @@ async def run_workflow(
         if frontend_seed.exists():
             shutil.copytree(frontend_seed, frontend_dest, dirs_exist_ok=True)
         
-        # Copy Base Frontend (Vite Boilerplate) - excluding reference/seed
-        # We need the build configs and base structure
+        # Copy Base Frontend (Vite Boilerplate)
         frontend_base = base_templates / "frontend"
         for item in frontend_base.iterdir():
             if item.name in ["seed", "reference"]:
-                continue # Skip specialized folders
+                continue 
             if item.is_file():
                 shutil.copy2(item, frontend_dest / item.name)
             elif item.is_dir() and item.name == "src":
-                # Special merge for src: Don't overwrite seed/src files
-                # IMPORTANT: Skip components/ui - these are copied on-demand by component_copier
-                # This keeps projects lean (only 5-10 UI components instead of 55+)
                 src_dir = frontend_dest / "src"
                 for src_item in item.rglob("*"):
                     if src_item.is_file():
-                        # Skip ui components - copied on-demand after Derek generates code
                         rel_path = src_item.relative_to(item)
+                        # Skip ui components - copied on-demand
                         if "components/ui" in str(rel_path).replace("\\", "/"):
                             continue
                         dest_path = src_dir / rel_path
                         dest_path.parent.mkdir(parents=True, exist_ok=True)
-                        if not dest_path.exists():  # Don't overwrite seed files
+                        if not dest_path.exists():  
                             shutil.copy2(src_item, dest_path)
             elif item.is_dir() and item.name == "public":
                  shutil.copytree(item, frontend_dest / "public", dirs_exist_ok=True)
 
-        # --- Frontend Tests Directory (Luna generates tests dynamically) ---
-        # No template needed - Luna generates E2E tests from actual component code
+        # --- Frontend Tests Directory ---
         frontend_tests_dest = frontend_dest / "tests"
         frontend_tests_dest.mkdir(parents=True, exist_ok=True)
 
         # --- Docker Infrastructure ---
-        # FIX: Align with new template structure (backend/Dockerfile, frontend/Dockerfile)
-        
-        # 1. Backend Docker Config
         backend_tmpl = base_templates / "backend"
         if (backend_tmpl / "Dockerfile").exists():
              shutil.copy2(backend_tmpl / "Dockerfile", backend_dest / "Dockerfile")
         if (backend_tmpl / ".dockerignore").exists():
              shutil.copy2(backend_tmpl / ".dockerignore", backend_dest / ".dockerignore")
              
-        # 2. Frontend Docker Config
         frontend_tmpl = base_templates / "frontend"
         if (frontend_tmpl / "Dockerfile").exists():
              shutil.copy2(frontend_tmpl / "Dockerfile", frontend_dest / "Dockerfile")
         if (frontend_tmpl / ".dockerignore").exists():
              shutil.copy2(frontend_tmpl / ".dockerignore", frontend_dest / ".dockerignore")
 
-        # 3. Root Docker Compose
         docker_tmpl = base_templates / "docker"
         if docker_tmpl.exists():
             if (docker_tmpl / "docker-compose.yml").exists():
                  shutil.copy2(docker_tmpl / "docker-compose.yml", project_path / "docker-compose.yml")
             
-            # Create frontend/.env with VITE_API_URL
             frontend_env_content = """# Frontend Environment Variables
-# VITE_API_URL=http://localhost:8001/api (Local)
 VITE_API_URL=http://localhost:8001/api
 """
             (frontend_dest / ".env").write_text(frontend_env_content, encoding="utf-8")
         
-        # log("WORKFLOW", f"[{project_id}] Golden Seed Scaffolding Complete")
-        
-        # FIX ATOMIC-001: Commit atomic scaffolding
+        # Commit atomic scaffolding
         if final_project_path.exists():
             shutil.rmtree(final_project_path)
         shutil.move(str(project_path), str(final_project_path))
-        project_path = final_project_path  # Point to real path for engine
+        project_path = final_project_path 
             
     except Exception as e:
         log("WORKFLOW", f"Failed to scaffold project: {e}")
-        # Cleanup temp
         if project_path.exists() and "tmp_scaffold" in str(project_path):
              try:
                  shutil.rmtree(project_path)
-             except Exception as e:
-                 log("WORKFLOW", f"Cleanup failed (non-fatal): {e}")
+             except Exception as cleanup_err:
+                 log("WORKFLOW", f"Cleanup failed (non-fatal): {cleanup_err}")
         
-        # Don't proceed if scaffolding failed
         await WorkflowStateManager.stop_workflow(project_id)
         return
 
-    # ============================================================
-    # ENGINE SELECTION: FAST V2 (Hybrid Adaptive)
-    # ============================================================
-    # V2: Uses existing handlers + dependency barriers + self-healing
-    # ============================================================
-    
-    from app.orchestration.fast_orchestrator import FASTOrchestratorV2
-    
+    # Start Engine
     engine = FASTOrchestratorV2(
         project_id=project_id,
         manager=manager,
@@ -461,7 +176,6 @@ VITE_API_URL=http://localhost:8001/api
     await engine.run()
 
 
-# Backwards compatibility
 async def autonomous_agent_workflow(
     project_id: str,
     description: str,
@@ -481,59 +195,57 @@ async def resume_workflow(
     workspaces_dir: Path,
 ) -> None:
     """
-    Resume a paused workflow OR start a refine workflow for completed projects.
-    
-    - If workflow is paused: Resume from saved state
-    - If project exists but not paused: Start refine workflow
-    - If project doesn't exist: Log warning and return
+    Resume a paused workflow OR start a refine workflow.
+    Uses FASTOrchestratorV2 for execution.
     """
     paused = await WorkflowStateManager.get_paused_state(project_id)
+    project_path = workspaces_dir / project_id
     
+    is_refinement = False
+    provider = settings.llm.default_provider
+    model = settings.llm.default_model
+
     if paused:
-        # Resume from saved state
         log("WORKFLOW", f"Resuming paused workflow for {project_id}")
         await WorkflowStateManager.resume_workflow(project_id)
         
-        engine = WorkflowEngine(
-            project_id=project_id,
-            manager=manager,
-            project_path=Path(paused["project_path"]),
-            user_request=user_message,
-            provider=paused.get("provider"),
-            model=paused.get("model"),
-        )
-        engine.current_step = paused["step"]
-        engine.current_turn = paused["turn"]
-        engine.chat_history = paused.get("chat_history", [])
+        if paused.get("step") == "refine":
+            is_refinement = True
         
-        await engine.run()
+        provider = paused.get("provider") or provider
+        model = paused.get("model") or model
     else:
         # Check if project exists - if so, start refine workflow
-        project_path = workspaces_dir / project_id
-        
         if project_path.exists():
             log("WORKFLOW", f"Starting refine workflow for {project_id}")
-            
-            # FIX #4: Use atomic try_start_workflow to prevent race conditions
-            can_start = await WorkflowStateManager.try_start_workflow(project_id)
-            if not can_start:
-                log("WORKFLOW", f"⚠️ Workflow already running for {project_id}, ignoring")
-                return
-            
-            # Start refine workflow (starts at REFINE step)
-            engine = WorkflowEngine(
-                project_id=project_id,
-                manager=manager,
-                project_path=project_path,
-                user_request=user_message,
-                provider=settings.llm.default_provider,
-                model=settings.llm.default_model,
-            )
-            engine.current_step = WorkflowStep.REFINE
-            
-            await engine.run()
+            is_refinement = True
         else:
             log("WORKFLOW", f"No project found for {project_id}, cannot resume/refine")
+            return
+
+    # Atomic start check
+    can_start = await WorkflowStateManager.try_start_workflow(project_id)
+    if not can_start:
+        log("WORKFLOW", f"⚠️ Workflow already running for {project_id}, ignoring")
+        return
+
+    # Start engine
+    # If refining, is_refinement=True
+    # If resuming normal workflow, resume_from_checkpoint=True (unless it was paused at start?)
+    # Note: resume_from_checkpoint loads completed steps from disk.
+    
+    engine = FASTOrchestratorV2(
+        project_id=project_id,
+        manager=manager,
+        project_path=project_path,
+        user_request=user_message,
+        provider=provider,
+        model=model,
+        resume_from_checkpoint=not is_refinement, 
+        is_refinement=is_refinement,
+    )
+    
+    await engine.run()
 
 
 async def resume_from_checkpoint_workflow(
@@ -545,20 +257,8 @@ async def resume_from_checkpoint_workflow(
     model: Optional[str] = None,
 ) -> bool:
     """
-    Resume a workflow from saved checkpoint.
-    
-    This is different from resume_workflow (which handles paused workflows).
-    This function:
-    1. Checks if project has saved progress in MongoDB
-    2. If yes, starts FASTOrchestratorV2 in resume mode (skips completed steps)
-    3. If no progress, returns False so caller can decide to start fresh
-    
-    Returns:
-        True if resumed successfully, False if no progress to resume from
+    Resume a workflow explicitly from saved checkpoint (UI triggered).
     """
-    from app.orchestration.fast_orchestrator import FASTOrchestratorV2
-    
-    # Check for saved progress
     has_progress = await WorkflowStateManager.has_progress(project_id)
     
     if not has_progress:
@@ -570,7 +270,7 @@ async def resume_from_checkpoint_workflow(
         log("WORKFLOW", f"Project directory not found: {project_path}")
         return False
     
-    # Guard: Check if another workflow is running
+    # Guard
     can_start = await WorkflowStateManager.try_start_workflow(project_id)
     if not can_start:
         log("WORKFLOW", f"⚠️ Workflow already running for {project_id}")
@@ -578,7 +278,6 @@ async def resume_from_checkpoint_workflow(
     
     log("WORKFLOW", f"🔄 Resuming FAST V2 workflow for {project_id} from checkpoint")
     
-    # Start engine in resume mode
     engine = FASTOrchestratorV2(
         project_id=project_id,
         manager=manager,
@@ -586,7 +285,7 @@ async def resume_from_checkpoint_workflow(
         user_request=description,
         provider=provider,
         model=model,
-        resume_from_checkpoint=True,  # KEY: Enable resume mode
+        resume_from_checkpoint=True,
     )
     
     await engine.run()

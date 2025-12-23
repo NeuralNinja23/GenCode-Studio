@@ -23,18 +23,21 @@ from app.core.constants import WSMessageType
 from app.utils.entity_discovery import discover_primary_entity, extract_all_models_from_models_py
 from app.core.guard import OrchestrationGuard
 from app.core.step_outcome import StepOutcome, StepExecutionResult
+from app.core.types import StepResult
 
 # Phase 9: ArborMind Execution Router + Observation
 from app.arbormind.runtime.execution_router import ExecutionRouter
 from app.arbormind.observation.observer import record_event
 
 # Phase 10: SQLite Memory for Decision Vectors
-from app.arbormind.observation.sqlite_store import (
+# Phase 10: Execution Ledger (Pure Events)
+from app.arbormind.observation.execution_ledger import (
     record_run_start,
-    record_run_end,
-    record_decision,
-    record_failure,
-    update_decision_outcome,
+    record_step_entry,
+    record_step_exit,
+    record_decision_event,
+    record_failure_event,
+    record_snapshot,
 )
 
 # PHASE 2: Failure Severity System
@@ -66,44 +69,24 @@ from app.tools.planning import StepFailure
 # ═══════════════════════════════════════════════════════════════════════════════
 # ARBORMIND LEARNING: Canonical Failure Ingestion (The 7 Requirements)
 # ═══════════════════════════════════════════════════════════════════════════════
-from app.arbormind.learning import (
+# ARBORMIND OBSERVATION: Canonical Failure Definitions (Phase 3.5)
+# ═══════════════════════════════════════════════════════════════════════════════
+from app.arbormind.observation.failure_canon import (
     FailureClass,
     FailureScope,
-    ingest_failure,
-    ingest_invariant_violation,
-    ingest_parse_failure,
-    ingest_truncation,
-    ingest_quality_rejection,
-    ingest_timeout,
-    ingest_runtime_exception,
-    ingest_external_failure,
-    ingest_dependency_missing,
+)
+# Note: Ingestion functions removed as per Phase 3 strictness
+# from app.arbormind.observation.ingestion import ... (Does not exist in Obs)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ARBORMIND OBSERVATION: Step State Snapshot (SSS) - Phase 3 Primitive
+# ═══════════════════════════════════════════════════════════════════════════════
+from app.arbormind.observation.step_state_snapshot import (
+    record_step_entry,
+    record_step_exit,
 )
 
-# Agent mapping for logging
-STEP_AGENTS = {
-    # Phase 1: Planning
-    "architecture": "Victoria",
-    
-    # Phase 2: Mock & Backend
-    "frontend_mock": "Derek",
-    "backend_models": "Derek",
-    "backend_routers": "Derek",
-    "backend_implementation": "Derek",
-    
-    # Phase 3: Integration
-    "system_integration": "Derek",
 
-    "impl_refinement_iteration": "Derek",
-    
-    # Phase 4: Testing
-    "testing_frontend": "Luna",
-    "frontend_testing": "Luna",
-    
-    # Backend testing done by Derek (User Instruction)
-    "testing_backend": "Derek",
-    "backend_testing": "Derek",
-}
 
 class FASTOrchestratorV2(OrchestrationGuard):
     """
@@ -124,6 +107,7 @@ class FASTOrchestratorV2(OrchestrationGuard):
         provider: Optional[str] = None,
         model: Optional[str] = None,
         resume_from_checkpoint: bool = False,
+        is_refinement: bool = False,
     ):
         self.project_id = project_id
         self.manager = manager
@@ -132,13 +116,25 @@ class FASTOrchestratorV2(OrchestrationGuard):
         self.provider = provider
         self.model = model
         self.resume_from_checkpoint = resume_from_checkpoint
+        self.is_refinement = is_refinement
         
         self.graph = TaskGraph()
+        
+        # In refinement mode, we override the graph to just "refine"
+        if self.is_refinement:
+            self.graph.steps = ["refine"]
+            self.completed_steps = [] # Refine always runs
+
+        
+        # self.graph initialized above
         self.cross_ctx = CrossStepContext.get_or_create(project_id)
         self.compiler = StructuralCompiler()
         self.checkpoint = CheckpointManagerV2(base_dir=str(project_path / ".fast_checkpoints"))
         
         self.completed_steps = []
+        if self.is_refinement:
+            self.completed_steps = [] # Explicit clear
+            
         self.failed_steps = []
         self.step_results = {}
         self.execution_records = {}  # Phase-0: Track files created by each step
@@ -146,15 +142,36 @@ class FASTOrchestratorV2(OrchestrationGuard):
         self.max_turns = 15
         self.run_id = None
         self.archetype = "generic"
+        # Initialization logging removed - step logs are sufficient
 
-        log("FAST-V2", f"🚀 Initializing Orchestrator (resume={resume_from_checkpoint}) for {project_id}")
+    def _register_usage(self, step: str, result: Any):
+        """Extract and register token usage from mixed result types."""
+        try:
+            usage = None
+            if isinstance(result, dict):
+                usage = result.get("token_usage")
+            elif hasattr(result, "token_usage"): # StepResult
+                usage = result.token_usage
+            elif hasattr(result, "data") and isinstance(result.data, dict): # StepExecutionResult
+                usage = result.data.get("token_usage")
+                
+            if usage:
+                self.budget.register_usage(
+                    step=step,
+                    input_tokens=usage.get("input", 0),
+                    output_tokens=usage.get("output", 0),
+                    model=self.model or "gemini-2.0-flash-exp" # Default to flash if not set
+                )
+        except Exception as e:
+            # Non-critical - don't crash workflow on metrics
+            pass
 
     async def run(self):
         """
         Execute the branch.
         Minimal logic, only execution.
         """
-        from app.handlers import HANDLERS
+        from app.handlers import HANDLERS, STEP_AGENTS
         from app.orchestration.state import CURRENT_MANAGERS
         
         # ArborMind Imports (Phase 2)
@@ -165,10 +182,15 @@ class FASTOrchestratorV2(OrchestrationGuard):
         from app.arbormind.cognition.execution_report import ExecutionReport
         from app.arbormind.runtime.execution_router import ExecutionRouter
         from app.arbormind.runtime.decision import ExecutionAction
+        from app.orchestration.budget_manager import get_budget_manager
 
         # 1️⃣ ENTRY POINT — Initialize Tree + Root Branch
         # Create root branch - capture input only
         from app.arbormind.core.archetypes import get_archetype
+        
+        # Initialize budget for this run
+        self.budget = get_budget_manager(self.project_id)
+        self.budget.start_run()
         
         archetype = get_archetype("fullstack_software")
         
@@ -214,9 +236,16 @@ class FASTOrchestratorV2(OrchestrationGuard):
             # ───────────────────────────────────────────────────────────────
             record_run_start(
                 run_id=self.run_id,
-                archetype=self.archetype,
-                domain="",
-                user_request=self.user_request[:500],
+                project_id=self.project_id
+            )
+            
+            # 🧠 OBSERVATION: Initial SSS
+            record_snapshot(
+                run_id=self.run_id,
+                step="init", 
+                stage="ENTRY",
+                workspace_hash="0000", # Placeholder for initial scan
+                artifacts_hash="0000"
             )
             
             # Start workflow in DB
@@ -227,9 +256,13 @@ class FASTOrchestratorV2(OrchestrationGuard):
                 self._load_execution_state()
 
             # EXECUTE STEPS IN ORDER
+            # NOTE: We use a while loop with index to allow dynamic appending of steps (e.g. refine -> preview)
             steps = self.graph.get_steps()
+            step_idx = 0
             
-            for step in steps:
+            while step_idx < len(steps):
+                step = steps[step_idx]
+                step_idx += 1
                 # Phase-0: Skip completed steps if resuming
                 if self.resume_from_checkpoint and step in self.completed_steps:
                     log("FAST-V2", f"⏭️ Skipping completed step: {step}")
@@ -244,13 +277,12 @@ class FASTOrchestratorV2(OrchestrationGuard):
                 
                 # 🧠 SQLITE: Record step decision (start) - "I choose to run this tool"
                 agent_name = STEP_AGENTS.get(step, "System")
-                record_decision(
+                record_decision_event(
                     run_id=self.run_id,
                     step=step,
                     agent=agent_name,
-                    action="RUN_TOOL",
-                    tool=step,  # The step is effectively the tool here
-                    outcome="pending",
+                    decision="RUN_TOOL",
+                    reason=f"Starting step: {step}",
                 )
                 
                 # 📊 METRICS: Start step tracking (Legacy removed)
@@ -260,6 +292,14 @@ class FASTOrchestratorV2(OrchestrationGuard):
                 #         start_step(self.run_id, step, step_order)
                 #     except Exception as me:
                 #         log("METRICS", f"⚠️ Failed to start step metrics: {me}")
+
+                # ───────────────────────────────────────────────────────────────
+                # 📸 PHASE 3: Step State Snapshot - ENTRY (Horizontal Continuity)
+                # ───────────────────────────────────────────────────────────────
+                try:
+                    record_step_entry(self.run_id, step)
+                except Exception:
+                    pass  # SSS must never crash execution
 
                 try:
                     # ──────────────────────────────────────────────────────────────────
@@ -278,9 +318,12 @@ class FASTOrchestratorV2(OrchestrationGuard):
                     # ──────────────────────────────────────────────────────────────────
                     # 📊 PHASE 9: Observational Recording (Non-blocking)
                     # ──────────────────────────────────────────────────────────────────
-                    record_event(
-                        branch=branch_to_execute,
-                        decision=decision,
+                    record_decision_event(
+                        run_id=self.run_id,
+                        step=step,
+                        agent="ROUTER",
+                        decision=decision.action.value,
+                        reason=decision.reason
                     )
                     
                     # ──────────────────────────────────────────────────────────────────
@@ -349,6 +392,9 @@ class FASTOrchestratorV2(OrchestrationGuard):
                             log("FAST-V2", f"⚠️ Tool planning failed, falling back to handler: {e}")
                             result = await handler(branch_to_execute)
                         
+                        # Register token usage (Budget Manager)
+                        self._register_usage(step, result)
+
                         # Phase-1: Take filesystem snapshot AFTER execution
                         after_snapshot = self._get_project_snapshot()
                         
@@ -392,6 +438,10 @@ class FASTOrchestratorV2(OrchestrationGuard):
                                     if retry_success:
                                         log("FAST-V2", f"✅ Retry succeeded for {step}")
                                         result = retry_result
+                                        
+                                        # Register usage for retry
+                                        self._register_usage(step, result)
+                                        
                                         files_generated = self._compute_file_delta(retry_before, retry_after)
                                         if files_generated:
                                             self._register_step_files_from_paths(step, files_generated)
@@ -451,16 +501,16 @@ class FASTOrchestratorV2(OrchestrationGuard):
                                     }
                                     
                                     # 🧠 ARBORMIND LEARNING: Ingest failure (canonical)
-                                    ingest_failure(
-                                        run_id=self.run_id,
-                                        step=step,
-                                        primary_class=FailureClass.F1_INVARIANT_VIOLATION,
-                                        scope=FailureScope.STEP_LOCAL,
-                                        raw_error="Zero files produced (no retry allowed)",
-                                        agent=agent_name,
-                                        retry_index=0,
-                                        is_hard_failure=policy.is_fatal,
-                                    )
+                                    # ingest_failure(
+                                    #     run_id=self.run_id,
+                                    #     step=step,
+                                    #     primary_class=FailureClass.F1_INVARIANT_VIOLATION,
+                                    #     scope=FailureScope.STEP_LOCAL,
+                                    #     raw_error="Zero files produced (no retry allowed)",
+                                    #     agent=agent_name,
+                                    #     retry_index=0,
+                                    #     is_hard_failure=policy.is_fatal,
+                                    # )
                                     
                                     if policy.is_fatal:
                                         log("FAST-V2", f"🛑 FATAL: {step} produced zero files - HALTING WORKFLOW")
@@ -503,19 +553,20 @@ class FASTOrchestratorV2(OrchestrationGuard):
                                 
                                 # 🧠 SQLITE: Update decision with failure
                                 duration_ms = int((datetime.now() - step_start).total_seconds() * 1000)
-                                update_decision_outcome(
+                                # 🧠 OBSERVATION: Update decision with failure
+                                duration_ms = int((datetime.now() - step_start).total_seconds() * 1000)
+                                record_step_exit(
                                     run_id=self.run_id,
                                     step=step,
-                                    outcome="failure",
-                                    duration_ms=duration_ms,
-                                    artifacts_count=0
+                                    status="FAILED"
                                 )
                                 
-                                # 🧠 SQLITE: Record specific failure details (telemetry)
-                                record_failure(
+                                # 🧠 OBSERVATION: Record specific failure details (telemetry)
+                                record_failure_event(
                                     run_id=self.run_id,
                                     step=step,
-                                    failure_type=result.outcome.value,
+                                    origin="STEP_LOGIC",
+                                    signal=result.outcome.value,
                                     message=result.error_details or "Unknown error",
                                 )
                                 
@@ -531,16 +582,16 @@ class FASTOrchestratorV2(OrchestrationGuard):
                                     FailureClass.F7_RUNTIME_EXCEPTION
                                 )
                                 
-                                ingest_failure(
-                                    run_id=self.run_id,
-                                    step=step,
-                                    primary_class=canonical_class,
-                                    scope=FailureScope.STEP_LOCAL if step not in self.CRITICAL_STEPS else FailureScope.CROSS_STEP,
-                                    raw_error=result.error_details or "Unknown error",
-                                    agent=agent_name,
-                                    retry_index=0,
-                                    is_hard_failure=is_fatal_failure or step in self.CRITICAL_STEPS,
-                                )
+                                # ingest_failure(
+                                #     run_id=self.run_id,
+                                #     step=step,
+                                #     primary_class=canonical_class,
+                                #     scope=FailureScope.STEP_LOCAL if step not in self.CRITICAL_STEPS else FailureScope.CROSS_STEP,
+                                #     raw_error=result.error_details or "Unknown error",
+                                #     agent=agent_name,
+                                #     retry_index=0,
+                                #     is_hard_failure=is_fatal_failure or step in self.CRITICAL_STEPS,
+                                # )
                                 
                                 # ═══════════════════════════════════════════════════════
                                 # PHASE 2: Only FATAL failures or CRITICAL STEPS stop the workflow
@@ -581,6 +632,17 @@ class FASTOrchestratorV2(OrchestrationGuard):
                     
                     self.completed_steps.append(step)
                     self.step_results[step] = {"status": "ok", "duration": duration}
+
+                    # Handle Legacy StepResult flow control (e.g. Refine -> Preview)
+                    if isinstance(result, StepResult) and result.nextstep:
+                        # Map WorkflowStep enum to string if needed
+                        next_step_str = result.nextstep.value if hasattr(result.nextstep, "value") else str(result.nextstep)
+                        
+                        # Only append if not already in queue and not complete
+                        # Note: FAST V2 usually strictly follows graph, but Refine is dynamic
+                        if next_step_str not in steps and next_step_str != "complete":
+                            log("FAST-V2", f"🔀 Dynamic step transition: {step} -> {next_step_str}")
+                            steps.append(next_step_str)
                     
 
                     
@@ -599,6 +661,14 @@ class FASTOrchestratorV2(OrchestrationGuard):
                         duration_ms=duration_ms,
                         artifacts_count=artifacts_count
                     )
+                    
+                    # ───────────────────────────────────────────────────────────────
+                    # 📸 PHASE 3: Step State Snapshot - EXIT (Horizontal Continuity)
+                    # ───────────────────────────────────────────────────────────────
+                    try:
+                        record_step_exit(self.run_id, step, self.project_path)
+                    except Exception:
+                        pass  # SSS must never crash execution
                     
                     if self.run_id:
                         # complete_step(self.run_id, step, True, 1)
@@ -638,6 +708,14 @@ class FASTOrchestratorV2(OrchestrationGuard):
                         exception_info=f"{str(e)}\n{tb_str}",
                         agent=agent_name,
                     )
+                    
+                    # ───────────────────────────────────────────────────────────────
+                    # 📸 PHASE 3: Step State Snapshot - EXIT on FAILURE
+                    # ───────────────────────────────────────────────────────────────
+                    try:
+                        record_step_exit(self.run_id, step, self.project_path)
+                    except Exception:
+                        pass  # SSS must never crash execution
                     
                     break # Stop on exception
 
