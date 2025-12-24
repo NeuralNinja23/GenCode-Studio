@@ -133,3 +133,31 @@ def get_max_retries(step_name: str) -> int:
     """Get maximum retry count for a step."""
     policy = get_execution_policy(step_name)
     return policy.max_retries
+
+
+# Generation steps that produce code files
+GENERATION_STEPS = {
+    "architecture",
+    "backend_models",
+    "backend_routers",
+    "frontend_mock",
+    "refine",
+}
+
+
+def is_generation_step(step_name: str) -> bool:
+    """
+    Check if a step is a generation step (produces code files).
+    
+    Generation steps:
+    - Produce code/file artifacts
+    - Require LLM calls
+    - Should be filtered for relevant context
+    
+    Args:
+        step_name: Name of the step
+        
+    Returns:
+        True if step generates code files
+    """
+    return step_name in GENERATION_STEPS
