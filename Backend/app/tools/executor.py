@@ -221,7 +221,9 @@ def record_tool_invocation_end(
     PHASE 3: Records tool trace + step exit + failure event (if applicable)
     """
     status = "✅" if result.success else "❌"
-    log("TOOL-EXEC", f"{status} [{result.tool_name}] Completed in {result.duration_ms}ms")
+    files_count = len(result.output.get("_written_files", [])) if isinstance(result.output, dict) else 0
+    file_info = f", files={files_count}" if files_count > 0 else ""
+    log("TOOL-EXEC", f"{status} [{result.tool_name}] {result.duration_ms}ms{file_info}")
     
     # Record to ArborMind (if available)
     try:
@@ -298,7 +300,7 @@ async def execute_tool_plan(
     total_start = datetime.now(timezone.utc)
     
     for i, invocation in enumerate(plan.sequence):
-        log("TOOL-EXEC", f"▶️ {invocation.tool_name}")
+        # Start log handled by record_tool_invocation_start()
         
         # ═══════════════════════════════════════════════════════════════
         # PHASE E1: Check lockfile cache for subagentcaller
@@ -513,11 +515,7 @@ async def execute_tool_plan(
         
         results.append(result)
         
-        # Log tool completion with outcome
-        status = "✅" if result.success else "❌"
-        files_count = len(result.output.get("_written_files", [])) if isinstance(result.output, dict) else 0
-        file_info = f", files={files_count}" if files_count > 0 else ""
-        log("TOOL-EXEC", f"{status} {invocation.tool_name} ({result.duration_ms}ms{file_info})")
+        # End log handled by record_tool_invocation_end()
         
         # Handle failure
         if not result.success:
