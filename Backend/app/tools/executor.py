@@ -347,7 +347,49 @@ async def execute_tool_plan(
         # Execute
         started_at = datetime.now(timezone.utc)
         try:
-            output = await run_tool(invocation.tool_name, invocation.args)
+            # ═══════════════════════════════════════════════════════════════
+            # POST Tool Wiring: Inject previous tool output for validation tools
+            # ═══════════════════════════════════════════════════════════════
+            tool_args = dict(invocation.args)  # Copy to avoid mutation
+            
+            if invocation.tool_name in ("syntaxvalidator", "static_code_validator"):
+                # Get code from written files (if any)
+                if final_output and isinstance(final_output, dict):
+                    written_files = final_output.get("_written_files", [])
+                    if written_files:
+                        # Read the first written file for validation
+                        try:
+                            from pathlib import Path
+                            first_file = Path(written_files[0])
+                            if first_file.exists():
+                                code = first_file.read_text(encoding="utf-8")
+                                tool_args["code"] = code
+                                # Detect language from extension
+                                ext = first_file.suffix.lower()
+                                if ext == ".py":
+                                    tool_args["language"] = "python"
+                                elif ext in (".js", ".jsx", ".ts", ".tsx"):
+                                    tool_args["language"] = "javascript"
+                        except Exception:
+                            pass  # Non-fatal
+                
+                # If still no code, skip this tool
+                if not tool_args.get("code"):
+                    log("TOOL-EXEC", f"⏭️ [{invocation.tool_name}] Skipped (no code to validate)")
+                    result = ToolInvocationResult(
+                        invocation_id=invocation.invocation_id,
+                        tool_name=invocation.tool_name,
+                        success=True,
+                        output={"skipped": True, "reason": "No code to validate"},
+                        error=None,
+                        duration_ms=0,
+                        started_at=started_at.isoformat(),
+                        ended_at=started_at.isoformat(),
+                    )
+                    results.append(result)
+                    continue  # Skip to next tool
+            
+            output = await run_tool(invocation.tool_name, tool_args)
             ended_at = datetime.now(timezone.utc)
             
             # Determine success from output
