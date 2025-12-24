@@ -38,6 +38,7 @@ from app.arbormind.observation.execution_ledger import (
     record_decision_event,
     record_failure_event,
     record_snapshot,
+    update_decision_outcome,
 )
 
 # PHASE 2: Failure Severity System
